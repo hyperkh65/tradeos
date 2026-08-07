@@ -48,7 +48,7 @@ export async function loginAction(prevState: { error: string }, formData: FormDa
     const cookieStore = await cookies();
     cookieStore.set('tradeos_session', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false,
       sameSite: 'lax',
       maxAge: 60 * 60 * 8,
       path: '/',
