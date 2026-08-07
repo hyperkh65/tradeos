@@ -158,6 +158,13 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
       {/* Bottom */}
       <div className="shrink-0 border-t border-sidebar-border p-2 space-y-0.5">
         <button
+          onClick={() => handleNav('/admin')}
+          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <Users className="w-4 h-4 text-muted-foreground" />
+          사용자 관리
+        </button>
+        <button
           onClick={() => handleNav('/settings')}
           className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
         >
