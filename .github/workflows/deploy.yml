@@ -1,0 +1,80 @@
+name: Deploy to NAS (gw.ynk2014.com)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          DEMO_MODE: ${{ secrets.TRADEOS_DEMO_MODE || 'true' }}
+          AUTH_SECRET: ${{ secrets.TRADEOS_AUTH_SECRET }}
+          NOTION_TOKEN: ${{ secrets.TRADEOS_NOTION_TOKEN }}
+          NOTION_DB_COMPANIES: ${{ secrets.TRADEOS_NOTION_DB_COMPANIES }}
+          NOTION_DB_PRODUCTS: ${{ secrets.TRADEOS_NOTION_DB_PRODUCTS }}
+          NOTION_DB_TASKS: ${{ secrets.TRADEOS_NOTION_DB_TASKS }}
+          NOTION_DB_PURCHASE_ORDERS: ${{ secrets.TRADEOS_NOTION_DB_PURCHASE_ORDERS }}
+          NOTION_DB_INSPECTIONS: ${{ secrets.TRADEOS_NOTION_DB_INSPECTIONS }}
+          NOTION_DB_SHIPMENTS: ${{ secrets.TRADEOS_NOTION_DB_SHIPMENTS }}
+          NOTION_DB_CLAIMS: ${{ secrets.TRADEOS_NOTION_DB_CLAIMS }}
+          NOTION_DB_EXPENSES: ${{ secrets.TRADEOS_NOTION_DB_EXPENSES }}
+          NAS_WEBDAV_URL: ${{ secrets.TRADEOS_NAS_WEBDAV_URL }}
+          NAS_USERNAME: ${{ secrets.TRADEOS_NAS_USERNAME }}
+          NAS_PASSWORD: ${{ secrets.TRADEOS_NAS_PASSWORD }}
+          NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
+        run: npm run build
+
+      - name: Prepare NAS directory
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p /volume1/web/tradeos
+
+      - name: Copy build to NAS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          source: ".next/standalone/,.next/static/,public/"
+          target: /volume1/web/tradeos/
+
+      - name: Deploy on NAS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          command_timeout: 2m
+          script: |
+            NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
+            mkdir -p /volume1/web/tradeos/.next/standalone/.next
+            mkdir -p /volume1/web/tradeos/.next/standalone/public
+            rm -rf /volume1/web/tradeos/.next/standalone/.next/static
+            cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
+            cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
+            OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
+            [ -n "$OLD_PID" ] && kill $OLD_PID 2>/dev/null || true
+            PORT_PID=$(netstat -tlnp 2>/dev/null | grep ':3103 ' | awk '{print $NF}' | cut -d'/' -f1)
+            [ -n "$PORT_PID" ] && kill $PORT_PID 2>/dev/null || true
+            sleep 1
+            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
+            echo $! > /tmp/tradeos.pid
+            echo "TradeOS started PID=$(cat /tmp/tradeos.pid) on port 3103"
