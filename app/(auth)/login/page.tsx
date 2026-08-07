@@ -29,8 +29,7 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.error ?? '로그인에 실패했습니다.');
       } else {
-        router.push('/');
-        router.refresh();
+        window.location.href = '/';
       }
     } catch {
       setError('서버에 연결할 수 없습니다.');
