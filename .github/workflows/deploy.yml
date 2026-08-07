@@ -71,20 +71,21 @@ jobs:
             rm -rf /volume1/web/tradeos/.next/standalone/.next/static
             cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
             cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
+            pkill -9 -f "/volume1/web/tradeos/.next/standalone/server.js" 2>/dev/null || true
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
-            [ -n "$OLD_PID" ] && kill $OLD_PID 2>/dev/null || true
-            PORT_PID=$(netstat -tlnp 2>/dev/null | grep ':3000 ' | awk '{print $NF}' | cut -d'/' -f1)
-            [ -n "$PORT_PID" ] && kill $PORT_PID 2>/dev/null || true
+            [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
             sleep 2
-            PORT=3000 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
+            PORT=3104 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 3
-            if $NODE -e "require('http').get('http://localhost:3000/login',(r)=>{console.log('HTTP',r.statusCode);process.exit(r.statusCode===200?0:1)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
-              echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3000"
+            if $NODE -e "require('http').get('http://localhost:3104/login',(r)=>{console.log('HTTP',r.statusCode);process.exit(r.statusCode===200?0:1)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
+              echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3104"
             else
               echo "ERROR: server failed" && tail -30 /tmp/tradeos.log && exit 1
             fi
-            find /etc/nginx -name "*.conf" -exec grep -l "proxy_pass.*3103" {} \; 2>/dev/null | while read f; do
-              sed -i 's|proxy_pass http://localhost:3103|proxy_pass http://localhost:3000|g; s|proxy_pass http://127.0.0.1:3103|proxy_pass http://127.0.0.1:3000|g' "$f" && echo "Updated nginx: $f"
+            for old_port in 3103 3102 3101 3100 3000; do
+              find /etc/nginx -name "*.conf" -exec grep -l "proxy_pass.*:${old_port}" {} \; 2>/dev/null | while read f; do
+                sed -i "s|proxy_pass http://localhost:${old_port}|proxy_pass http://localhost:3104|g; s|proxy_pass http://127.0.0.1:${old_port}|proxy_pass http://127.0.0.1:3104|g" "$f" && echo "Updated nginx $f (${old_port}->3104)"
+              done
             done
             nginx -s reload 2>/dev/null && echo "nginx reloaded" || true
