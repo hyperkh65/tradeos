@@ -12,7 +12,7 @@ import { useState } from 'react';
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const filtered = DEMO_PRODUCTS.filter(p =>
-    p.nameKo.includes(search)||(p.nameEn??'').includes(search)|p.code.includes(search)||(p.supplierName??'').includes(search)
+    p.nameKo.includes(search)||(p.nameEn??'').includes(search)||p.code.includes(search)||(p.supplierName??'').includes(search)
   );
 
   return (

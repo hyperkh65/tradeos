@@ -26,7 +26,7 @@ export default function CompaniesPage() {
 
   const types = ['전체', ...Array.from(new Set(DEMO_COMPANIES.map(c => c.type)))];
   const filtered = DEMO_COMPANIES.filter(c => {
-    const matchSearch = c.name.includes(search)||(c.nameEn??'').includes(search)|(c.businessId.includes(search));
+    const matchSearch = c.name.includes(search)||(c.nameEn??'').includes(search)||(c.businessId.includes(search));
     const matchType = typeFilter==='전체'||c.type===typeFilter;
     return matchSearch&&matchType;
   });

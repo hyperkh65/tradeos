@@ -46,7 +46,7 @@ export default function InspectionsPage() {
                   <td className="px-4 py-3 text-sm font-medium max-w-[160px] truncate">{qc.productName}</td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{qc.inspectionDate}</td>
                   <td className="px-4 py-3 text-xs">
-                    {qc.checkedQty>0?<><span className="font-medium">{qc.checkedQty}</span> / <span className="text-red-600">{qc.failedQty}</span>{qc.defectRate!==undefined&&` (${qc.defectRate}%)`}</>:'-'}
+                    {(qc.checkedQty??0)>0?<><span className="font-medium">{qc.checkedQty}</span> / <span className="text-red-600">{qc.failedQty??0}</span>{qc.defectRate!==undefined&&` (${qc.defectRate}%)`}</>:'-'}
                   </td>
                   <td className="px-4 py-3"><span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full',resultStyle[qc.result])}>{resultLabel[qc.result]}</span></td>
                   <td className="px-4 py-3"><span className={cn('text-xs px-2 py-0.5 rounded-full',statusStyle[qc.status])}>{statusLabel[qc.status]}</span></td>
@@ -74,7 +74,7 @@ export default function InspectionsPage() {
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>{qc.inspectionDate}</span>
-                {qc.checkedQty>0&&<span>샘플 {qc.checkedQty} / 불량 <span className="text-red-600 font-medium">{qc.failedQty}</span>{qc.defectRate!==undefined&&` (${qc.defectRate}%)`}</span>}
+                {(qc.checkedQty??0)>0&&<span>샘플 {qc.checkedQty} / 불량 <span className="text-red-600 font-medium">{qc.failedQty??0}</span>{qc.defectRate!==undefined&&` (${qc.defectRate}%)`}</span>}
               </div>
               {qc.summary&&<p className="text-xs text-muted-foreground mt-2 bg-muted/50 rounded-lg px-3 py-2">{qc.summary}</p>}
             </div>
