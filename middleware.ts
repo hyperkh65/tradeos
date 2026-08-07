@@ -5,7 +5,7 @@ const SECRET = new TextEncoder().encode(
   process.env.AUTH_SECRET ?? 'tradeos-fallback-secret-change-in-production'
 );
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+const PUBLIC_PATHS = ['/login', '/signup', '/api/auth/login', '/api/auth/signup'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -28,5 +28,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/auth/login).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/auth/login|api/auth/signup).*)'],
 };
