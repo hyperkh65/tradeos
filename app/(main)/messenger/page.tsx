@@ -1,102 +1,108 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { DEMO_CHANNELS, DEMO_MESSAGES } from '@/lib/demo-data';
-import type { Channel } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Hash, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Send, Hash, MessageSquare, ArrowLeft, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-const channelIcon = (type: string) => type === 'dm' ? null : <Hash className="w-3.5 h-3.5"/>;
-
-export default function MessengerPage() {
-  const [activeChannel, setActiveChannel] = useState<Channel>(DEMO_CHANNELS[1]);
-  const [input, setInput] = useState('');
-  const [mobileDetail, setMobileDetail] = useState(false);
-
-  const messages = DEMO_MESSAGES.filter(m => m.channelId === activeChannel.id);
-
-  const handleSelect = (ch: Channel) => { setActiveChannel(ch); setMobileDetail(true); };
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <AppHeader title="메신저" />
-
-      {/* Mobile channel view */}
-      {mobileDetail&&(
-        <div className="md:hidden fixed inset-0 z-40 bg-background flex flex-col">
-          <div className="h-12 flex items-center px-4 border-b border-border shrink-0 gap-3">
-            <button onClick={()=>setMobileDetail(false)}><ArrowLeft className="w-4 h-4 text-primary"/></button>
-            <span className="font-semibold text-sm"># {activeChannel.name}</span>
-          </div>
-          <ChatArea messages={messages} input={input} setInput={setInput}/>
-        </div>
-      )}
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Channel list */}
-        <div className="w-full md:w-56 shrink-0 border-r border-border flex flex-col overflow-hidden bg-sidebar">
-          <div className="p-3 border-b border-sidebar-border">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">채널</p>
-          </div>
-          <div className="flex-1 overflow-y-auto py-1">
-            {DEMO_CHANNELS.map(ch=>(
-              <button key={ch.id} onClick={()=>handleSelect(ch)}
-                className={cn('w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-accent transition-colors',
-                  activeChannel.id===ch.id?'bg-sidebar-primary text-sidebar-primary-foreground font-medium':'text-sidebar-foreground')}>
-                {ch.type==='dm'
-                  ? <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">{ch.name[0]}</div>
-                  : <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground"/>}
-                <span className="truncate">{ch.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Desktop chat */}
-        <div className="flex-1 hidden md:flex flex-col overflow-hidden">
-          <div className="h-10 border-b border-border px-4 flex items-center gap-2 shrink-0">
-            {channelIcon(activeChannel.type)||<div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">{activeChannel.name[0]}</div>}
-            <span className="text-sm font-semibold">{activeChannel.name}</span>
-            {activeChannel.description&&<span className="text-xs text-muted-foreground">— {activeChannel.description}</span>}
-          </div>
-          <ChatArea messages={messages} input={input} setInput={setInput}/>
-        </div>
-      </div>
-    </div>
-  );
+interface Channel {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  member_ids_json?: string;
+  created_by: string;
+  created_at: string;
 }
 
-function ChatArea({ messages, input, setInput }: { messages: typeof DEMO_MESSAGES; input: string; setInput: (v:string)=>void }) {
-  const initials = (name: string) => name[0];
-  const colors = ['bg-blue-100 text-blue-700','bg-green-100 text-green-700','bg-purple-100 text-purple-700','bg-orange-100 text-orange-700'];
-  const colorOf = (id: string) => colors[id.charCodeAt(id.length-1)%colors.length];
+interface Message {
+  id: string;
+  channel_id: string;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  created_at: string;
+}
+
+const colors = ['bg-blue-100 text-blue-700', 'bg-green-100 text-green-700', 'bg-purple-100 text-purple-700', 'bg-orange-100 text-orange-700'];
+const colorOf = (id: string) => colors[id.charCodeAt(id.length - 1) % colors.length];
+
+function ChatArea({
+  channel,
+  myId,
+}: {
+  channel: Channel;
+  myId: string;
+}) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadMessages = useCallback(async () => {
+    const data = await fetch(`/api/messenger/messages?channelId=${channel.id}`).then(r => r.json());
+    const msgs: Message[] = Array.isArray(data) ? data : [];
+    setMessages(msgs.reverse());
+  }, [channel.id]);
+
+  useEffect(() => {
+    loadMessages();
+    pollRef.current = setInterval(loadMessages, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [loadMessages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const send = async () => {
+    if (!input.trim() || sending) return;
+    setSending(true);
+    await fetch('/api/messenger/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelId: channel.id, content: input.trim() }),
+    });
+    setInput('');
+    setSending(false);
+    await loadMessages();
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length===0&&(
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm py-12 text-center">
-            <MessageSquare className="w-8 h-8 mb-2 opacity-20 mx-auto"/>
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm text-center">
+            <MessageSquare className="w-8 h-8 mb-2 opacity-20" />
             <p>아직 메시지가 없습니다.</p>
           </div>
         )}
-        {messages.map(msg=>(
-          <div key={msg.id} className="flex gap-3">
-            <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0',colorOf(msg.senderId))}>
-              {initials(msg.senderName)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="text-sm font-semibold">{msg.senderName}</span>
-                <span className="text-xs text-muted-foreground">{new Date(msg.createdAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</span>
+        {messages.map(msg => {
+          const isMine = msg.sender_id === myId;
+          return (
+            <div key={msg.id} className={cn('flex gap-3', isMine && 'flex-row-reverse')}>
+              <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0', colorOf(msg.sender_id))}>
+                {msg.sender_name[0]}
               </div>
-              <p className="text-sm mt-0.5 text-foreground">{msg.content}</p>
+              <div className={cn('flex-1 min-w-0', isMine && 'items-end flex flex-col')}>
+                <div className={cn('flex items-baseline gap-2', isMine && 'flex-row-reverse')}>
+                  <span className="text-sm font-semibold">{msg.sender_name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <p className={cn(
+                  'text-sm mt-0.5 px-3 py-2 rounded-xl inline-block max-w-xs md:max-w-sm break-words',
+                  isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                )}>{msg.content}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        <div ref={bottomRef} />
       </div>
       <div className="shrink-0 p-3 border-t border-border">
         <div className="flex gap-2">
@@ -104,12 +110,137 @@ function ChatArea({ messages, input, setInput }: { messages: typeof DEMO_MESSAGE
             placeholder="메시지를 입력하세요..."
             className="flex-1 h-9"
             value={input}
-            onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();setInput('');} }}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           />
-          <Button size="icon" className="h-9 w-9 shrink-0" onClick={()=>setInput('')}>
-            <Send className="w-4 h-4"/>
+          <Button size="icon" className="h-9 w-9 shrink-0" onClick={send} disabled={sending}>
+            <Send className="w-4 h-4" />
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function MessengerPage() {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [active, setActive] = useState<Channel | null>(null);
+  const [mobileDetail, setMobileDetail] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [myId, setMyId] = useState('');
+
+  const loadChannels = useCallback(async () => {
+    const data = await fetch('/api/messenger/channels').then(r => r.json());
+    const list: Channel[] = Array.isArray(data) ? data : [];
+    setChannels(list);
+    if (list.length > 0 && !active) setActive(list[0]);
+  }, [active]);
+
+  useEffect(() => {
+    loadChannels();
+    fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMyId(j.user.id); }).catch(() => {});
+  }, []);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    await fetch('/api/messenger/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), type: 'public' }),
+    });
+    setShowCreate(false);
+    setNewName('');
+    setNewDesc('');
+    await loadChannels();
+  };
+
+  const handleSelect = (ch: Channel) => { setActive(ch); setMobileDetail(true); };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <AppHeader title="메신저" />
+
+      {mobileDetail && active && (
+        <div className="md:hidden fixed inset-0 z-40 bg-background flex flex-col">
+          <div className="h-12 flex items-center px-4 border-b border-border shrink-0 gap-3">
+            <button onClick={() => setMobileDetail(false)}><ArrowLeft className="w-4 h-4 text-primary" /></button>
+            <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="font-semibold text-sm">{active.name}</span>
+          </div>
+          <ChatArea channel={active} myId={myId} />
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-semibold">채널 만들기</h3>
+              <button onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">채널 이름</label>
+                <Input className="mt-1 h-9" value={newName} onChange={e => setNewName(e.target.value)} placeholder="채널 이름" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">설명 (선택)</label>
+                <Input className="mt-1 h-9" value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="채널 설명" />
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>취소</Button>
+              <Button className="flex-1" onClick={handleCreate}>만들기</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 flex overflow-hidden">
+        <div className="w-full md:w-56 shrink-0 border-r border-border flex flex-col overflow-hidden bg-sidebar">
+          <div className="p-3 border-b border-sidebar-border flex items-center justify-between">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">채널</p>
+            <button onClick={() => setShowCreate(true)} className="text-muted-foreground hover:text-foreground">
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto py-1">
+            {channels.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-6">채널이 없습니다.</p>
+            )}
+            {channels.map(ch => (
+              <button
+                key={ch.id}
+                onClick={() => handleSelect(ch)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-accent transition-colors',
+                  active?.id === ch.id ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium' : 'text-sidebar-foreground'
+                )}
+              >
+                <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{ch.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 hidden md:flex flex-col overflow-hidden">
+          {active ? (
+            <>
+              <div className="h-10 border-b border-border px-4 flex items-center gap-2 shrink-0">
+                <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-sm font-semibold">{active.name}</span>
+                {active.description && <span className="text-xs text-muted-foreground">— {active.description}</span>}
+              </div>
+              <ChatArea channel={active} myId={myId} />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+              <MessageSquare className="w-8 h-8 mb-2 opacity-20" />
+            </div>
+          )}
         </div>
       </div>
     </div>
