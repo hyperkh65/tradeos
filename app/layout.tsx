@@ -9,8 +9,8 @@ const notoSansKR = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: { default: 'TradeOS', template: '%s | TradeOS' },
-  description: '한국 무역회사 전용 그룹웨어',
+  title: { default: 'NEXPORT', template: '%s | NEXPORT' },
+  description: '무역회사 전용 통합 그룹웨어',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

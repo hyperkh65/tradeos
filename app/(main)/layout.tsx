@@ -1,12 +1,5 @@
-import { AppSidebar } from '@/components/layout/sidebar';
+import { MainShell } from '@/components/layout/main-shell';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <AppSidebar />
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {children}
-      </main>
-    </div>
-  );
+  return <MainShell>{children}</MainShell>;
 }

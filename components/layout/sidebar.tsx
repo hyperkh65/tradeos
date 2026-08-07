@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useSidebar } from '@/lib/sidebar-context';
 import {
   LayoutDashboard, Building2, Package, ClipboardList, FileText,
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
-  Globe, Search, Bell, LogOut, Boxes,
+  Compass, Search, LogOut, Boxes,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +35,7 @@ const navGroups = [
       { label: '발주', href: '/purchase-orders', icon: Boxes },
       { label: '검품', href: '/inspections', icon: CheckSquare },
       { label: '선적', href: '/shipments', icon: Ship },
-      { label: '수입', href: '/imports', icon: TruckIcon },
+      { label: '수입통관', href: '/imports', icon: TruckIcon },
       { label: '클레임', href: '/claims', icon: AlertCircle },
     ],
   },
@@ -42,15 +43,12 @@ const navGroups = [
     label: '재무',
     items: [
       { label: '비용', href: '/expenses', icon: DollarSign },
-      { label: '결제', href: '/payments', icon: DollarSign },
-      { label: '환율', href: '/exchange-rates', icon: Globe },
     ],
   },
   {
     label: '문서',
     items: [
       { label: '파일', href: '/files', icon: FolderOpen },
-      { label: '인증서', href: '/certificates', icon: FileText },
     ],
   },
   {
@@ -61,8 +59,14 @@ const navGroups = [
   },
 ];
 
-export function AppSidebar({ className }: { className?: string }) {
+interface AppSidebarProps {
+  onNavigate?: () => void;
+}
+
+export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { close } = useSidebar();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (label: string) => {
@@ -72,19 +76,26 @@ export function AppSidebar({ className }: { className?: string }) {
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
+  const handleNav = (href: string) => {
+    router.push(href);
+    close();
+    onNavigate?.();
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    close();
+  };
+
   return (
-    <aside
-      className={cn(
-        'flex flex-col h-full w-56 border-r border-border bg-sidebar shrink-0',
-        className
-      )}
-    >
+    <aside className="flex flex-col h-full w-56 border-r border-border bg-sidebar shrink-0">
       {/* Logo */}
       <div className="h-12 flex items-center gap-2 px-4 border-b border-sidebar-border shrink-0">
-        <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-          <Globe className="w-4 h-4 text-primary-foreground" />
+        <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
+          <Compass className="w-4 h-4 text-primary-foreground" />
         </div>
-        <span className="font-bold text-sidebar-foreground tracking-tight text-sm">TradeOS</span>
+        <span className="font-bold text-sidebar-foreground tracking-tight text-sm">NEXPORT</span>
       </div>
 
       {/* Search */}
@@ -115,11 +126,11 @@ export function AppSidebar({ className }: { className?: string }) {
                 {group.items.map((item) => {
                   const active = isActive(item.href);
                   return (
-                    <Link
+                    <button
                       key={item.href}
-                      href={item.href}
+                      onClick={() => handleNav(item.href)}
                       className={cn(
-                        'flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
+                        'w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors',
                         active
                           ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -135,7 +146,7 @@ export function AppSidebar({ className }: { className?: string }) {
                           {item.badge}
                         </Badge>
                       )}
-                    </Link>
+                    </button>
                   );
                 })}
               </div>
@@ -146,19 +157,24 @@ export function AppSidebar({ className }: { className?: string }) {
 
       {/* Bottom */}
       <div className="shrink-0 border-t border-sidebar-border p-2 space-y-0.5">
-        <Link
-          href="/admin"
-          className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        <button
+          onClick={() => handleNav('/settings')}
+          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
         >
           <Settings className="w-4 h-4 text-muted-foreground" />
-          관리
-        </Link>
+          설정
+        </button>
         <div className="flex items-center gap-2 px-2.5 py-1.5">
           <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[11px] font-bold text-primary shrink-0">
             김
           </div>
           <span className="text-xs text-sidebar-foreground truncate flex-1">김대표</span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+            onClick={handleLogout}
+          >
             <LogOut className="w-3.5 h-3.5" />
           </Button>
         </div>

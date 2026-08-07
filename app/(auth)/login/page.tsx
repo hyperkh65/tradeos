@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Globe, Loader2 } from 'lucide-react';
+import { Compass, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,18 +39,18 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50/30 px-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mb-3 shadow-lg shadow-primary/25">
-            <Globe className="w-6 h-6 text-primary-foreground" />
+          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
+            <Compass className="w-7 h-7 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">TradeOS</h1>
-          <p className="text-sm text-muted-foreground mt-1">무역 그룹웨어</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">NEXPORT</h1>
+          <p className="text-sm text-muted-foreground mt-1">무역회사 통합 그룹웨어</p>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-5">로그인</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
@@ -77,19 +77,22 @@ export default function LoginPage() {
               />
             </div>
             {error && (
-              <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">{error}</p>
+              <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '로그인'}
             </Button>
           </form>
 
-          {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && (
-            <p className="text-xs text-center text-muted-foreground mt-4 bg-yellow-50 border border-yellow-200 rounded-md px-3 py-2">
-              🔔 데모 모드 — 아무 이메일/비밀번호로 로그인 가능합니다.
-            </p>
-          )}
+          <div className="mt-4 text-xs text-center text-muted-foreground bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+            <p className="font-medium text-blue-700 mb-0.5">데모 모드</p>
+            <p>아무 이메일 / 비밀번호로 로그인 가능합니다</p>
+          </div>
         </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          © 2026 NEXPORT. All rights reserved.
+        </p>
       </div>
     </div>
   );
