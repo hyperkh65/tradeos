@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,10 +85,10 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-4 text-xs text-center text-muted-foreground bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
-            <p className="font-medium text-blue-700 mb-0.5">데모 모드</p>
-            <p>아무 이메일 / 비밀번호로 로그인 가능합니다</p>
-          </div>
+          <p className="text-center text-sm text-muted-foreground mt-4">
+            계정이 없으신가요?{' '}
+            <Link href="/signup" className="text-primary hover:underline font-medium">회원 가입</Link>
+          </p>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
