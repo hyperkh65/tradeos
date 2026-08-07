@@ -46,6 +46,7 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           script: |
             mkdir -p /volume1/web/tradeos
+            mkdir -p /volume1/web/tradeos/data
 
       - name: Copy build to NAS
         uses: appleboy/scp-action@v0.1.7
@@ -75,6 +76,6 @@ jobs:
             PORT_PID=$(netstat -tlnp 2>/dev/null | grep ':3103 ' | awk '{print $NF}' | cut -d'/' -f1)
             [ -n "$PORT_PID" ] && kill $PORT_PID 2>/dev/null || true
             sleep 1
-            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
+            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             echo "TradeOS started PID=$(cat /tmp/tradeos.pid) on port 3103"

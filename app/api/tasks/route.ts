@@ -1,0 +1,65 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getDb, newId, now } from '@/lib/db/sqlite';
+import { fetchNotionTasks, createNotionTask } from '@/lib/notion/mapper';
+import { DEMO_TASKS } from '@/lib/demo-data';
+
+function dbToTask(row: Record<string, unknown>) {
+  return {
+    id: row.id, title: row.title, description: row.description||undefined,
+    ownerId: row.owner_id, ownerName: row.owner_name, dueDate: row.due_date||undefined,
+    priority: row.priority, status: row.status,
+    relatedType: row.related_type||undefined, relatedId: row.related_id||undefined, relatedName: row.related_name||undefined,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export async function GET() {
+  try {
+    const db = getDb();
+
+    const notionData = await fetchNotionTasks();
+    if (notionData.length > 0) {
+      const upsert = db.prepare(`INSERT OR REPLACE INTO tasks (id,title,description,owner_id,owner_name,due_date,priority,status,related_name,notion_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+      db.transaction(() => {
+        for (const t of notionData) {
+          upsert.run(t.id,t.title,t.description??null,t.ownerId,t.ownerName,t.dueDate??null,t.priority,t.status,t.relatedName??null,t.id,t.createdAt,t.updatedAt);
+        }
+      })();
+      return NextResponse.json({ data: notionData });
+    }
+
+    const rows = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all() as Record<string, unknown>[];
+    if (rows.length > 0) return NextResponse.json({ data: rows.map(dbToTask) });
+
+    // Seed
+    const seed = db.prepare(`INSERT OR IGNORE INTO tasks (id,title,owner_id,owner_name,due_date,priority,status,related_type,related_id,related_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+    db.transaction(() => {
+      for (const t of DEMO_TASKS) {
+        seed.run(t.id,t.title,t.ownerId,t.ownerName,t.dueDate??null,t.priority,t.status,t.relatedType??null,t.relatedId??null,t.relatedName??null,t.createdAt,t.updatedAt);
+      }
+    })();
+    return NextResponse.json({ data: DEMO_TASKS });
+  } catch (e) {
+    return NextResponse.json({ data: DEMO_TASKS });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const db = getDb();
+    const id = newId();
+    const ts = now();
+
+    db.prepare(`INSERT INTO tasks (id,title,description,owner_id,owner_name,due_date,priority,status,related_type,related_id,related_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id,body.title,body.description??null,'user-1','김대표',body.dueDate??null,body.priority||'medium',body.status||'해야 함',body.relatedType??null,body.relatedId??null,body.relatedName??null,ts,ts);
+
+    createNotionTask({ ...body }).then(notionId => {
+      if (notionId) db.prepare('UPDATE tasks SET notion_id=? WHERE id=?').run(notionId, id);
+    }).catch(() => {});
+
+    return NextResponse.json({ data: { id, ...body, ownerId:'user-1', ownerName:'김대표', createdAt:ts, updatedAt:ts } }, { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: '저장 실패' }, { status: 500 });
+  }
+}
