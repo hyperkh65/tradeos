@@ -71,9 +71,10 @@ jobs:
             rm -rf /volume1/web/tradeos/.next/standalone/.next/static
             cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
             cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
-            pkill -9 -f "/volume1/web/tradeos/.next/standalone/server.js" 2>/dev/null || true
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
             [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
+            fuser -k -9 3103/tcp 2>/dev/null || true
+            fuser -k -9 3104/tcp 2>/dev/null || true
             sleep 2
             PORT=3104 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
