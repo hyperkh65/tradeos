@@ -1,47 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useActionState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Compass, Loader2 } from 'lucide-react';
+import { loginAction } from './actions';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? '로그인에 실패했습니다.');
-      } else {
-        window.location.href = '/';
-      }
-    } catch {
-      setError('서버에 연결할 수 없습니다.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [state, formAction, isPending] = useActionState(loginAction, { error: '' });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50/30 px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
             <Compass className="w-7 h-7 text-primary-foreground" />
@@ -52,15 +24,14 @@ export default function LoginPage() {
 
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-5">로그인</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form action={formAction} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-sm">이메일</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="이메일 주소 입력"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
               />
@@ -69,18 +40,17 @@ export default function LoginPage() {
               <Label htmlFor="password" className="text-sm">비밀번호</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="비밀번호 입력"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            {error && (
-              <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{error}</p>
+            {state.error && (
+              <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{state.error}</p>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '로그인'}
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : '로그인'}
             </Button>
           </form>
 
