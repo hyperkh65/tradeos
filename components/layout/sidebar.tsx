@@ -10,7 +10,7 @@ import {
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Compass, Search, LogOut, Boxes,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -68,6 +68,11 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const router = useRouter();
   const { close } = useSidebar();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [me, setMe] = useState<{ name: string; role: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMe(j.user); }).catch(() => {});
+  }, []);
 
   const toggleGroup = (label: string) => {
     setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -173,9 +178,12 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
         </button>
         <div className="flex items-center gap-2 px-2.5 py-1.5">
           <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[11px] font-bold text-primary shrink-0">
-            김
+            {me?.name?.[0] ?? '?'}
           </div>
-          <span className="text-xs text-sidebar-foreground truncate flex-1">김대표</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-sidebar-foreground truncate">{me?.name ?? '...'}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{me?.role === 'admin' ? '관리자' : me?.role ?? ''}</p>
+          </div>
           <Button
             variant="ghost"
             size="icon"
