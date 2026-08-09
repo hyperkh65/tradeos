@@ -333,63 +333,106 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
     <div className="flex-1 overflow-y-auto">
       {previewAtt && <AttachmentPreview att={previewAtt} onClose={() => setPreviewAtt(null)} />}
       {/* Document header */}
-      <div className="border-b border-border p-4 flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
-              {apr.status}
-            </span>
-            <span className={cn('text-xs font-medium', priorityStyle[apr.priority])}>{priorityLabel[apr.priority]}</span>
-            {apr.due_date && <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{apr.due_date}</span>}
+      <div className="border-b border-border p-4">
+        <div className="flex items-start gap-4">
+          {/* Left: document info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
+                {apr.status}
+              </span>
+              <span className={cn('text-xs font-medium', priorityStyle[apr.priority])}>{priorityLabel[apr.priority]}</span>
+              {apr.due_date && <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{apr.due_date}</span>}
+            </div>
+            <h2 className="text-base font-bold mt-1">{apr.form_title}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {apr.business_id} · {apr.form_type} · {apr.requester_name}{apr.requester_dept ? ` (${apr.requester_dept})` : ''} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
+            </p>
           </div>
-          <h2 className="text-base font-bold mt-1">{apr.form_title}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {apr.business_id} · {apr.form_type} · {apr.requester_name}{apr.requester_dept ? ` (${apr.requester_dept})` : ''} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
-          </p>
-        </div>
-        <div className="flex gap-1.5 shrink-0 flex-wrap">
-          {apr.status === '임시저장' && (
-            <Button size="sm" className="h-7 gap-1 text-xs" onClick={handleSubmitDraft}>
-              <Send className="w-3 h-3" />기안 상신
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={handlePrint}>
-            <Download className="w-3.5 h-3.5" />PDF
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={() => window.print()}>
-            <Printer className="w-3.5 h-3.5" />
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={apr.archived ? '보관 해제' : '보관'} onClick={onArchive}>
-            {apr.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-          </Button>
+
+          {/* Right: action buttons + 결재란 */}
+          <div className="shrink-0 flex flex-col items-end gap-2">
+            {/* Action buttons */}
+            <div className="flex gap-1.5 flex-wrap justify-end">
+              {apr.status === '임시저장' && (
+                <Button size="sm" className="h-7 gap-1 text-xs" onClick={handleSubmitDraft}>
+                  <Send className="w-3 h-3" />기안 상신
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={handlePrint}>
+                <Download className="w-3.5 h-3.5" />PDF
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={() => window.print()}>
+                <Printer className="w-3.5 h-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={apr.archived ? '보관 해제' : '보관'} onClick={onArchive}>
+                {apr.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+              </Button>
+            </div>
+
+            {/* 결재란 - 오른쪽 끝 배치 */}
+            <div className="border border-border rounded overflow-hidden text-center">
+              <div className="bg-muted/60 text-[10px] font-semibold py-0.5 px-3 border-b border-border truncate max-w-[320px]">
+                {apr.form_title}
+              </div>
+              <div className="flex divide-x divide-border">
+                {/* 기안자 */}
+                <div className="flex flex-col min-w-[58px]">
+                  <div className="bg-muted/40 text-[10px] py-0.5 border-b border-border">기안</div>
+                  <div className="py-2.5 px-2 text-xs font-semibold min-h-[36px] flex items-center justify-center">
+                    {apr.requester_name}
+                  </div>
+                  <div className="border-t border-border text-[10px] py-0.5 text-muted-foreground">
+                    {new Date(apr.created_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+                  </div>
+                </div>
+                {/* 결재자들 */}
+                {steps.map((step, i) => (
+                  <div key={i} className={cn(
+                    'flex flex-col min-w-[58px]',
+                    step.approverId === myId && step.status === '대기' && 'ring-2 ring-inset ring-primary'
+                  )}>
+                    <div className="bg-muted/40 text-[10px] py-0.5 border-b border-border">{step.role}</div>
+                    <div className="py-2.5 px-2 text-xs font-semibold min-h-[36px] flex items-center justify-center relative">
+                      {step.approverName}
+                      {step.status === '승인' && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="border-2 border-red-500 rounded-full w-7 h-7 flex items-center justify-center rotate-[-15deg] opacity-80">
+                            <span className="text-[8px] font-bold text-red-500">승인</span>
+                          </div>
+                        </div>
+                      )}
+                      {step.status === '반려' && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="border-2 border-gray-500 rounded-full w-7 h-7 flex items-center justify-center rotate-[-15deg] opacity-80">
+                            <span className="text-[8px] font-bold text-gray-500">반려</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-border text-[10px] py-0.5 text-muted-foreground">
+                      {step.actedAt ? new Date(step.actedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '-'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 결재자 의견 */}
+            {steps.filter(s => s.comment).length > 0 && (
+              <div className="text-right space-y-0.5">
+                {steps.filter(s => s.comment).map((s, i) => (
+                  <p key={i} className="text-[11px] text-muted-foreground">
+                    <span className="font-medium">{s.approverName}</span>: {s.comment}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="p-4 space-y-5 max-w-3xl">
-        {/* 결재란 */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground mb-2">결재 라인</p>
-          <div className="flex gap-2 flex-wrap">
-            {/* 기안자 */}
-            <div className="border border-border rounded flex flex-col min-w-[72px] text-center overflow-hidden">
-              <div className="bg-muted/60 py-0.5 px-2"><p className="text-[10px] font-medium text-muted-foreground">기안</p></div>
-              <div className="py-3 px-2"><p className="text-xs font-semibold">{apr.requester_name}</p></div>
-              <div className="border-t border-border py-1 px-2">
-                <p className="text-[10px] text-muted-foreground">{new Date(apr.created_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</p>
-              </div>
-            </div>
-            {steps.map((step, i) => (
-              <ApprovalStamp key={i} step={step} isActive={step.approverId === myId} />
-            ))}
-          </div>
-          {/* Step comments */}
-          {steps.filter(s => s.comment).map((s, i) => (
-            <div key={i} className="mt-2 text-xs text-muted-foreground">
-              <span className="font-medium">{s.approverName}</span>: {s.comment}
-            </div>
-          ))}
-        </div>
-
         {/* Body */}
         <div>
           <p className="text-xs font-semibold text-muted-foreground mb-2">본문</p>
@@ -448,7 +491,7 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
                         className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
                         <Download className="w-3.5 h-3.5" />
                       </a>
-                      {myId === apr.requester_id && (
+                      {myId === apr.requester_id && apr.status !== '승인' && apr.status !== '반려' && (
                         <button onClick={() => handleDeleteAtt(att.id)} title="삭제"
                           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive">
                           <Trash2 className="w-3.5 h-3.5" />
