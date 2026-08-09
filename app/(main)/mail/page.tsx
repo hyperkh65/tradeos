@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Mail, Star, Search, Pencil, ArrowLeft, X, Send, Inbox,
-  Plus, RefreshCw, Trash2, ChevronRight,
+  Plus, RefreshCw, Trash2, ChevronRight, Paperclip, Clock,
+  ChevronDown, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,17 @@ interface InternalUser {
   department?: string;
 }
 
+interface ScheduledMail {
+  id: string;
+  account_id: string;
+  to_addr: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  scheduled_at: string;
+  status: string;
+}
+
 type Folder = 'inbox' | 'sent' | 'starred';
 type Source = 'internal' | string; // string = account id
 
@@ -95,9 +107,12 @@ export default function MailPage() {
 
   // Compose
   const [showCompose, setShowCompose] = useState(false);
-  const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
+  const [compose, setCompose] = useState({ to: '', cc: '', bcc: '', subject: '', body: '', scheduledAt: '', files: [] as File[] });
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [sendSuccess, setSendSuccess] = useState('');
+  const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([]);
+  const [showScheduled, setShowScheduled] = useState(false);
 
   // Add account modal
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -151,6 +166,8 @@ export default function MailPage() {
     const msgs = Array.isArray(data) ? data : [];
     setExtMails(msgs);
     if (msgs.length === 0) await syncAccount(acc.id);
+    loadScheduled(acc.id);
+    triggerScheduled(acc.id);
   };
 
   const selectExtMail = async (msg: ExtMail) => {
@@ -210,38 +227,69 @@ export default function MailPage() {
     if (!isRead(m)) await toggleRead(m);
   };
 
+  const defaultCompose = { to: '', cc: '', bcc: '', subject: '', body: '', scheduledAt: '', files: [] as File[] };
+
+  // ── Scheduled mails ──
+  const loadScheduled = useCallback(async (accountId: string) => {
+    const data = await fetch(`/api/mail/accounts/${accountId}/scheduled`).then(r => r.json()).catch(() => []);
+    setScheduledMails(Array.isArray(data) ? data : []);
+  }, []);
+
+  const triggerScheduled = useCallback(async (accountId: string) => {
+    await fetch(`/api/mail/accounts/${accountId}/scheduled`, { method: 'POST' }).catch(() => {});
+    await loadScheduled(accountId);
+  }, [loadScheduled]);
+
+  const cancelScheduled = async (accountId: string, mailId: string) => {
+    await fetch(`/api/mail/accounts/${accountId}/scheduled`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mailId }),
+    });
+    loadScheduled(accountId);
+  };
+
   // ── Compose ──
   const handleSend = async () => {
     if (!compose.to || !compose.subject.trim()) return;
     setSending(true);
     setSendError('');
+    setSendSuccess('');
 
     if (source !== 'internal') {
-      // External send
+      const fd = new FormData();
+      fd.append('to', compose.to);
+      fd.append('cc', compose.cc);
+      fd.append('bcc', compose.bcc);
+      fd.append('subject', compose.subject);
+      fd.append('body', compose.body);
+      if (compose.scheduledAt) fd.append('scheduled_at', compose.scheduledAt);
+      compose.files.forEach(f => fd.append('file', f));
+
       const res = await fetch(`/api/mail/accounts/${source}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(compose),
+        body: fd,
       }).then(r => r.json()).catch(() => ({ error: '네트워크 오류' }));
       setSending(false);
       if (res.error) { setSendError(res.error); return; }
+      if (res.scheduled) {
+        setSendSuccess(`예약 완료: ${new Date(res.scheduled_at).toLocaleString('ko-KR')}`);
+        loadScheduled(source);
+        setTimeout(() => { setShowCompose(false); setCompose(defaultCompose); setSendSuccess(''); }, 2000);
+        return;
+      }
     } else {
-      // Internal send
       const res = await fetch('/api/mail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receiver_ids: [compose.to],
-          subject: compose.subject,
-          body: compose.body,
-        }),
+        body: JSON.stringify({ receiver_ids: [compose.to], subject: compose.subject, body: compose.body }),
       }).then(r => r.json()).catch(() => ({ error: '네트워크 오류' }));
       setSending(false);
       if (res.error) { setSendError(res.error); return; }
     }
 
     setShowCompose(false);
-    setCompose({ to: '', subject: '', body: '' });
+    setCompose(defaultCompose);
     setSendError('');
     if (source === 'internal' && folder === 'sent') loadInternal();
   };
@@ -292,10 +340,39 @@ export default function MailPage() {
           compose={compose}
           sending={sending}
           error={sendError}
+          success={sendSuccess}
           onChange={setCompose}
           onSend={handleSend}
-          onClose={() => { setShowCompose(false); setCompose({ to: '', subject: '', body: '' }); setSendError(''); }}
+          onClose={() => { setShowCompose(false); setCompose(defaultCompose); setSendError(''); setSendSuccess(''); }}
         />
+      )}
+
+      {/* Scheduled mail panel */}
+      {showScheduled && source !== 'internal' && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+              <h3 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4" />예약 발송 목록</h3>
+              <button onClick={() => setShowScheduled(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {scheduledMails.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">예약된 메일이 없습니다.</p>
+              ) : scheduledMails.map(m => (
+                <div key={m.id} className="flex items-start gap-3 p-3 border border-border rounded-lg mb-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{m.subject}</p>
+                    <p className="text-xs text-muted-foreground">받는 사람: {m.to_addr}</p>
+                    <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />{new Date(m.scheduled_at).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <button onClick={() => cancelScheduled(source, m.id)} className="text-xs text-destructive hover:underline shrink-0">취소</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add account modal */}
@@ -315,9 +392,16 @@ export default function MailPage() {
               <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
               <Input placeholder="메일 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <Button size="sm" className="w-full h-8 gap-1.5 text-xs" onClick={() => setShowCompose(true)}>
-              <Pencil className="w-3.5 h-3.5" />새 메일 작성
-            </Button>
+            <div className="flex gap-1.5">
+              <Button size="sm" className="flex-1 h-8 gap-1.5 text-xs" onClick={() => setShowCompose(true)}>
+                <Pencil className="w-3.5 h-3.5" />새 메일 작성
+              </Button>
+              {source !== 'internal' && scheduledMails.length > 0 && (
+                <Button size="sm" variant="outline" className="h-8 gap-1 text-xs px-2" onClick={() => setShowScheduled(true)}>
+                  <Clock className="w-3.5 h-3.5" />{scheduledMails.length}
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -560,65 +644,172 @@ function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
   );
 }
 
-function ComposeModal({ source, internalUsers, myId, compose, sending, error, onChange, onSend, onClose }: {
+function ComposeModal({ source, internalUsers, myId, compose, sending, error, success, onChange, onSend, onClose }: {
   source: Source;
   internalUsers: InternalUser[];
   myId: string;
-  compose: { to: string; subject: string; body: string };
+  compose: { to: string; cc: string; bcc: string; subject: string; body: string; scheduledAt: string; files: File[] };
   sending: boolean;
   error: string;
-  onChange: (c: { to: string; subject: string; body: string }) => void;
+  success: string;
+  onChange: (c: typeof compose) => void;
   onSend: () => void;
   onClose: () => void;
 }) {
   const isExternal = source !== 'internal';
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newFiles = Array.from(e.target.files ?? []);
+    onChange({ ...compose, files: [...compose.files, ...newFiles] });
+    e.target.value = '';
+  };
+  const removeFile = (i: number) => onChange({ ...compose, files: compose.files.filter((_, j) => j !== i) });
+
+  const minSchedule = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-background rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-xl flex flex-col max-h-[92vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
           <h3 className="font-semibold">새 메일 작성</h3>
           <button onClick={onClose}><X className="w-4 h-4" /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {error && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
-              발송 실패: {error}
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Recipient fields */}
+          <div className="px-5 pt-4 space-y-2">
+            {error && (
+              <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                발송 실패: {error}
+              </div>
+            )}
+            {success && (
+              <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />{success}
+              </div>
+            )}
+
+            {/* To */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-8 shrink-0">받는</span>
+              {isExternal
+                ? <Input className="flex-1 h-8 text-sm" value={compose.to} onChange={e => onChange({ ...compose, to: e.target.value })} placeholder="이메일 주소 (쉼표로 여러 명)" />
+                : <select className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm"
+                    value={compose.to} onChange={e => onChange({ ...compose, to: e.target.value })}>
+                    <option value="">받는 사람 선택</option>
+                    {internalUsers.filter(u => u.id !== myId).map(u => (
+                      <option key={u.id} value={u.id}>{u.name}{u.department ? ` (${u.department})` : ''}</option>
+                    ))}
+                  </select>
+              }
+              {isExternal && (
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => setShowCc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showCc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>참조</button>
+                  <button onClick={() => setShowBcc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showBcc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>숨은참조</button>
+                </div>
+              )}
             </div>
-          )}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">받는 사람</label>
-            {isExternal
-              ? <Input className="mt-1 h-9" value={compose.to} onChange={e => onChange({ ...compose, to: e.target.value })} placeholder="받는 이메일 주소" />
-              : <select
-                  className="w-full mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  value={compose.to}
-                  onChange={e => onChange({ ...compose, to: e.target.value })}
-                >
-                  <option value="">받는 사람 선택</option>
-                  {internalUsers.filter(u => u.id !== myId).map(u => (
-                    <option key={u.id} value={u.id}>{u.name}{u.department ? ` (${u.department})` : ''}</option>
-                  ))}
-                </select>
-            }
+
+            {/* CC */}
+            {isExternal && showCc && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-8 shrink-0">참조</span>
+                <Input className="flex-1 h-8 text-sm" value={compose.cc} onChange={e => onChange({ ...compose, cc: e.target.value })} placeholder="참조 이메일 주소" />
+              </div>
+            )}
+
+            {/* BCC */}
+            {isExternal && showBcc && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-8 shrink-0">숨은참조</span>
+                <Input className="flex-1 h-8 text-sm" value={compose.bcc} onChange={e => onChange({ ...compose, bcc: e.target.value })} placeholder="숨은참조 이메일 주소" />
+              </div>
+            )}
+
+            {/* Subject */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-8 shrink-0">제목</span>
+              <Input className="flex-1 h-8 text-sm" value={compose.subject} onChange={e => onChange({ ...compose, subject: e.target.value })} placeholder="메일 제목" />
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">제목</label>
-            <Input className="mt-1 h-9" value={compose.subject} onChange={e => onChange({ ...compose, subject: e.target.value })} placeholder="메일 제목" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">내용</label>
+
+          {/* Body */}
+          <div className="px-5 pt-3 pb-2">
             <textarea
-              className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[160px] resize-none"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px] resize-y focus:outline-none focus:ring-1 focus:ring-primary"
               value={compose.body}
               onChange={e => onChange({ ...compose, body: e.target.value })}
-              placeholder="메일 내용"
+              placeholder="메일 내용을 입력하세요..."
             />
           </div>
+
+          {/* Attachments */}
+          {isExternal && (
+            <div className="px-5 pb-3 space-y-1.5">
+              {compose.files.length > 0 && (
+                <div className="space-y-1">
+                  {compose.files.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 px-2 py-1 rounded bg-muted/40 border border-border">
+                      <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" />
+                      <span className="text-xs flex-1 truncate">{f.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{f.size < 1024*1024 ? (f.size/1024).toFixed(0)+'KB' : (f.size/1024/1024).toFixed(1)+'MB'}</span>
+                      <button onClick={() => removeFile(i)} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground w-fit">
+                <Paperclip className="w-3.5 h-3.5" />파일 첨부
+                <input ref={fileRef} type="file" multiple className="hidden" onChange={addFiles} />
+              </label>
+            </div>
+          )}
+
+          {/* Scheduled */}
+          {isExternal && (
+            <div className="px-5 pb-4">
+              <button onClick={() => setShowSchedule(v => !v)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                {compose.scheduledAt ? `예약: ${new Date(compose.scheduledAt).toLocaleString('ko-KR')}` : '예약 발송'}
+                <ChevronDown className={cn('w-3 h-3 transition-transform', showSchedule && 'rotate-180')} />
+              </button>
+              {showSchedule && (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-2"
+                    min={minSchedule}
+                    value={compose.scheduledAt}
+                    onChange={e => onChange({ ...compose, scheduledAt: e.target.value })}
+                  />
+                  {compose.scheduledAt && (
+                    <button onClick={() => onChange({ ...compose, scheduledAt: '' })} className="text-xs text-muted-foreground hover:text-destructive">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div className="px-5 py-4 border-t border-border flex gap-2 shrink-0">
-          <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
-          <Button className="flex-1 gap-1.5" onClick={onSend} disabled={sending || !compose.to || !compose.subject}>
-            <Send className="w-3.5 h-3.5" />발송
+
+        <div className="px-5 py-3.5 border-t border-border flex gap-2 shrink-0">
+          <Button variant="outline" size="sm" className="h-8" onClick={onClose}>취소</Button>
+          <div className="flex-1" />
+          <Button size="sm" className="h-8 gap-1.5 min-w-[100px]" onClick={onSend}
+            disabled={sending || !compose.to || !compose.subject}>
+            {sending ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : compose.scheduledAt ? (
+              <><Clock className="w-3.5 h-3.5" />예약 발송</>
+            ) : (
+              <><Send className="w-3.5 h-3.5" />발송</>
+            )}
           </Button>
         </div>
       </div>

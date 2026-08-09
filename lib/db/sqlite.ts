@@ -362,6 +362,22 @@ function initSchema(db: Database.Database) {
       synced_at TEXT NOT NULL,
       UNIQUE(account_id, uid)
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_ext_mails (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      to_addr TEXT NOT NULL,
+      cc TEXT NOT NULL DEFAULT '',
+      bcc TEXT NOT NULL DEFAULT '',
+      subject TEXT NOT NULL,
+      body_html TEXT NOT NULL DEFAULT '',
+      attach_paths_json TEXT NOT NULL DEFAULT '[]',
+      scheduled_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_msg TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
 }
 
