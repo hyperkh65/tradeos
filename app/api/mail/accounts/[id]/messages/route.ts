@@ -33,11 +33,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ).get(id, user.id) as Record<string, unknown> | undefined;
   if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Return cached body if available
+  // Check cached body — skip if it looks like mojibake (stale pre-fix cache)
   const cached = db.prepare(
     'SELECT body_text FROM mail_ext_messages WHERE account_id = ? AND uid = ?'
   ).get(id, uid) as { body_text: string | null } | undefined;
-  if (cached?.body_text) return NextResponse.json({ body: cached.body_text });
+  const isMojibake = (s: string) => /â€|Ã |ì |ë |í |ð |â¤/.test(s);
+  if (cached?.body_text && !isMojibake(cached.body_text)) {
+    return NextResponse.json({ body: cached.body_text });
+  }
 
   // Fetch from IMAP
   try {
