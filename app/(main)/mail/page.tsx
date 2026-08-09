@@ -513,6 +513,8 @@ function InternalDetail({ mail, myId, starred, onStar }: {
 }
 
 function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
+  const isHtml = body ? (/<[a-zA-Z][\s\S]*>/.test(body.slice(0, 500))) : false;
+
   return (
     <>
       <div className="mb-4">
@@ -531,7 +533,19 @@ function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
       <hr className="my-4 border-border" />
       {body === null
         ? <p className="text-sm text-muted-foreground">본문 불러오는 중...</p>
-        : <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+        : isHtml
+          ? <iframe
+              srcDoc={body}
+              className="w-full border-0 rounded"
+              style={{ minHeight: '500px' }}
+              sandbox="allow-same-origin"
+              onLoad={e => {
+                const iframe = e.currentTarget;
+                const h = iframe.contentDocument?.body?.scrollHeight;
+                if (h) iframe.style.height = h + 40 + 'px';
+              }}
+            />
+          : <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
       }
     </>
   );

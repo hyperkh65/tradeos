@@ -107,13 +107,13 @@ function extractTextFromRaw(raw: string): string {
           }
         }
       }
-      // Fallback: try html
+      // Fallback: try html — return raw HTML, frontend will render it
       for (const part of parts) {
         const partCt = part.match(/Content-Type:\s*text\/html/i);
         if (partCt) {
           const bodyStart = part.indexOf('\n\n');
           if (bodyStart !== -1) {
-            return stripHtml(decodeEmailBody(part.slice(bodyStart + 2).replace(/--$/, '').trim(), part));
+            return decodeEmailBody(part.slice(bodyStart + 2).replace(/--$/, '').trim(), part);
           }
         }
       }
