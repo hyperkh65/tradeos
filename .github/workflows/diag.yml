@@ -13,11 +13,9 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== TLS cert for gw.ynk2014.com ==="
-            echo | openssl s_client -connect localhost:443 -servername gw.ynk2014.com 2>/dev/null | openssl x509 -noout -subject -enddate 2>/dev/null || echo "TLS check failed"
-            echo "=== TLS cert for www.ynk2014.com ==="
-            echo | openssl s_client -connect localhost:443 -servername www.ynk2014.com 2>/dev/null | openssl x509 -noout -subject -enddate 2>/dev/null || echo "TLS check failed"
-            echo "=== nginx error log (last 20 lines) ==="
-            tail -20 /var/log/nginx/error.log 2>/dev/null || find /var/log -name "*.log" -path "*nginx*" 2>/dev/null | head -3 | xargs tail -5 2>/dev/null || echo "no nginx error log"
-            echo "=== nginx access log for gw (last 10) ==="
-            grep "gw.ynk2014" /var/log/nginx/access.log 2>/dev/null | tail -10 || echo "no access log or no gw entries"
+            echo "=== nginx log files ==="
+            find /var/log /tmp -name "*.log" 2>/dev/null | grep -i nginx | head -10 || echo "no nginx logs found"
+            echo "=== nginx main config access_log ==="
+            grep -r "access_log\|error_log" /etc/nginx/nginx.conf.run 2>/dev/null | head -5 || echo "not found"
+            echo "=== curl gw via external IP with verbose TLS ==="
+            curl -sk --max-time 8 -v https://gw.ynk2014.com/ 2>&1 | grep -E "< |SSL|TLS|Connect|timeout|error|Location" | head -20 || echo "verbose curl failed"
