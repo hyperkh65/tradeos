@@ -47,6 +47,7 @@ jobs:
           script: |
             mkdir -p /volume1/web/tradeos
             mkdir -p /volume1/web/tradeos/data
+            rm -rf /volume1/web/tradeos/.next/standalone/.next
 
       - name: Copy build to NAS
         uses: appleboy/scp-action@v0.1.7
