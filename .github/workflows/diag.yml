@@ -13,12 +13,5 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== port 3103 NOW ==="
-            netstat -tlnp 2>/dev/null | grep 3103 || echo "3103 NOT LISTENING"
-            echo "=== tradeos.log last 10 ==="
-            tail -10 /tmp/tradeos.log 2>/dev/null || echo "no log"
-            echo "=== curl localhost:3103 direct ==="
-            curl -s --max-time 5 -o /dev/null -w "status:%{http_code}" http://localhost:3103/ 2>/dev/null || echo "FAIL"
-            echo ""
-            echo "=== curl via nginx (gw host header) ==="
-            curl -sk --max-time 5 -D - -o /dev/null https://localhost/ -H "Host: gw.ynk2014.com" 2>/dev/null | head -5 || echo "FAIL"
+            echo "=== tradeos.log last 50 ==="
+            tail -50 /tmp/tradeos.log 2>/dev/null || echo "no log"
