@@ -3,8 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactCompiler: true,
-  serverActions: {
-    allowedOrigins: ['gw.ynk2014.com', 'localhost:3103'],
+  experimental: {
+    serverActions: {
+      allowedOrigins: ['gw.ynk2014.com', 'localhost:3103'],
+    },
   },
 };
 
