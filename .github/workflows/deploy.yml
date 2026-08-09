@@ -36,7 +36,7 @@ jobs:
           NAS_USERNAME: ${{ secrets.TRADEOS_NAS_USERNAME }}
           NAS_PASSWORD: ${{ secrets.TRADEOS_NAS_PASSWORD }}
           NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
-        run: npm run build
+        run: npm run build && cp nas-server.js .next/standalone/nas-server.js
 
       - name: Prepare NAS directory
         uses: appleboy/ssh-action@v1
