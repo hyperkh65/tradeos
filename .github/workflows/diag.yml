@@ -1,0 +1,30 @@
+name: NAS Diagnostics
+on:
+  workflow_dispatch:
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Root Cause Diagnostics
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== nginx.conf content ==="
+            cat /etc/nginx/nginx.conf 2>/dev/null
+            echo "=== NAS self-test: localhost:443 ==="
+            curl -skv --max-time 5 https://localhost/login 2>&1 | grep -E "Connected|SSL|HTTP/|failed|error" | head -10
+            echo "=== NAS self-test: 192.168.0.7:443 ==="
+            curl -skv --max-time 5 https://192.168.0.7/login -H "Host: gw.ynk2014.com" 2>&1 | grep -E "Connected|SSL|HTTP/|failed|error" | head -10
+            echo "=== NAS self-test: 192.168.0.7:443 (gw.ynk2014.com resolve) ==="
+            curl -sk --max-time 5 --resolve "gw.ynk2014.com:443:192.168.0.7" https://gw.ynk2014.com/login -o /dev/null -w "HTTP %{http_code}\n"
+            echo "=== Synology firewall rules ==="
+            iptables -L INPUT -n --line-numbers 2>/dev/null | head -30
+            echo "=== nginx processes ==="
+            ps aux | grep nginx | grep -v grep
+            echo "=== nginx config includes ==="
+            grep -r "include" /etc/nginx/nginx.conf 2>/dev/null
+            echo "=== Synology webstation/reverseproxy conf ==="
+            find / -name "*.conf" -path "*/nginx/*" 2>/dev/null | grep -v proc | head -20
