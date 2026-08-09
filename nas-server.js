@@ -30,6 +30,11 @@ function findCert() {
     return null;
   }
 
+  // Check deploy-copied LE cert first (sudo-copied by deploy script)
+  if (fs.existsSync('/tmp/tradeos-le.crt') && fs.existsSync('/tmp/tradeos-le.key')) {
+    try { fs.readFileSync('/tmp/tradeos-le.key'); return { cert: '/tmp/tradeos-le.crt', key: '/tmp/tradeos-le.key' }; } catch(e) {}
+  }
+
   const searchRoots = [
     '/usr/syno/etc/certificate/ReverseProxy',
     '/usr/syno/etc/certificate/system/default',

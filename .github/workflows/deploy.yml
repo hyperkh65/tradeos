@@ -66,6 +66,15 @@ jobs:
           command_timeout: 2m
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
+            # LE 인증서를 읽을 수 있으면 /tmp에 복사 (nas-server.js가 탐색)
+            CERT_SRC=$(find /usr/syno/etc/certificate/ReverseProxy -name "RSA-privkey.pem" 2>/dev/null | head -1)
+            if [ -n "$CERT_SRC" ]; then
+              CERT_DIR=$(dirname "$CERT_SRC")
+              sudo -n cp "$CERT_DIR/RSA-fullchain.pem" /tmp/tradeos-le.crt 2>/dev/null && \
+              sudo -n cp "$CERT_DIR/RSA-privkey.pem" /tmp/tradeos-le.key 2>/dev/null && \
+              sudo -n chmod 644 /tmp/tradeos-le.crt /tmp/tradeos-le.key 2>/dev/null && \
+              echo "LE cert copied to /tmp" || echo "sudo not available, using fallback cert"
+            fi
             mkdir -p /volume1/web/tradeos/.next/standalone/.next
             mkdir -p /volume1/web/tradeos/.next/standalone/public
             rm -rf /volume1/web/tradeos/.next/standalone/.next/static
