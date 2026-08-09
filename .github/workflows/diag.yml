@@ -13,12 +13,13 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== server.ReverseProxy.conf ==="
-            cat /etc/nginx/conf.d/server.ReverseProxy.conf 2>/dev/null
-            echo "=== erp.ynk2014.com.conf ==="
-            cat /etc/nginx/conf.d/erp.ynk2014.com.conf 2>/dev/null
-            echo "=== 307 redirect destination ==="
-            curl -sk --max-time 3 -D - https://192.168.0.7/ -H "Host: gw.ynk2014.com" 2>&1 | grep -E "HTTP|Location|location"
-            echo "=== DNS resolution on NAS ==="
-            nslookup gw.ynk2014.com 127.0.0.1 2>/dev/null || echo "nslookup failed"
-            nslookup gw.ynk2014.com 2>/dev/null | grep "Address"
+            echo "=== NAT hairpin test: port 443 (gw.ynk2014.com) ==="
+            curl -sk --max-time 5 https://112.171.143.46/ -H "Host: gw.ynk2014.com" -o /dev/null -w "HTTP %{http_code}\n" || echo "TIMEOUT or FAIL"
+            echo "=== NAT hairpin test: port 80 (erp.ynk2014.com) ==="
+            curl -s --max-time 5 http://112.171.143.46/ -H "Host: erp.ynk2014.com" -o /dev/null -w "HTTP %{http_code}\n" || echo "TIMEOUT or FAIL"
+            echo "=== webservice_portal conf for gw.ynk2014.com ==="
+            cat /usr/local/etc/nginx/conf.d/www.webservice_portal_fba80f1a-ff3a-43fc-b1ec-0642664461ea.conf 2>/dev/null
+            echo "=== gw.ynk2014.com nginx 설정 전체 검색 ==="
+            grep -rn "gw.ynk2014" /usr/local/etc/nginx/conf.d/ /etc/nginx/conf.d/ 2>/dev/null
+            echo "=== port 443 listening ==="
+            ss -tlnp | grep -E ':443|:80|:3103'
