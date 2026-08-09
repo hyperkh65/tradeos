@@ -18,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!to || !subject) return NextResponse.json({ error: '받는 사람과 제목을 입력하세요.' }, { status: 400 });
 
   try {
-    const nodemailer = await import('nodemailer');
+    const nm = await import('nodemailer');
+    const nodemailer = (nm.default ?? nm) as typeof import('nodemailer');
     const password = decryptPassword(account.password_enc as string);
     const smtpPort = account.smtp_port as number;
 
@@ -27,17 +28,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       port: smtpPort,
       secure: smtpPort === 465,
       auth: { user: account.email as string, pass: password },
+      tls: { rejectUnauthorized: false },
     });
 
+    await transport.verify();
     await transport.sendMail({
       from: `"${user.name}" <${account.email}>`,
       to,
       subject,
-      text: body || '',
+      html: body || '',
+      text: body?.replace(/<[^>]+>/g, '') || '',
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const msg = (e as Error).message || '알 수 없는 오류';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

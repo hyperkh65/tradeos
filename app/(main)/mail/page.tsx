@@ -97,6 +97,7 @@ export default function MailPage() {
   const [showCompose, setShowCompose] = useState(false);
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   // Add account modal
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -107,7 +108,10 @@ export default function MailPage() {
   // ── Init ──
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMyId(j.user.id); }).catch(() => {});
-    fetch('/api/admin/users').then(r => r.json()).then(d => { if (Array.isArray(d)) setInternalUsers(d); }).catch(() => {});
+    fetch('/api/admin/users').then(r => r.json()).then(d => {
+      const list = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
+      setInternalUsers(list);
+    }).catch(() => {});
     loadAccounts();
   }, []);
 
@@ -210,6 +214,7 @@ export default function MailPage() {
   const handleSend = async () => {
     if (!compose.to || !compose.subject.trim()) return;
     setSending(true);
+    setSendError('');
 
     if (source !== 'internal') {
       // External send
@@ -217,11 +222,12 @@ export default function MailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(compose),
-      }).then(r => r.json()).catch(() => ({}));
-      if (res.error) alert(res.error);
+      }).then(r => r.json()).catch(() => ({ error: '네트워크 오류' }));
+      setSending(false);
+      if (res.error) { setSendError(res.error); return; }
     } else {
       // Internal send
-      await fetch('/api/mail', {
+      const res = await fetch('/api/mail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,12 +235,14 @@ export default function MailPage() {
           subject: compose.subject,
           body: compose.body,
         }),
-      });
+      }).then(r => r.json()).catch(() => ({ error: '네트워크 오류' }));
+      setSending(false);
+      if (res.error) { setSendError(res.error); return; }
     }
 
-    setSending(false);
     setShowCompose(false);
     setCompose({ to: '', subject: '', body: '' });
+    setSendError('');
     if (source === 'internal' && folder === 'sent') loadInternal();
   };
 
@@ -283,9 +291,10 @@ export default function MailPage() {
           myId={myId}
           compose={compose}
           sending={sending}
+          error={sendError}
           onChange={setCompose}
           onSend={handleSend}
-          onClose={() => { setShowCompose(false); setCompose({ to: '', subject: '', body: '' }); }}
+          onClose={() => { setShowCompose(false); setCompose({ to: '', subject: '', body: '' }); setSendError(''); }}
         />
       )}
 
@@ -551,12 +560,13 @@ function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
   );
 }
 
-function ComposeModal({ source, internalUsers, myId, compose, sending, onChange, onSend, onClose }: {
+function ComposeModal({ source, internalUsers, myId, compose, sending, error, onChange, onSend, onClose }: {
   source: Source;
   internalUsers: InternalUser[];
   myId: string;
   compose: { to: string; subject: string; body: string };
   sending: boolean;
+  error: string;
   onChange: (c: { to: string; subject: string; body: string }) => void;
   onSend: () => void;
   onClose: () => void;
@@ -570,6 +580,11 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, onChange,
           <button onClick={onClose}><X className="w-4 h-4" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {error && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
+              발송 실패: {error}
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-muted-foreground">받는 사람</label>
             {isExternal

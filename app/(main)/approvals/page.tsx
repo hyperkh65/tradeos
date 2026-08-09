@@ -870,7 +870,10 @@ export default function ApprovalsPage() {
     fetch('/api/auth/me').then(r => r.json()).then(j => {
       if (j.user) { setMyId(j.user.id); setMyName(j.user.name); }
     }).catch(() => {});
-    fetch('/api/admin/users').then(r => r.json()).then(d => { if (Array.isArray(d)) setUsers(d); }).catch(() => {});
+    fetch('/api/admin/users').then(r => r.json()).then(d => {
+      const list = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
+      setUsers(list);
+    }).catch(() => {});
   }, []);
 
   const refreshSelected = async () => {
