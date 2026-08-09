@@ -13,18 +13,13 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== PID listening on port 443 ==="
-            HEX443=$(printf '%04X' 443)
-            INODE=$(cat /proc/net/tcp6 /proc/net/tcp 2>/dev/null | awk -v h=":$HEX443" '$2 ~ h && $4=="0A" {print $10}' | head -1)
-            echo "Port 443 inode: $INODE"
-            if [ -n "$INODE" ]; then
-              for pid in $(ls /proc | grep -E '^[0-9]+$'); do
-                ls -la /proc/$pid/fd 2>/dev/null | grep -q "socket:\[$INODE\]" && echo "PID $pid owns port 443" && cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' && echo
-              done
-            fi
-            echo "=== http.miracool.conf ==="
-            cat /usr/local/etc/nginx/conf.d/http.miracool.conf 2>/dev/null || echo "NOT FOUND"
-            echo "=== sites-enabled contents ==="
-            ls /etc/nginx/sites-enabled/ 2>/dev/null && cat /etc/nginx/sites-enabled/* 2>/dev/null || echo "empty or not accessible"
-            echo "=== tradeos.log tail ==="
-            tail -20 /tmp/tradeos.log 2>/dev/null
+            echo "=== port 3103 listening? ==="
+            netstat -tlnp 2>/dev/null | grep 3103 || echo "3103 NOT LISTENING"
+            echo "=== tradeos.pid ==="
+            cat /tmp/tradeos.pid 2>/dev/null || echo "no pid file"
+            echo "=== tradeos.log (last 30 lines) ==="
+            tail -30 /tmp/tradeos.log 2>/dev/null || echo "no log"
+            echo "=== nginx proxy_pass for gw.ynk2014.com ==="
+            grep -A5 "gw.ynk2014.com" /etc/nginx/sites-enabled/* 2>/dev/null | grep -E "proxy_pass|server_name" || echo "not found"
+            echo "=== curl localhost:3103 ==="
+            curl -s -o /dev/null -w "status:%{http_code}" http://localhost:3103/ 2>/dev/null || echo "curl failed"
