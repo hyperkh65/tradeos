@@ -1,0 +1,24 @@
+name: NAS Diagnostics
+on:
+  workflow_dispatch:
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Diagnostics
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== nginx proxy config for tradeos ==="
+            grep -rn "3103\|3104\|tradeos\|gw.ynk2014" /etc/nginx/ 2>/dev/null | head -30
+            echo "=== listening ports ==="
+            ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null | head -20
+            echo "=== cert files ==="
+            find /usr/syno/etc/certificate -name "*.pem" 2>/dev/null | head -30
+            echo "=== cert ownership ==="
+            ls -la /usr/syno/etc/certificate/system/default/ 2>/dev/null
+            ls -la /usr/syno/etc/certificate/_archive/ 2>/dev/null | head -10
+            find /usr/syno/etc/certificate/_archive -name "*.pem" -exec ls -la {} \; 2>/dev/null | head -20
