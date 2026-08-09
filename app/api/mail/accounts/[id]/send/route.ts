@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { decryptPassword } from '@/lib/mail/crypto';
+import nodemailer from 'nodemailer';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -18,8 +19,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!to || !subject) return NextResponse.json({ error: '받는 사람과 제목을 입력하세요.' }, { status: 400 });
 
   try {
-    const nm = await import('nodemailer');
-    const nodemailer = (nm.default ?? nm) as typeof import('nodemailer');
     const password = decryptPassword(account.password_enc as string);
     const smtpPort = account.smtp_port as number;
 
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       tls: { rejectUnauthorized: false },
     });
 
-    await transport.verify();
     await transport.sendMail({
       from: `"${user.name}" <${account.email}>`,
       to,
