@@ -12,18 +12,47 @@ const PORT = parseInt(process.env.PORT || '3103');
 const INTERNAL_PORT = PORT + 100;
 
 function findCert() {
-  const dirs = [
-    '/usr/syno/etc/certificate/system/default',
-    '/usr/syno/etc/certificate/ReverseProxy/nginx',
-    '/usr/syno/etc/certificate/_archive',
+  // Synology stores certs as RSA-fullchain.pem / RSA-privkey.pem (or ECC-*)
+  const variants = [
+    ['RSA-fullchain.pem', 'RSA-privkey.pem'],
+    ['fullchain.pem', 'privkey.pem'],
+    ['ECC-fullchain.pem', 'ECC-privkey.pem'],
   ];
-  for (const dir of dirs) {
-    const cert = path.join(dir, 'fullchain.pem');
-    const key = path.join(dir, 'privkey.pem');
-    if (fs.existsSync(cert) && fs.existsSync(key)) {
-      try { fs.readFileSync(key); return { cert, key }; } catch (e) {}
+
+  function tryDir(dir) {
+    for (const [cf, kf] of variants) {
+      const cert = path.join(dir, cf);
+      const key = path.join(dir, kf);
+      if (fs.existsSync(cert) && fs.existsSync(key)) {
+        try { const k = fs.readFileSync(key); return { cert, key }; } catch (e) {}
+      }
     }
+    return null;
   }
+
+  const searchRoots = [
+    '/usr/syno/etc/certificate/ReverseProxy',
+    '/usr/syno/etc/certificate/system/default',
+    '/usr/syno/etc/certificate/_archive',
+    '/usr/syno/etc/certificate/system',
+  ];
+
+  for (const root of searchRoots) {
+    const direct = tryDir(root);
+    if (direct) return direct;
+    try {
+      for (const sub of fs.readdirSync(root)) {
+        const subDir = path.join(root, sub);
+        try {
+          if (fs.statSync(subDir).isDirectory()) {
+            const r = tryDir(subDir);
+            if (r) return r;
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
   try {
     const cert = execSync("grep -rh 'ssl_certificate ' /etc/nginx/ 2>/dev/null | grep -v key | head -1 | awk '{print $2}' | tr -d ';'", { timeout: 5000 }).toString().trim();
     const key = execSync("grep -rh 'ssl_certificate_key ' /etc/nginx/ 2>/dev/null | head -1 | awk '{print $2}' | tr -d ';'", { timeout: 5000 }).toString().trim();
@@ -31,15 +60,14 @@ function findCert() {
       try { fs.readFileSync(key); return { cert, key }; } catch (e) {}
     }
   } catch (e) {}
+
   try {
     const certPath = '/tmp/tradeos-self.crt';
     const keyPath = '/tmp/tradeos-self.key';
     if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-      execSync(`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "/CN=tradeos-nas" 2>/dev/null`, { timeout: 30000 });
+      execSync(`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "/CN=gw.ynk2014.com" 2>/dev/null`, { timeout: 30000 });
     }
-    if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-      return { cert: certPath, key: keyPath };
-    }
+    if (fs.existsSync(certPath) && fs.existsSync(keyPath)) return { cert: certPath, key: keyPath };
   } catch (e) {}
   return null;
 }

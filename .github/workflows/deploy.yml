@@ -86,3 +86,5 @@ jobs:
             else
               echo "ERROR: server failed" && tail -30 /tmp/tradeos.log && exit 1
             fi
+            echo "=== TLS cert in use ==="
+            tail -5 /tmp/tradeos.log | grep -i "cert\|TLS\|HTTPS" || true
