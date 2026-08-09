@@ -50,6 +50,7 @@ const nextProc = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
   env: nextEnv,
   stdio: 'inherit',
 });
+try { fs.writeFileSync('/tmp/tradeos-next.pid', String(nextProc.pid)); } catch (e) {}
 nextProc.on('exit', (code) => { process.exit(typeof code === 'number' ? code : 1); });
 
 function proxyToInternal(stream) {

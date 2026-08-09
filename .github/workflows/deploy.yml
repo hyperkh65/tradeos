@@ -72,7 +72,9 @@ jobs:
             cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
             cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
             cp /volume1/web/tradeos/nas-server.js /volume1/web/tradeos/.next/standalone/nas-server.js
+            OLD_NEXT_PID=$(cat /tmp/tradeos-next.pid 2>/dev/null)
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
+            [ -n "$OLD_NEXT_PID" ] && kill -9 $OLD_NEXT_PID 2>/dev/null || true
             [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
             fuser -k -9 3103/tcp 2>/dev/null || true
             fuser -k -9 3203/tcp 2>/dev/null || true
