@@ -13,5 +13,41 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== tradeos.log last 50 ==="
-            tail -50 /tmp/tradeos.log 2>/dev/null || echo "no log"
+            NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
+
+            echo "=== tradeos.log last 80 ==="
+            tail -80 /tmp/tradeos.log 2>/dev/null || echo "no log"
+
+            echo ""
+            echo "=== server process ==="
+            PID=$(cat /tmp/tradeos.pid 2>/dev/null)
+            echo "PID file: $PID"
+            [ -n "$PID" ] && ps aux | grep $PID | grep -v grep || echo "pid not running"
+
+            echo ""
+            echo "=== nginx error log (last 30) ==="
+            find /var/log/nginx -name "*.log" 2>/dev/null | head -5
+            tail -30 /var/log/nginx/error.log 2>/dev/null || echo "no nginx error.log"
+            find /var/log -name "*nginx*" -o -name "*proxy*" 2>/dev/null | head -5
+
+            echo ""
+            echo "=== API /api/auth/me test ==="
+            curl -s -o /dev/null -w "%{http_code} %{time_total}s" http://localhost:3103/api/auth/me 2>/dev/null || echo "curl failed"
+
+            echo ""
+            echo "=== 5x rapid requests test ==="
+            for i in 1 2 3 4 5; do
+              curl -s -o /dev/null -w "req$i: %{http_code}\n" http://localhost:3103/ 2>/dev/null
+            done
+
+            echo ""
+            echo "=== check better-sqlite3 native module ==="
+            find /volume1/web/tradeos/.next/standalone/node_modules/better-sqlite3 -name "*.node" 2>/dev/null | head -5 || echo "no .node file found"
+
+            echo ""
+            echo "=== sqlite DB check ==="
+            ls -la /volume1/web/tradeos/data/ 2>/dev/null || echo "data dir missing"
+
+            echo ""
+            echo "=== Response headers from / ==="
+            curl -sv http://localhost:3103/ 2>&1 | head -40
