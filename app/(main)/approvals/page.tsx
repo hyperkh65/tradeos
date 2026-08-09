@@ -8,7 +8,7 @@ import {
   Plus, CheckCircle2, XCircle, Clock, X, Archive, ArchiveRestore,
   Paperclip, MessageSquare, Printer, Search, Download,
   FileText, DollarSign, Plane, ShoppingCart, Calendar,
-  Trash2, Link2, Send, Pencil, Eye, ZoomIn,
+  Trash2, Link2, Send, Pencil, Eye, ZoomIn, RotateCcw, Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -198,8 +198,9 @@ function AttachmentPreview({ att, onClose }: { att: Attachment; onClose: () => v
 
 // ─── Detail View ─────────────────────────────────────────────────────────────
 
-function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
+function ApprovalDetail({ apr, myId, myName, onAction, onArchive, onReuse }: {
   apr: Approval; myId: string; myName: string; onAction: () => void; onArchive: () => void;
+  onReuse: (apr: Approval, isResubmit: boolean) => void;
 }) {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -359,6 +360,14 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
                   <Send className="w-3 h-3" />기안 상신
                 </Button>
               )}
+              {apr.status === '반려' && myId === apr.requester_id && (
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-orange-400 text-orange-600 hover:bg-orange-50" onClick={() => onReuse(apr, true)}>
+                  <RotateCcw className="w-3 h-3" />재기안
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" title="이 기안서를 양식으로 새 문서 작성" onClick={() => onReuse(apr, false)}>
+                <Copy className="w-3.5 h-3.5" />불러오기
+              </Button>
               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={handlePrint}>
                 <Download className="w-3.5 h-3.5" />PDF
               </Button>
@@ -563,16 +572,34 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
 
 // ─── Create Modal ─────────────────────────────────────────────────────────────
 
-function CreateModal({ users, myId, myName, onClose, onCreated }: {
+interface ApprovalTemplate {
+  formType: string;
+  formTitle: string;
+  bodyHtml: string;
+  description: string;
+  priority: string;
+  dueDate: string;
+  dept: string;
+  steps: Array<{ approverId: string; approverName: string; role: string }>;
+}
+
+function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
   users: User[]; myId: string; myName: string; onClose: () => void; onCreated: (id: string) => void;
+  template?: ApprovalTemplate;
 }) {
-  const [step, setStep] = useState<'type' | 'form'>('type');
-  const [formType, setFormType] = useState('');
+  const [step, setStep] = useState<'type' | 'form'>(template ? 'form' : 'type');
+  const [formType, setFormType] = useState(template?.formType ?? '');
   const [form, setForm] = useState({
-    form_title: '', description: '', body_html: '', priority: 'normal', due_date: '',
-    requester_dept: '',
+    form_title: template?.formTitle ?? '',
+    description: template?.description ?? '',
+    body_html: template?.bodyHtml ?? '',
+    priority: template?.priority ?? 'normal',
+    due_date: template?.dueDate ?? '',
+    requester_dept: template?.dept ?? '',
   });
-  const [steps, setSteps] = useState([{ approverId: '', approverName: '', role: '결재' }]);
+  const [steps, setSteps] = useState<Array<{ approverId: string; approverName: string; role: string }>>(
+    template?.steps?.length ? template.steps : [{ approverId: '', approverName: '', role: '결재' }]
+  );
   const [related, setRelated] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [relatedSearch, setRelatedSearch] = useState('');
@@ -825,6 +852,7 @@ export default function ApprovalsPage() {
   const [selected, setSelected] = useState<Approval | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [createTemplate, setCreateTemplate] = useState<ApprovalTemplate | undefined>();
   const [users, setUsers] = useState<User[]>([]);
   const [myId, setMyId] = useState('');
   const [myName, setMyName] = useState('');
@@ -861,6 +889,21 @@ export default function ApprovalsPage() {
     await load();
   };
 
+  const handleReuse = (apr: Approval, isResubmit: boolean) => {
+    const steps = parseSteps(apr);
+    setCreateTemplate({
+      formType: apr.form_type,
+      formTitle: isResubmit ? apr.form_title : `[참고] ${apr.form_title}`,
+      bodyHtml: apr.body_html ?? '',
+      description: apr.description ?? '',
+      priority: apr.priority,
+      dueDate: apr.due_date ?? '',
+      dept: apr.requester_dept ?? '',
+      steps: steps.map(s => ({ approverId: s.approverId, approverName: s.approverName, role: s.role })),
+    });
+    setShowCreate(true);
+  };
+
   const filtered = list.filter(a =>
     a.form_title.toLowerCase().includes(search.toLowerCase()) ||
     a.requester_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -885,16 +928,18 @@ export default function ApprovalsPage() {
             </button>
             <span className="font-semibold text-sm truncate flex-1">{selected.form_title}</span>
           </div>
-          <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} />
+          <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} onReuse={handleReuse} />
         </div>
       )}
 
       {showCreate && (
         <CreateModal
           users={users} myId={myId} myName={myName}
-          onClose={() => setShowCreate(false)}
+          template={createTemplate}
+          onClose={() => { setShowCreate(false); setCreateTemplate(undefined); }}
           onCreated={async (id) => {
             setShowCreate(false);
+            setCreateTemplate(undefined);
             setTab('mine');
             await load();
             const data = await fetch(`/api/approvals?tab=mine`).then(r => r.json()).catch(() => []);
@@ -998,7 +1043,7 @@ export default function ApprovalsPage() {
         {/* Detail */}
         <div className="flex-1 hidden md:flex overflow-hidden">
           {selected
-            ? <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} />
+            ? <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} onReuse={handleReuse} />
             : (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
                 <FileText className="w-12 h-12 opacity-20" />
