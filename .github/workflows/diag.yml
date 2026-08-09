@@ -13,53 +13,21 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
-
-            echo "=== process on port 3103 and 3203 ==="
-            netstat -tlnp 2>/dev/null | grep -E '3103|3203'
-            echo ""
-            PID3103=$(netstat -tlnp 2>/dev/null | grep ':3103 ' | awk '{print $NF}' | cut -d'/' -f1)
-            echo "PID on 3103: $PID3103"
-            [ -n "$PID3103" ] && ps aux | grep "^urjent.*$PID3103 \|^urjent.*$PID3103$" | head -3
+            echo "=== ports ==="
+            ss -tlnp 2>/dev/null | grep -E '3103|3203' || netstat -tlnp 2>/dev/null | grep -E '3103|3203'
 
             echo ""
-            echo "=== full process list (node) ==="
-            ps aux | grep "[n]ode" | grep -v "VapidSend\|SynologyApplication" | head -10
-
-            echo ""
-            echo "=== tradeos.log (ALL) ==="
-            cat /tmp/tradeos.log 2>/dev/null || echo "no tradeos.log"
-
-            echo ""
-            echo "=== test API with cookie (simulate logged-in user) ==="
-            TOKEN=$($NODE -e "
-              const {SignJWT} = require('/volume1/web/tradeos/.next/standalone/node_modules/jose');
-              const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET || 'tradeos-fallback-secret-change-in-production');
-              new SignJWT({user:{id:'demo',name:'Demo',email:'demo@test.com',role:'admin',permissions:['*']}})
-                .setProtectedHeader({alg:'HS256'})
-                .setIssuedAt()
-                .setExpirationTime('8h')
-                .sign(SECRET)
-                .then(t=>process.stdout.write(t))
-            " 2>/dev/null)
-            if [ -n "$TOKEN" ]; then
-              echo "JWT created OK"
-              echo "=== GET / with cookie ==="
-              curl -si -H "Cookie: tradeos_session=$TOKEN" http://localhost:3103/ 2>/dev/null | head -10
-              echo ""
-              echo "=== GET /api/auth/me with cookie ==="
-              curl -si -H "Cookie: tradeos_session=$TOKEN" http://localhost:3103/api/auth/me 2>/dev/null | head -10
-              echo ""
-              echo "=== GET /api/tasks with cookie ==="
-              curl -si -H "Cookie: tradeos_session=$TOKEN" http://localhost:3103/api/tasks 2>/dev/null | head -5
-              echo ""
-              echo "=== tradeos.log AFTER api calls ==="
-              cat /tmp/tradeos.log 2>/dev/null | tail -20
-            else
-              echo "JWT creation failed"
-            fi
+            echo "=== tradeos.log ==="
+            cat /tmp/tradeos.log 2>/dev/null || echo "no log"
 
             echo ""
             echo "=== sqlite files ==="
-            ls -la /volume1/web/tradeos/data/ 2>/dev/null || echo "data dir missing"
-            find /volume1/web/tradeos -name "*.db" -o -name "*.sqlite" 2>/dev/null | head -5
+            ls -la /volume1/web/tradeos/data/ 2>/dev/null || echo "no data dir"
+
+            echo ""
+            echo "=== simple curl test ==="
+            curl -si http://localhost:3103/ 2>/dev/null | grep -i "HTTP/\|location:"
+
+            echo ""
+            echo "=== nas-server.js removed? ==="
+            ls /volume1/web/tradeos/nas-server.js 2>/dev/null && echo "STILL EXISTS" || echo "removed OK"
