@@ -13,11 +13,11 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== .service conf (actual gw.ynk2014.com config) ==="
-            cat /usr/local/etc/nginx/conf.d/.service.fba80f1a-ff3a-43fc-b1ec-0642664461ea.ca2cdaa3-1b14-4984-b169-ece9d6d75122.conf 2>/dev/null || echo "FILE NOT FOUND"
-            echo "=== all conf files in nginx conf.d ==="
-            ls -la /usr/local/etc/nginx/conf.d/ 2>/dev/null
-            echo "=== search 3103 in all nginx confs ==="
-            grep -rn "3103" /usr/local/etc/nginx/conf.d/ /etc/nginx/conf.d/ 2>/dev/null || echo "NOT FOUND"
-            echo "=== port listening ==="
-            netstat -tlnp 2>/dev/null | grep -E ':443|:80|:3103' || cat /proc/net/tcp | awk '{print $2}' | cut -d: -f2 | while read h; do printf "%d\n" "0x$h"; done | sort -n | grep -E "^80$|^443$|^3103$" || true
+            echo "=== .service w3conf (actual gw.ynk2014.com nginx config) ==="
+            cat /usr/local/etc/nginx/conf.d-available/14990dea-ff2f-42f3-ba48-ae8020ef924c.w3conf 2>/dev/null || echo "FILE NOT FOUND"
+            echo "=== outer webservice_portal w3conf ==="
+            cat /usr/local/etc/nginx/conf.d-available/0787e48a-365b-4da6-ae6e-bec1899a728c.w3conf 2>/dev/null || echo "FILE NOT FOUND"
+            echo "=== grep 3103 in conf.d-available ==="
+            grep -rn "3103" /usr/local/etc/nginx/conf.d-available/ 2>/dev/null || echo "NOT FOUND"
+            echo "=== loov.co.kr.conf ==="
+            cat /usr/local/etc/nginx/conf.d/loov.co.kr.conf 2>/dev/null || echo "NOT FOUND"
