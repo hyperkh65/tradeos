@@ -97,22 +97,15 @@ jobs:
             fi
             echo "=== TLS cert in use ==="
             tail -5 /tmp/tradeos.log | grep -i "cert\|TLS\|HTTPS" || true
-            # Synology DNS Server에 gw.ynk2014.com → 192.168.0.7 내부 override 설정
             DNS_ZONE_DIR="/volume1/@appstore/DNSServer/named/etc/zone/master"
             DNS_CONF="/volume1/@appstore/DNSServer/named/etc/named.conf"
             if [ -d "$DNS_ZONE_DIR" ] && [ -w "$DNS_ZONE_DIR" ]; then
-              cat > "$DNS_ZONE_DIR/gw-ynk2014.zone" << 'ZONEOF'
-$TTL 300
-@ IN SOA ns1.ynk2014.com. admin.ynk2014.com. ( 2026080901 300 900 604800 300 )
-@ IN NS ns1.ynk2014.com.
-ns1 IN A 192.168.0.7
-gw IN A 192.168.0.7
-ZONEOF
+              printf '$TTL 300\n@ IN SOA ns1.ynk2014.com. admin.ynk2014.com. ( 2026080901 300 900 604800 300 )\n@ IN NS ns1.ynk2014.com.\nns1 IN A 192.168.0.7\ngw IN A 192.168.0.7\n' > "$DNS_ZONE_DIR/gw-ynk2014.zone"
               if [ -w "$DNS_CONF" ] && ! grep -q "ynk2014.com" "$DNS_CONF" 2>/dev/null; then
                 printf '\nzone "ynk2014.com" IN { type master; file "%s/gw-ynk2014.zone"; };\n' "$DNS_ZONE_DIR" >> "$DNS_CONF"
               fi
               synoservicectl --reload dns 2>/dev/null || true
-              echo "DNS split-horizon configured: gw.ynk2014.com → 192.168.0.7"
+              echo "DNS split-horizon: gw.ynk2014.com -> 192.168.0.7"
             else
-              echo "DNS config not writable by urjent (skip)"
+              echo "DNS zone dir not writable (skip)"
             fi
