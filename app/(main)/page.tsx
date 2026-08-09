@@ -194,7 +194,7 @@ export default function HomePage() {
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{po.supplier_name}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold">${po.total_amount.toLocaleString()}</p>
+                    <p className="text-sm font-semibold">${(po.total_amount ?? 0).toLocaleString()}</p>
                     {po.etd && <p className="text-xs text-muted-foreground">ETD {po.etd}</p>}
                   </div>
                 </div>
