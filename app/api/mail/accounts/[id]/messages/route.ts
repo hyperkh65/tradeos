@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { decryptPassword } from '@/lib/mail/crypto';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
@@ -14,11 +14,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   ).get(id, user.id);
   if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  const folder = new URL(req.url).searchParams.get('folder') || 'inbox';
   const rows = db.prepare(
-    'SELECT * FROM mail_ext_messages WHERE account_id = ? ORDER BY date DESC LIMIT 100'
-  ).all(id);
+    'SELECT * FROM mail_ext_messages WHERE account_id = ? AND folder = ? ORDER BY date DESC LIMIT 100'
+  ).all(id, folder);
   return NextResponse.json(rows);
 }
+
+const SENT_FOLDER_NAMES = [
+  'Sent', 'INBOX.Sent', '보낸편지함', '보낸 편지함', '보낸메일함',
+  'Sent Items', '[Gmail]/Sent Mail', 'sent',
+];
 
 // Fetch body for a specific message (uid)
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const { uid } = await req.json();
+  const folder = new URL(req.url).searchParams.get('folder') || 'inbox';
 
   const db = getDb();
   const account = db.prepare(
@@ -40,6 +47,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const isMojibake = (s: string) => /â€|Ã\s|ì\s|ë\s|í\s|ð\s/.test(s);
   if (cached?.body_text && !isMojibake(cached.body_text)) {
     return NextResponse.json({ body: cached.body_text });
+  }
+
+  // local_ prefix = locally sent mail with body already saved; won't be here without body_text
+  if (uid.startsWith('local_')) {
+    return NextResponse.json({ body: '(본문을 불러올 수 없습니다)' });
   }
 
   // Fetch from IMAP
@@ -58,11 +70,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
 
     await client.connect();
-    const lock = await client.getMailboxLock('INBOX');
+
+    // For sent folder (uid prefixed with s_), find the right IMAP folder
+    let imapFolder = 'INBOX';
+    let imapUid = uid;
+    if (folder === 'sent' || uid.startsWith('s_')) {
+      imapUid = uid.startsWith('s_') ? uid.slice(2) : uid;
+      let found = false;
+      for (const name of SENT_FOLDER_NAMES) {
+        try { await client.mailboxOpen(name); imapFolder = name; found = true; break; } catch { /* try next */ }
+      }
+      if (!found) { await client.logout(); return NextResponse.json({ body: '(보낸편지함을 찾을 수 없습니다)' }); }
+    }
+
+    const lock = await client.getMailboxLock(imapFolder);
     let bodyText = '';
 
     try {
-      const msg = await client.fetchOne(uid, { source: true }, { uid: true });
+      const msg = await client.fetchOne(imapUid, { source: true }, { uid: true });
       const src = msg && (msg as unknown as Record<string, unknown>).source;
       if (src) {
         const buf = Buffer.isBuffer(src) ? src : Buffer.from(String(src), 'binary');

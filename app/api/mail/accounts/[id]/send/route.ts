@@ -137,6 +137,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       attachments,
     });
 
+    // Save to sent folder in DB
+    try {
+      const sentId = newId();
+      const recipients = [to, ...(cc && cc !== 'undefined' ? [cc] : []), ...(bcc && bcc !== 'undefined' ? [bcc] : [])];
+      db.prepare(`
+        INSERT OR IGNORE INTO mail_ext_messages
+          (id, account_id, uid, from_name, from_email, to_json, subject, body_text, date, is_read, is_starred, folder, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'sent', ?)
+      `).run(sentId, id, `local_${sentId}`, user.name, String(account.email),
+        JSON.stringify(recipients.map(r => r.trim()).filter(Boolean)),
+        subject, body || '', new Date().toISOString(), now());
+    } catch { /* non-critical */ }
+
     return NextResponse.json({ ok: true, port: result.port });
   } catch (e) {
     const err = e as Error & { code?: string; response?: string };

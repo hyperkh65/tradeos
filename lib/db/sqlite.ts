@@ -359,6 +359,7 @@ function initSchema(db: Database.Database) {
       date TEXT NOT NULL,
       is_read INTEGER NOT NULL DEFAULT 0,
       is_starred INTEGER NOT NULL DEFAULT 0,
+      folder TEXT NOT NULL DEFAULT 'inbox',
       synced_at TEXT NOT NULL,
       UNIQUE(account_id, uid)
     );
@@ -390,6 +391,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE approvals ADD COLUMN related_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE approvals ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE approvals ADD COLUMN requester_dept TEXT`,
+    `ALTER TABLE mail_ext_messages ADD COLUMN folder TEXT NOT NULL DEFAULT 'inbox'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

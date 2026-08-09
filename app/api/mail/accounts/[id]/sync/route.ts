@@ -3,10 +3,17 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { decryptPassword } from '@/lib/mail/crypto';
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+const SENT_FOLDER_NAMES = [
+  'Sent', 'INBOX.Sent', '보낸편지함', '보낸 편지함', '보낸메일함',
+  'Sent Items', '[Gmail]/Sent Mail', 'sent',
+];
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
+
+  const folder = new URL(req.url).searchParams.get('folder') || 'inbox';
 
   const db = getDb();
   const account = db.prepare(
@@ -28,7 +35,27 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     });
 
     await client.connect();
-    const mailbox = await client.mailboxOpen('INBOX');
+
+    let imapFolderName = 'INBOX';
+    if (folder === 'sent') {
+      let found = false;
+      for (const name of SENT_FOLDER_NAMES) {
+        try {
+          await client.mailboxOpen(name);
+          imapFolderName = name;
+          found = true;
+          break;
+        } catch { /* try next */ }
+      }
+      if (!found) {
+        await client.logout();
+        return NextResponse.json({ error: '보낸편지함을 찾을 수 없습니다. 메일 제공자에서 IMAP 보낸편지함 설정을 확인하세요.' }, { status: 404 });
+      }
+    } else {
+      await client.mailboxOpen('INBOX');
+    }
+
+    const mailbox = await client.mailboxOpen(imapFolderName);
     const total = mailbox.exists;
     const syncedAt = now();
     let count = 0;
@@ -37,20 +64,23 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       const start = Math.max(1, total - 49);
       const range = start === total ? `${total}` : `${start}:${total}`;
 
-      const lock = await client.getMailboxLock('INBOX');
+      const lock = await client.getMailboxLock(imapFolderName);
       try {
         const stmt = db.prepare(`
-          INSERT INTO mail_ext_messages (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, synced_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO mail_ext_messages (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, folder, synced_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(account_id, uid) DO UPDATE SET
             is_read = excluded.is_read,
+            folder = excluded.folder,
             synced_at = excluded.synced_at
         `);
 
         for await (const msg of client.fetch(range, { envelope: true, uid: true, flags: true })) {
           const env = msg.envelope as Record<string, unknown>;
           const from = (env?.from as Array<Record<string, string>> | undefined)?.[0];
-          const uid = String(msg.uid ?? msg.seq);
+          const rawUid = String(msg.uid ?? msg.seq);
+          // Prefix sent UIDs to avoid collision with inbox UIDs
+          const uid = folder === 'sent' ? `s_${rawUid}` : rawUid;
           const isRead = (msg.flags as Set<string>)?.has('\\Seen') ? 1 : 0;
 
           stmt.run(
@@ -62,7 +92,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
             ),
             String(env?.subject || '(제목 없음)'),
             new Date((env?.date as string | Date | undefined) || Date.now()).toISOString(),
-            isRead, 0, syncedAt
+            isRead, 0, folder, syncedAt
           );
           count++;
         }

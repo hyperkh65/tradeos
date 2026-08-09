@@ -68,6 +68,7 @@ interface ScheduledMail {
 }
 
 type Folder = 'inbox' | 'sent' | 'starred';
+type ExtFolder = 'inbox' | 'sent';
 type Source = 'internal' | string; // string = account id
 
 const PROVIDER_ICONS: Record<string, string> = {
@@ -104,6 +105,7 @@ export default function MailPage() {
   const [selectedExt, setSelectedExt] = useState<ExtMail | null>(null);
   const [extBody, setExtBody] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [extFolder, setExtFolder] = useState<ExtFolder>('inbox');
 
   // Compose
   const [showCompose, setShowCompose] = useState(false);
@@ -132,7 +134,25 @@ export default function MailPage() {
 
   const loadAccounts = async () => {
     const data = await fetch('/api/mail/accounts').then(r => r.json()).catch(() => []);
-    if (Array.isArray(data)) setAccounts(data);
+    if (!Array.isArray(data)) return;
+    setAccounts(data);
+    if (data.length > 0) {
+      const acc = data[0];
+      setSource(acc.id);
+      setExtFolder('inbox');
+      const msgs = await fetch(`/api/mail/accounts/${acc.id}/messages?folder=inbox`).then(r => r.json()).catch(() => []);
+      const list = Array.isArray(msgs) ? msgs : [];
+      setExtMails(list);
+      if (list.length === 0) {
+        setSyncing(true);
+        await fetch(`/api/mail/accounts/${acc.id}/sync`, { method: 'POST' }).catch(() => {});
+        const msgs2 = await fetch(`/api/mail/accounts/${acc.id}/messages?folder=inbox`).then(r => r.json()).catch(() => []);
+        setExtMails(Array.isArray(msgs2) ? msgs2 : []);
+        setSyncing(false);
+      }
+      const sched = await fetch(`/api/mail/accounts/${acc.id}/scheduled`).then(r => r.json()).catch(() => []);
+      setScheduledMails(Array.isArray(sched) ? sched : []);
+    }
   };
 
   // ── Internal mail ──
@@ -146,26 +166,34 @@ export default function MailPage() {
   }, [source, loadInternal]);
 
   // ── External mail ──
-  const loadExtMessages = useCallback(async (accountId: string) => {
-    const data = await fetch(`/api/mail/accounts/${accountId}/messages`).then(r => r.json()).catch(() => []);
+  const loadExtMessages = useCallback(async (accountId: string, folder: ExtFolder = 'inbox') => {
+    const data = await fetch(`/api/mail/accounts/${accountId}/messages?folder=${folder}`).then(r => r.json()).catch(() => []);
     setExtMails(Array.isArray(data) ? data : []);
   }, []);
 
-  const syncAccount = async (accountId: string) => {
+  const syncAccount = async (accountId: string, folder: ExtFolder = 'inbox') => {
     setSyncing(true);
-    await fetch(`/api/mail/accounts/${accountId}/sync`, { method: 'POST' }).catch(() => {});
-    await loadExtMessages(accountId);
+    await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}`, { method: 'POST' }).catch(() => {});
+    await loadExtMessages(accountId, folder);
     setSyncing(false);
+  };
+
+  const changeExtFolder = async (f: ExtFolder) => {
+    setExtFolder(f);
+    setSelectedExt(null);
+    setExtBody(null);
+    if (source !== 'internal') await loadExtMessages(source, f);
   };
 
   const selectAccount = async (acc: MailAccount) => {
     setSource(acc.id);
+    setExtFolder('inbox');
     setSelectedExt(null);
     setExtBody(null);
-    const data = await fetch(`/api/mail/accounts/${acc.id}/messages`).then(r => r.json()).catch(() => []);
+    const data = await fetch(`/api/mail/accounts/${acc.id}/messages?folder=inbox`).then(r => r.json()).catch(() => []);
     const msgs = Array.isArray(data) ? data : [];
     setExtMails(msgs);
-    if (msgs.length === 0) await syncAccount(acc.id);
+    if (msgs.length === 0) await syncAccount(acc.id, 'inbox');
     loadScheduled(acc.id);
     triggerScheduled(acc.id);
   };
@@ -175,7 +203,7 @@ export default function MailPage() {
     setExtBody(null);
     setMobileDetail(true);
     if (!msg.body_text) {
-      const res = await fetch(`/api/mail/accounts/${msg.account_id}/messages`, {
+      const res = await fetch(`/api/mail/accounts/${msg.account_id}/messages?folder=${extFolder}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: msg.uid }),
@@ -470,12 +498,26 @@ export default function MailPage() {
         <div className={cn('flex-1 flex flex-col overflow-hidden', mobileDetail ? 'hidden md:flex' : 'flex')}>
           {/* External mail toolbar */}
           {source !== 'internal' && currentAccount && (
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 flex-wrap">
               <span className={cn('w-5 h-5 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0', PROVIDER_COLORS[currentAccount.provider] ?? 'bg-gray-500')}>
                 {PROVIDER_ICONS[currentAccount.provider] ?? '✉'}
               </span>
-              <span className="text-sm font-medium flex-1">{currentAccount.email}</span>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => syncAccount(source)} disabled={syncing}>
+              <span className="text-sm font-medium">{currentAccount.email}</span>
+              <div className="flex gap-1 ml-1">
+                <button
+                  onClick={() => changeExtFolder('inbox')}
+                  className={cn('text-xs px-2.5 py-1 rounded-md border transition-colors', extFolder === 'inbox' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50')}
+                >
+                  받은편지함
+                </button>
+                <button
+                  onClick={() => changeExtFolder('sent')}
+                  className={cn('text-xs px-2.5 py-1 rounded-md border transition-colors', extFolder === 'sent' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50')}
+                >
+                  보낸편지함
+                </button>
+              </div>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs ml-auto" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
                 <RefreshCw className={cn('w-3 h-3', syncing && 'animate-spin')} />
                 {syncing ? '동기화 중...' : '동기화'}
               </Button>
@@ -522,29 +564,34 @@ export default function MailPage() {
               ) : (
                 filteredExt.length === 0
                   ? <EmptyState />
-                  : filteredExt.map(m => (
-                      <button
-                        key={m.uid}
-                        onClick={() => selectExtMail(m)}
-                        className={cn('w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0', selectedExt?.uid === m.uid && 'bg-primary/5')}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', m.is_read === 0 ? 'bg-primary' : 'bg-transparent')} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className={cn('text-sm truncate', m.is_read === 0 && 'font-semibold')}>
-                                {m.from_name || m.from_email}
-                              </p>
-                              <p className="text-xs text-muted-foreground shrink-0">
-                                {new Date(m.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
-                              </p>
+                  : filteredExt.map(m => {
+                      const isSentFolder = extFolder === 'sent';
+                      const displayName = isSentFolder
+                        ? (() => { try { return (JSON.parse(m.to_json) as string[])[0] || '(수신자 없음)'; } catch { return '(수신자 없음)'; } })()
+                        : (m.from_name || m.from_email);
+                      const unread = m.is_read === 0 && !isSentFolder;
+                      return (
+                        <button
+                          key={m.uid}
+                          onClick={() => selectExtMail(m)}
+                          className={cn('w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0', selectedExt?.uid === m.uid && 'bg-primary/5')}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', unread ? 'bg-primary' : 'bg-transparent')} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className={cn('text-sm truncate', unread && 'font-semibold')}>{displayName}</p>
+                                <p className="text-xs text-muted-foreground shrink-0">
+                                  {new Date(m.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                                </p>
+                              </div>
+                              <p className={cn('text-xs mt-0.5 truncate', unread ? 'text-foreground font-medium' : 'text-muted-foreground')}>{m.subject}</p>
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">{isSentFolder ? `보낸 사람: 나` : m.from_email}</p>
                             </div>
-                            <p className={cn('text-xs mt-0.5 truncate', m.is_read === 0 ? 'text-foreground font-medium' : 'text-muted-foreground')}>{m.subject}</p>
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">{m.from_email}</p>
                           </div>
-                        </div>
-                      </button>
-                    ))
+                        </button>
+                      );
+                    })
               )}
             </div>
 
