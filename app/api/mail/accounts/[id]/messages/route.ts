@@ -61,7 +61,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const msg = await client.fetchOne(uid, { source: true }, { uid: true });
       const src = msg && (msg as unknown as Record<string, unknown>).source;
       if (src) {
-        bodyText = extractTextFromRaw(Buffer.isBuffer(src) ? src.toString() : String(src));
+        // Use latin1 to preserve raw bytes; charset-aware decoding happens inside
+        const raw = Buffer.isBuffer(src) ? src.toString('latin1') : String(src);
+        bodyText = extractTextFromRaw(raw);
       }
     } finally {
       lock.release();
@@ -123,18 +125,40 @@ function extractTextFromRaw(raw: string): string {
   return raw;
 }
 
+function getCharset(headers: string): string {
+  const m = headers.match(/charset="?([^";\s\r\n]+)"?/i);
+  return m?.[1]?.toLowerCase() ?? 'utf-8';
+}
+
 function decodeEmailBody(body: string, headers: string): string {
   const encodingMatch = headers.match(/Content-Transfer-Encoding:\s*(\S+)/i);
   const encoding = encodingMatch?.[1]?.toLowerCase();
+  const charset = getCharset(headers);
+
   if (encoding === 'base64') {
     try {
-      return Buffer.from(body.replace(/\s/g, ''), 'base64').toString('utf8');
+      const buf = Buffer.from(body.replace(/\s/g, ''), 'base64');
+      return new TextDecoder(charset).decode(buf);
     } catch { return body; }
   }
   if (encoding === 'quoted-printable') {
-    return body.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, h) =>
+    const raw = body.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, h) =>
       String.fromCharCode(parseInt(h, 16))
     );
+    if (charset !== 'utf-8' && charset !== 'us-ascii') {
+      try {
+        const buf = Buffer.from(raw, 'binary');
+        return new TextDecoder(charset).decode(buf);
+      } catch { return raw; }
+    }
+    return raw;
+  }
+  // Plain — if non-utf8 charset, re-decode from latin1 bytes
+  if (charset !== 'utf-8' && charset !== 'us-ascii') {
+    try {
+      const buf = Buffer.from(body, 'latin1');
+      return new TextDecoder(charset).decode(buf);
+    } catch { return body; }
   }
   return body;
 }

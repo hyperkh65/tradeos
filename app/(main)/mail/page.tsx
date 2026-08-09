@@ -602,7 +602,7 @@ const PROVIDER_LIST = [
   { id: 'daum', label: '다음', color: 'bg-blue-500', help: '다음 메일(@daum.net, @hanmail.net)은 별도 설정 없이 바로 연결됩니다.' },
   { id: 'kakao', label: '카카오', color: 'bg-yellow-500', help: '카카오메일 → 설정 → IMAP 사용을 켜세요. 비밀번호는 카카오 계정 비밀번호를 입력하세요.' },
   { id: 'gmail', label: 'Gmail', color: 'bg-red-500', help: 'Google 계정 → 보안 → 2단계 인증 켜기 → 앱 비밀번호 발급 후 입력하세요.' },
-  { id: 'custom', label: '직접 입력', color: 'bg-gray-500', help: '' },
+  { id: 'custom', label: '직접 입력', color: 'bg-gray-500', help: '다음 기업메일(@ynk2014.com 등)은 IMAP: imap.daum.net / SMTP: smtp.daum.net 으로 입력하세요.' },
 ];
 
 const PROVIDER_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
