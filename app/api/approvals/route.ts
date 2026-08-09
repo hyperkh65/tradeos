@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     } else if (tab === 'archive') {
       rows = db.prepare('SELECT * FROM approvals WHERE archived = 1 ORDER BY updated_at DESC').all();
     } else {
+      // mine: 내가 기안한 것 (임시저장 포함)
       rows = db.prepare('SELECT * FROM approvals WHERE requester_id = ? AND archived = 0 ORDER BY created_at DESC').all(user.id);
     }
     return NextResponse.json(rows);
@@ -60,14 +61,15 @@ export async function POST(req: NextRequest) {
       role: s.role ?? '결재', status: '대기', comment: null, actedAt: null,
     }));
 
+    const initStatus = body.draft ? '임시저장' : '대기';
     db.prepare(`
       INSERT INTO approvals (id, business_id, form_type, form_title, requester_id, requester_name, requester_dept,
         steps_json, current_step, status, description, body_html, priority, due_date, related_json, tags_json, archived, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, '대기', ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     `).run(
       id, business_id, body.form_type ?? '일반', body.form_title,
       user.id, user.name, body.requester_dept ?? null,
-      JSON.stringify(steps),
+      JSON.stringify(steps), initStatus,
       body.description ?? null, body.body_html ?? null,
       body.priority ?? 'normal', body.due_date ?? null,
       JSON.stringify(body.related ?? []), JSON.stringify(body.tags ?? []),

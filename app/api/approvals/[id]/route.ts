@@ -36,6 +36,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       actedAt: string | null;
     }> = JSON.parse(row.steps_json as string);
 
+    // 임시저장 → 기안 상신
+    if (body.action === 'submit') {
+      db.prepare(`UPDATE approvals SET status = '대기', updated_at = ? WHERE id = ? AND status = '임시저장'`).run(now(), id);
+      const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as Record<string, unknown>;
+      return NextResponse.json({ ...updated, steps: JSON.parse(updated.steps_json as string) });
+    }
+
     const stepOrder = body.stepOrder as number;
     const action = body.action as 'approve' | 'reject';
     const comment = body.comment ?? null;

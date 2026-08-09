@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Plus, CheckCircle2, XCircle, Clock, X, Archive, ArchiveRestore,
-  Paperclip, MessageSquare, ChevronRight, Printer, Search,
-  FileText, DollarSign, Plane, ShoppingCart, Calendar, AlarmClock,
-  Trash2, Link2,
+  Paperclip, MessageSquare, Printer, Search, Download,
+  FileText, DollarSign, Plane, ShoppingCart, Calendar,
+  Trash2, Link2, Send, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -80,6 +80,7 @@ function parseSteps(apr: Approval): ApprovalStep[] {
 }
 
 const statusStyle: Record<string, string> = {
+  '임시저장': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
   '대기': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
   '진행중': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
   '승인': 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
@@ -99,7 +100,6 @@ const formTypes = [
   { id: '휴가', label: '휴가신청', icon: Calendar, color: 'bg-blue-500' },
   { id: '출장', label: '출장신청', icon: Plane, color: 'bg-purple-500' },
   { id: '구매', label: '구매요청', icon: ShoppingCart, color: 'bg-orange-500' },
-  { id: '초과근무', label: '초과근무', icon: AlarmClock, color: 'bg-pink-500' },
 ];
 
 const stepRoles = ['기안', '검토', '결재', '합의', '수신'];
@@ -220,7 +220,64 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
     await loadExtra();
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    const printContent = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${apr.form_title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Malgun Gothic', sans-serif; font-size: 12px; color: #000; padding: 20mm; }
+    .doc-title { text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 16px; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .meta-table td { border: 1px solid #000; padding: 4px 8px; font-size: 11px; }
+    .meta-table .label { background: #f0f0f0; font-weight: bold; width: 80px; }
+    .stamp-row { display: flex; gap: 0; margin-bottom: 16px; }
+    .stamp { border: 1px solid #000; min-width: 80px; text-align: center; }
+    .stamp .role { background: #f0f0f0; font-size: 10px; padding: 3px; border-bottom: 1px solid #000; }
+    .stamp .name { padding: 12px 6px; font-size: 12px; font-weight: bold; min-height: 48px; display: flex; align-items: center; justify-content: center; }
+    .stamp .date { border-top: 1px solid #000; font-size: 10px; padding: 3px; color: #444; }
+    .stamp.approved .name { color: red; }
+    .stamp.rejected .name { color: #666; text-decoration: line-through; }
+    .section-title { font-weight: bold; font-size: 11px; margin-bottom: 6px; border-bottom: 2px solid #000; padding-bottom: 3px; }
+    .body-content { border: 1px solid #ccc; padding: 12px; min-height: 200px; margin-bottom: 16px; line-height: 1.6; }
+    .body-content img { max-width: 100%; }
+    .attachments { margin-bottom: 16px; }
+    .att-item { padding: 3px 0; font-size: 11px; }
+    @page { margin: 15mm; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="doc-title">${formTypes.find(f => f.id === apr.form_type)?.label ?? apr.form_type}</div>
+  <table class="meta-table">
+    <tr><td class="label">문서번호</td><td>${apr.business_id}</td><td class="label">작성일</td><td>${new Date(apr.created_at).toLocaleDateString('ko-KR')}</td></tr>
+    <tr><td class="label">제목</td><td colspan="3">${apr.form_title}</td></tr>
+    <tr><td class="label">기안자</td><td>${apr.requester_name}${apr.requester_dept ? ' (' + apr.requester_dept + ')' : ''}</td><td class="label">상태</td><td>${apr.status}</td></tr>
+    ${apr.due_date ? `<tr><td class="label">마감일</td><td colspan="3">${apr.due_date}</td></tr>` : ''}
+  </table>
+  <div class="stamp-row">
+    <div class="stamp"><div class="role">기안</div><div class="name">${apr.requester_name}</div><div class="date">${new Date(apr.created_at).toLocaleDateString('ko-KR')}</div></div>
+    ${steps.map(s => `<div class="stamp ${s.status === '승인' ? 'approved' : s.status === '반려' ? 'rejected' : ''}"><div class="role">${s.role}</div><div class="name">${s.approverName}</div><div class="date">${s.actedAt ? new Date(s.actedAt).toLocaleDateString('ko-KR') : '-'}</div></div>`).join('')}
+  </div>
+  <p class="section-title">본문</p>
+  <div class="body-content">${apr.body_html || `<p>${apr.description ?? ''}</p>`}</div>
+  ${attachments.length > 0 ? `<p class="section-title">첨부파일</p><div class="attachments">${attachments.map(a => `<div class="att-item">📎 ${a.original_name} (${formatFileSize(a.size)})</div>`).join('')}</div>` : ''}
+</body>
+</html>`;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(printContent); w.document.close(); w.focus(); w.print(); }
+  };
+
+  const handleSubmitDraft = async () => {
+    await fetch(`/api/approvals/${apr.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submit' }),
+    });
+    onAction();
+  };
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -239,8 +296,16 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
             {apr.business_id} · {apr.form_type} · {apr.requester_name}{apr.requester_dept ? ` (${apr.requester_dept})` : ''} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
           </p>
         </div>
-        <div className="flex gap-1.5 shrink-0">
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={handlePrint}>
+        <div className="flex gap-1.5 shrink-0 flex-wrap">
+          {apr.status === '임시저장' && (
+            <Button size="sm" className="h-7 gap-1 text-xs" onClick={handleSubmitDraft}>
+              <Send className="w-3 h-3" />기안 상신
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={handlePrint}>
+            <Download className="w-3.5 h-3.5" />PDF
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={() => window.print()}>
             <Printer className="w-3.5 h-3.5" />
           </Button>
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={apr.archived ? '보관 해제' : '보관'} onClick={onArchive}>
@@ -407,10 +472,10 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
     setSteps(s => s.map((st, j) => j === i ? { ...st, [field]: value } : st));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (asDraft = false) => {
     if (!form.form_title.trim()) { alert('제목을 입력하세요.'); return; }
     const validSteps = steps.filter(s => s.approverId);
-    if (validSteps.length === 0) { alert('결재자를 1명 이상 추가하세요.'); return; }
+    if (!asDraft && validSteps.length === 0) { alert('결재자를 1명 이상 추가하세요.'); return; }
     setLoading(true);
     const res = await fetch('/api/approvals', {
       method: 'POST',
@@ -419,6 +484,7 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
         form_type: formType, ...form,
         steps: validSteps,
         related,
+        draft: asDraft,
       }),
     }).then(r => r.json()).catch(() => ({}));
     setLoading(false);
@@ -568,8 +634,11 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
         {step === 'form' && (
           <div className="px-5 py-4 border-t border-border flex gap-2 shrink-0">
             <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
-            <Button className="flex-1" onClick={handleSubmit} disabled={loading}>
-              {loading ? '기안 중...' : '기안 상신'}
+            <Button variant="outline" className="gap-1.5" onClick={() => handleSubmit(true)} disabled={loading}>
+              <Pencil className="w-3.5 h-3.5" />임시저장
+            </Button>
+            <Button className="flex-1 gap-1.5" onClick={() => handleSubmit(false)} disabled={loading}>
+              <Send className="w-3.5 h-3.5" />{loading ? '기안 중...' : '기안 상신'}
             </Button>
           </div>
         )}
