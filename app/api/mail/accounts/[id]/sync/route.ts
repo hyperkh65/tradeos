@@ -37,11 +37,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await client.connect();
 
     let imapFolderName = 'INBOX';
+    let mailbox;
+
     if (folder === 'sent') {
       let found = false;
       for (const name of SENT_FOLDER_NAMES) {
         try {
-          await client.mailboxOpen(name);
+          mailbox = await client.mailboxOpen(name);
           imapFolderName = name;
           found = true;
           break;
@@ -52,11 +54,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: '보낸편지함을 찾을 수 없습니다. 메일 제공자에서 IMAP 보낸편지함 설정을 확인하세요.' }, { status: 404 });
       }
     } else {
-      await client.mailboxOpen('INBOX');
+      mailbox = await client.mailboxOpen('INBOX');
     }
 
-    const mailbox = await client.mailboxOpen(imapFolderName);
-    const total = mailbox.exists;
+    const total = (mailbox as { exists: number }).exists;
     const syncedAt = now();
     let count = 0;
 
@@ -79,7 +80,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const env = msg.envelope as Record<string, unknown>;
           const from = (env?.from as Array<Record<string, string>> | undefined)?.[0];
           const rawUid = String(msg.uid ?? msg.seq);
-          // Prefix sent UIDs to avoid collision with inbox UIDs
           const uid = folder === 'sent' ? `s_${rawUid}` : rawUid;
           const isRead = (msg.flags as Set<string>)?.has('\\Seen') ? 1 : 0;
 
