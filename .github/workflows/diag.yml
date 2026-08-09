@@ -13,23 +13,12 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== nginx.conf ==="
-            cat /etc/nginx/nginx.conf
-            echo "=== nginx.conf includes ==="
-            grep -rn "include\|server_name\|proxy_pass\|gw.ynk2014\|ssl_cert" /etc/nginx/ 2>/dev/null
-            echo "=== nginx conf.d and sites ==="
-            ls /etc/nginx/conf.d/ 2>/dev/null || echo "no conf.d"
-            ls /etc/nginx/sites-enabled/ 2>/dev/null || echo "no sites-enabled"
-            echo "=== Synology nginx configs ==="
-            ls /usr/local/etc/nginx/ 2>/dev/null || echo "no /usr/local/etc/nginx"
-            ls /usr/local/nginx/ 2>/dev/null || echo "no /usr/local/nginx"
-            echo "=== Self-connect test: 127.0.0.1:443 ==="
-            curl -sk --max-time 3 -o /dev/null -w "HTTP %{http_code}" https://127.0.0.1/ -H "Host: gw.ynk2014.com" 2>&1 || echo "FAILED"
-            echo ""
-            echo "=== Self-connect test: 192.168.0.7:443 ==="
-            curl -sk --max-time 3 -o /dev/null -w "HTTP %{http_code}" https://192.168.0.7/ -H "Host: gw.ynk2014.com" 2>&1 || echo "FAILED"
-            echo ""
-            echo "=== iptables INPUT rules ==="
-            iptables -L INPUT -n --line-numbers 2>/dev/null | head -20
-            echo "=== Synology firewall ==="
-            cat /etc/synofw.conf 2>/dev/null | head -20 || echo "no synofw"
+            echo "=== server.ReverseProxy.conf ==="
+            cat /etc/nginx/conf.d/server.ReverseProxy.conf 2>/dev/null
+            echo "=== erp.ynk2014.com.conf ==="
+            cat /etc/nginx/conf.d/erp.ynk2014.com.conf 2>/dev/null
+            echo "=== 307 redirect destination ==="
+            curl -sk --max-time 3 -D - https://192.168.0.7/ -H "Host: gw.ynk2014.com" 2>&1 | grep -E "HTTP|Location|location"
+            echo "=== DNS resolution on NAS ==="
+            nslookup gw.ynk2014.com 127.0.0.1 2>/dev/null || echo "nslookup failed"
+            nslookup gw.ynk2014.com 2>/dev/null | grep "Address"
