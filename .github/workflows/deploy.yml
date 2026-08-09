@@ -47,6 +47,7 @@ jobs:
           script: |
             mkdir -p /volume1/web/tradeos
             mkdir -p /volume1/web/tradeos/data
+            mkdir -p /volume1/web/tradeos/data/uploads
             rm -rf /volume1/web/tradeos/.next/standalone/.next
 
       - name: Copy build to NAS
@@ -87,7 +88,7 @@ jobs:
             rm -f /volume1/web/tradeos/nas-server.js /volume1/web/tradeos/.next/standalone/nas-server.js
             sleep 2
             > /tmp/tradeos.log
-            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
+            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" UPLOAD_DIR="/volume1/web/tradeos/data/uploads" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5
             if $NODE -e "require('http').get('http://localhost:3103',(r)=>{console.log('HTTP',r.statusCode);process.exit(0)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
