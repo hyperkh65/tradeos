@@ -71,13 +71,21 @@ jobs:
             rm -rf /volume1/web/tradeos/.next/standalone/.next/static
             cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
             cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
+            # Kill by PID file
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
             [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
-            PORT_PID=$(netstat -tlnp 2>/dev/null | grep ':3103 ' | awk '{print $NF}' | cut -d'/' -f1)
-            [ -n "$PORT_PID" ] && kill -9 $PORT_PID 2>/dev/null || true
-            PORT_PID2=$(netstat -tlnp 2>/dev/null | grep ':3203 ' | awk '{print $NF}' | cut -d'/' -f1)
-            [ -n "$PORT_PID2" ] && kill -9 $PORT_PID2 2>/dev/null || true
+            # Kill by port - use ss (more reliable than netstat on Synology)
+            for PORT_KILL in 3103 3203; do
+              PIDS=$(ss -tlnp 2>/dev/null | grep ":${PORT_KILL} " | grep -oP '(?<=pid=)\d+' | sort -u)
+              if [ -z "$PIDS" ]; then
+                PIDS=$(netstat -tlnp 2>/dev/null | grep ":${PORT_KILL} " | grep -oP '^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\K\d+' | sort -u)
+              fi
+              [ -n "$PIDS" ] && echo "Killing PIDs on port ${PORT_KILL}: $PIDS" && kill -9 $PIDS 2>/dev/null || true
+            done
+            # Also remove nas-server.js leftover if present
+            rm -f /volume1/web/tradeos/nas-server.js /volume1/web/tradeos/.next/standalone/nas-server.js
             sleep 2
+            > /tmp/tradeos.log
             PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5
