@@ -8,7 +8,7 @@ import {
   Plus, CheckCircle2, XCircle, Clock, X, Archive, ArchiveRestore,
   Paperclip, MessageSquare, Printer, Search, Download,
   FileText, DollarSign, Plane, ShoppingCart, Calendar,
-  Trash2, Link2, Send, Pencil,
+  Trash2, Link2, Send, Pencil, Eye, ZoomIn,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -147,6 +147,55 @@ function ApprovalStamp({ step, isActive }: { step: ApprovalStep; isActive: boole
   );
 }
 
+// ─── Attachment Preview Modal ─────────────────────────────────────────────────
+
+function AttachmentPreview({ att, onClose }: { att: Attachment; onClose: () => void }) {
+  const isImg = att.mime_type.startsWith('image/');
+  const isPdf = att.mime_type === 'application/pdf';
+  const url = `/api/uploads/${att.filename}`;
+
+  const handleDownload = () => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = att.original_name;
+    a.click();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/80 flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0" onClick={e => e.stopPropagation()}>
+        <span className="text-white text-sm font-medium truncate flex-1 mr-4">{att.original_name}</span>
+        <div className="flex gap-2">
+          <button onClick={handleDownload}
+            className="flex items-center gap-1.5 text-xs text-white bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-md transition-colors">
+            <Download className="w-3.5 h-3.5" />다운로드
+          </button>
+          <button onClick={onClose} className="text-white hover:text-gray-300 ml-2">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-4 overflow-auto" onClick={e => e.stopPropagation()}>
+        {isImg ? (
+          <img src={url} alt={att.original_name} className="max-w-full max-h-full object-contain rounded shadow-xl" />
+        ) : isPdf ? (
+          <iframe src={url} className="w-full h-full rounded" title={att.original_name} />
+        ) : (
+          <div className="text-center text-white">
+            <FileText className="w-16 h-16 mx-auto mb-4 opacity-60" />
+            <p className="text-sm mb-1">{att.original_name}</p>
+            <p className="text-xs text-gray-400 mb-4">{formatFileSize(att.size)}</p>
+            <button onClick={handleDownload}
+              className="flex items-center gap-2 text-sm text-white bg-primary hover:bg-primary/90 px-4 py-2 rounded-md mx-auto transition-colors">
+              <Download className="w-4 h-4" />파일 다운로드
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Detail View ─────────────────────────────────────────────────────────────
 
 function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
@@ -158,6 +207,7 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [previewAtt, setPreviewAtt] = useState<Attachment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const steps = parseSteps(apr);
   const myPendingStep = steps.find(s => s.approverId === myId && s.status === '대기');
@@ -281,6 +331,7 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
 
   return (
     <div className="flex-1 overflow-y-auto">
+      {previewAtt && <AttachmentPreview att={previewAtt} onClose={() => setPreviewAtt(null)} />}
       {/* Document header */}
       <div className="border-b border-border p-4 flex items-start justify-between gap-3">
         <div>
@@ -362,22 +413,48 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
             </label>
           </div>
           {attachments.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {attachments.map(att => {
                 const isImg = att.mime_type.startsWith('image/');
+                const isPdf = att.mime_type === 'application/pdf';
+                const url = `/api/uploads/${att.filename}`;
                 return (
                   <div key={att.id} className="flex items-center gap-2 p-2 rounded border border-border hover:bg-muted/40 group">
-                    {isImg && (
-                      <img src={`/api/uploads/${att.filename}`} alt={att.original_name} className="w-8 h-8 object-cover rounded" />
-                    )}
+                    {/* Thumbnail */}
+                    <div
+                      className="w-10 h-10 rounded border border-border bg-muted/40 flex items-center justify-center shrink-0 cursor-pointer overflow-hidden"
+                      onClick={() => setPreviewAtt(att)}
+                    >
+                      {isImg
+                        ? <img src={url} alt={att.original_name} className="w-full h-full object-cover" />
+                        : isPdf
+                          ? <span className="text-[10px] font-bold text-red-500">PDF</span>
+                          : <FileText className="w-5 h-5 text-muted-foreground" />
+                      }
+                    </div>
+                    {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <a href={`/api/uploads/${att.filename}`} target="_blank" rel="noreferrer"
-                        className="text-xs font-medium text-primary hover:underline truncate block">{att.original_name}</a>
+                      <button onClick={() => setPreviewAtt(att)}
+                        className="text-xs font-medium text-primary hover:underline truncate block text-left">{att.original_name}</button>
                       <p className="text-[10px] text-muted-foreground">{formatFileSize(att.size)}</p>
                     </div>
-                    <button onClick={() => handleDeleteAtt(att.id)} className="hidden group-hover:flex text-muted-foreground hover:text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Actions */}
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => setPreviewAtt(att)} title="미리보기"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      <a href={url} download={att.original_name} title="다운로드"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                      {myId === apr.requester_id && (
+                        <button onClick={() => handleDeleteAtt(att.id)} title="삭제"
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -457,6 +534,7 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
   const [loading, setLoading] = useState(false);
   const [relatedSearch, setRelatedSearch] = useState('');
   const [allApprovals, setAllApprovals] = useState<Approval[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   useEffect(() => {
     fetch('/api/approvals?tab=mine').then(r => r.json()).then(d => {
@@ -470,6 +548,12 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
   const removeStep = (i: number) => setSteps(s => s.filter((_, j) => j !== i));
   const updateStep = (i: number, field: string, value: string) => {
     setSteps(s => s.map((st, j) => j === i ? { ...st, [field]: value } : st));
+  };
+
+  const handlePendingFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setPendingFiles(prev => [...prev, ...files]);
+    e.target.value = '';
   };
 
   const handleSubmit = async (asDraft = false) => {
@@ -487,6 +571,15 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
         draft: asDraft,
       }),
     }).then(r => r.json()).catch(() => ({}));
+
+    if (res.id && pendingFiles.length > 0) {
+      for (const file of pendingFiles) {
+        const fd = new FormData();
+        fd.append('file', file);
+        await fetch(`/api/approvals/${res.id}/attachments`, { method: 'POST', body: fd }).catch(() => {});
+      }
+    }
+
     setLoading(false);
     if (res.id) onCreated(res.id);
   };
@@ -592,6 +685,33 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
                 </div>
               </div>
 
+              {/* 파일 첨부 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block flex items-center gap-1">
+                  <Paperclip className="w-3.5 h-3.5" />파일 첨부
+                </label>
+                <label className="flex items-center gap-2 w-full cursor-pointer border border-dashed border-border rounded-lg px-3 py-2.5 hover:border-primary hover:bg-primary/5 transition-colors">
+                  <Paperclip className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">파일 선택 (여러 개 가능)</span>
+                  <input type="file" multiple className="hidden" onChange={handlePendingFile} />
+                </label>
+                {pendingFiles.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {pendingFiles.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded border border-border bg-muted/30">
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs flex-1 truncate">{f.name}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{formatFileSize(f.size)}</span>
+                        <button type="button" onClick={() => setPendingFiles(p => p.filter((_, j) => j !== i))}
+                          className="text-muted-foreground hover:text-destructive shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* 관련 문서 */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-2 block flex items-center gap-1">
@@ -638,7 +758,7 @@ function CreateModal({ users, myId, myName, onClose, onCreated }: {
               <Pencil className="w-3.5 h-3.5" />임시저장
             </Button>
             <Button className="flex-1 gap-1.5" onClick={() => handleSubmit(false)} disabled={loading}>
-              <Send className="w-3.5 h-3.5" />{loading ? '기안 중...' : '기안 상신'}
+              <Send className="w-3.5 h-3.5" />{loading ? (pendingFiles.length > 0 ? '파일 업로드 중...' : '기안 중...') : '기안 상신'}
             </Button>
           </div>
         )}
