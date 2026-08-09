@@ -1,16 +1,27 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, CheckCircle2, XCircle, Clock, X } from 'lucide-react';
+import {
+  Plus, CheckCircle2, XCircle, Clock, X, Archive, ArchiveRestore,
+  Paperclip, MessageSquare, ChevronRight, Printer, Search,
+  FileText, DollarSign, Plane, ShoppingCart, Calendar, AlarmClock,
+  Trash2, Link2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+const RichEditor = dynamic(() => import('@/components/approvals/RichEditor').then(m => m.RichEditor), { ssr: false });
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ApprovalStep {
   order: number;
   approverId: string;
   approverName: string;
+  role: string;
   status: string;
   comment: string | null;
   actedAt: string | null;
@@ -23,115 +34,543 @@ interface Approval {
   form_title: string;
   requester_id: string;
   requester_name: string;
-  steps: ApprovalStep[];
+  requester_dept?: string;
   steps_json?: string;
+  steps?: ApprovalStep[];
   current_step: number;
   status: string;
   description?: string;
+  body_html?: string;
+  priority: string;
+  due_date?: string;
+  archived: number;
+  related_json?: string;
+  tags_json?: string;
   created_at: string;
   updated_at: string;
 }
 
-interface User {
+interface Attachment {
   id: string;
-  name: string;
-  department?: string;
+  approval_id: string;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size: number;
+  created_at: string;
 }
 
-const statusStyle: Record<string, string> = {
-  '대기': 'bg-gray-100 text-gray-600',
-  '진행중': 'bg-blue-100 text-blue-700',
-  '승인': 'bg-green-100 text-green-700',
-  '반려': 'bg-red-100 text-red-700',
-};
+interface Comment {
+  id: string;
+  user_id: string;
+  user_name: string;
+  content: string;
+  created_at: string;
+}
+
+interface User { id: string; name: string; department?: string; }
+
+type Tab = 'mine' | 'pending' | 'done' | 'archive';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseSteps(apr: Approval): ApprovalStep[] {
   if (Array.isArray(apr.steps)) return apr.steps;
   try { return JSON.parse(apr.steps_json ?? '[]'); } catch { return []; }
 }
 
-function Detail({
-  apr,
-  myId,
-  onAction,
-}: {
-  apr: Approval;
-  myId: string;
-  onAction: () => void;
+const statusStyle: Record<string, string> = {
+  '대기': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  '진행중': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+  '승인': 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+  '반려': 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+};
+
+const priorityStyle: Record<string, string> = {
+  low: 'text-gray-500', normal: 'text-blue-600', high: 'text-orange-600', urgent: 'text-red-600',
+};
+const priorityLabel: Record<string, string> = {
+  low: '낮음', normal: '보통', high: '높음', urgent: '긴급',
+};
+
+const formTypes = [
+  { id: '일반', label: '일반기안', icon: FileText, color: 'bg-gray-500' },
+  { id: '지출', label: '지출결의', icon: DollarSign, color: 'bg-green-600' },
+  { id: '휴가', label: '휴가신청', icon: Calendar, color: 'bg-blue-500' },
+  { id: '출장', label: '출장신청', icon: Plane, color: 'bg-purple-500' },
+  { id: '구매', label: '구매요청', icon: ShoppingCart, color: 'bg-orange-500' },
+  { id: '초과근무', label: '초과근무', icon: AlarmClock, color: 'bg-pink-500' },
+];
+
+const stepRoles = ['기안', '검토', '결재', '합의', '수신'];
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+}
+
+// ─── Approval Stamp (결재란) ─────────────────────────────────────────────────
+
+function ApprovalStamp({ step, isActive }: { step: ApprovalStep; isActive: boolean }) {
+  return (
+    <div className={cn(
+      'border border-border rounded flex flex-col min-w-[72px] text-center overflow-hidden',
+      isActive && step.status === '대기' && 'ring-2 ring-primary'
+    )}>
+      <div className="bg-muted/60 py-0.5 px-2">
+        <p className="text-[10px] font-medium text-muted-foreground">{step.role}</p>
+      </div>
+      <div className="py-3 px-2 relative">
+        <p className="text-xs font-semibold">{step.approverName}</p>
+        {step.status === '승인' && (
+          <div className="absolute inset-1 flex items-center justify-center pointer-events-none">
+            <div className="border-2 border-red-500 rounded-full w-8 h-8 flex items-center justify-center rotate-[-15deg] opacity-80">
+              <span className="text-[9px] font-bold text-red-500">승인</span>
+            </div>
+          </div>
+        )}
+        {step.status === '반려' && (
+          <div className="absolute inset-1 flex items-center justify-center pointer-events-none">
+            <div className="border-2 border-gray-500 rounded-full w-8 h-8 flex items-center justify-center rotate-[-15deg] opacity-80">
+              <span className="text-[9px] font-bold text-gray-500">반려</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="border-t border-border py-1 px-2">
+        <p className="text-[10px] text-muted-foreground">
+          {step.actedAt ? new Date(step.actedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '-'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail View ─────────────────────────────────────────────────────────────
+
+function ApprovalDetail({ apr, myId, myName, onAction, onArchive }: {
+  apr: Approval; myId: string; myName: string; onAction: () => void; onArchive: () => void;
 }) {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const steps = parseSteps(apr);
+  const myPendingStep = steps.find(s => s.approverId === myId && s.status === '대기');
+  const prevDone = myPendingStep ? steps.filter(s => s.order < myPendingStep.order).every(s => s.status === '승인') : false;
+  const canAct = !!myPendingStep && prevDone;
 
-  const myStep = steps.find(s => s.approverId === myId && s.status === '대기');
+  const loadExtra = useCallback(async () => {
+    const [atts, cmts] = await Promise.all([
+      fetch(`/api/approvals/${apr.id}/attachments`).then(r => r.json()).catch(() => []),
+      fetch(`/api/approvals/${apr.id}/comments`).then(r => r.json()).catch(() => []),
+    ]);
+    setAttachments(Array.isArray(atts) ? atts : []);
+    setComments(Array.isArray(cmts) ? cmts : []);
+  }, [apr.id]);
+
+  useEffect(() => { loadExtra(); }, [loadExtra]);
 
   const act = async (action: 'approve' | 'reject') => {
-    if (!myStep) return;
+    if (!myPendingStep) return;
     setLoading(true);
     await fetch(`/api/approvals/${apr.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stepOrder: myStep.order, action, comment: comment || null }),
+      body: JSON.stringify({ stepOrder: myPendingStep.order, action, comment: comment || null }),
     });
     setLoading(false);
     setComment('');
     onAction();
   };
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    await fetch(`/api/approvals/${apr.id}/attachments`, { method: 'POST', body: fd });
+    await loadExtra();
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  const handleDeleteAtt = async (attId: string) => {
+    await fetch(`/api/approvals/${apr.id}/attachments`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attId }),
+    });
+    await loadExtra();
+  };
+
+  const sendComment = async () => {
+    if (!newComment.trim()) return;
+    await fetch(`/api/approvals/${apr.id}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newComment }),
+    });
+    setNewComment('');
+    await loadExtra();
+  };
+
+  const handlePrint = () => window.print();
+
   return (
-    <div className="flex-1 overflow-y-auto p-5">
-      <div className="max-w-2xl">
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <p className="text-xs font-mono text-muted-foreground">{apr.business_id}</p>
-            <h2 className="text-lg font-bold mt-1">{apr.form_title}</h2>
-            <p className="text-sm text-muted-foreground">
-              {apr.form_type} · {apr.requester_name} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
-            </p>
+    <div className="flex-1 overflow-y-auto">
+      {/* Document header */}
+      <div className="border-b border-border p-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
+              {apr.status}
+            </span>
+            <span className={cn('text-xs font-medium', priorityStyle[apr.priority])}>{priorityLabel[apr.priority]}</span>
+            {apr.due_date && <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{apr.due_date}</span>}
           </div>
-          <span className={cn('text-sm font-semibold px-3 py-1 rounded-full shrink-0', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
-            {apr.status}
-          </span>
+          <h2 className="text-base font-bold mt-1">{apr.form_title}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {apr.business_id} · {apr.form_type} · {apr.requester_name}{apr.requester_dept ? ` (${apr.requester_dept})` : ''} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
+          </p>
         </div>
+        <div className="flex gap-1.5 shrink-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={handlePrint}>
+            <Printer className="w-3.5 h-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={apr.archived ? '보관 해제' : '보관'} onClick={onArchive}>
+            {apr.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+          </Button>
+        </div>
+      </div>
 
-        {apr.description && (
-          <div className="bg-muted/40 rounded-lg p-3 mb-5 text-sm text-foreground whitespace-pre-wrap">{apr.description}</div>
-        )}
-
-        <h3 className="text-sm font-semibold mb-3">결재 라인</h3>
-        <div className="flex gap-3 mb-6 flex-wrap">
-          {steps.map((step, i) => (
-            <div key={i} className="flex-1 min-w-[120px] border border-border rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                {step.status === '승인'
-                  ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  : step.status === '반려'
-                  ? <XCircle className="w-4 h-4 text-red-600" />
-                  : <Clock className="w-4 h-4 text-muted-foreground" />}
-                <span className="text-xs font-medium">{step.approverName}</span>
+      <div className="p-4 space-y-5 max-w-3xl">
+        {/* 결재란 */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-2">결재 라인</p>
+          <div className="flex gap-2 flex-wrap">
+            {/* 기안자 */}
+            <div className="border border-border rounded flex flex-col min-w-[72px] text-center overflow-hidden">
+              <div className="bg-muted/60 py-0.5 px-2"><p className="text-[10px] font-medium text-muted-foreground">기안</p></div>
+              <div className="py-3 px-2"><p className="text-xs font-semibold">{apr.requester_name}</p></div>
+              <div className="border-t border-border py-1 px-2">
+                <p className="text-[10px] text-muted-foreground">{new Date(apr.created_at).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</p>
               </div>
-              <p className={cn('text-xs',
-                step.status === '승인' ? 'text-green-700' :
-                step.status === '반려' ? 'text-red-700' : 'text-muted-foreground'
-              )}>{step.status}</p>
-              {step.comment && <p className="text-xs text-muted-foreground mt-1 italic">&ldquo;{step.comment}&rdquo;</p>}
-              {step.actedAt && <p className="text-[11px] text-muted-foreground mt-1">{new Date(step.actedAt).toLocaleDateString('ko-KR')}</p>}
+            </div>
+            {steps.map((step, i) => (
+              <ApprovalStamp key={i} step={step} isActive={step.approverId === myId} />
+            ))}
+          </div>
+          {/* Step comments */}
+          {steps.filter(s => s.comment).map((s, i) => (
+            <div key={i} className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium">{s.approverName}</span>: {s.comment}
             </div>
           ))}
         </div>
 
-        {myStep && (
-          <div className="space-y-2">
+        {/* Body */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-2">본문</p>
+          {apr.body_html
+            ? <div className="prose prose-sm max-w-none border border-border rounded-lg p-4 bg-background" dangerouslySetInnerHTML={{ __html: apr.body_html }} />
+            : apr.description
+              ? <div className="border border-border rounded-lg p-4 text-sm whitespace-pre-wrap">{apr.description}</div>
+              : <div className="border border-border rounded-lg p-4 text-sm text-muted-foreground">내용 없음</div>
+          }
+        </div>
+
+        {/* Attachments */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              <Paperclip className="w-3.5 h-3.5" />첨부파일 ({attachments.length})
+            </p>
+            <label className="cursor-pointer">
+              <span className="text-xs text-primary hover:underline">{uploading ? '업로드 중...' : '+ 파일 추가'}</span>
+              <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+            </label>
+          </div>
+          {attachments.length > 0 && (
+            <div className="space-y-1">
+              {attachments.map(att => {
+                const isImg = att.mime_type.startsWith('image/');
+                return (
+                  <div key={att.id} className="flex items-center gap-2 p-2 rounded border border-border hover:bg-muted/40 group">
+                    {isImg && (
+                      <img src={`/api/uploads/${att.filename}`} alt={att.original_name} className="w-8 h-8 object-cover rounded" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <a href={`/api/uploads/${att.filename}`} target="_blank" rel="noreferrer"
+                        className="text-xs font-medium text-primary hover:underline truncate block">{att.original_name}</a>
+                      <p className="text-[10px] text-muted-foreground">{formatFileSize(att.size)}</p>
+                    </div>
+                    <button onClick={() => handleDeleteAtt(att.id)} className="hidden group-hover:flex text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Approve/Reject */}
+        {canAct && (
+          <div className="border border-primary/30 rounded-lg p-4 bg-primary/5">
+            <p className="text-sm font-semibold mb-3 text-primary">결재 처리</p>
             <Input
               placeholder="의견 (선택사항)"
               value={comment}
               onChange={e => setComment(e.target.value)}
-              className="h-9"
+              className="mb-3 h-9"
             />
             <div className="flex gap-2">
-              <Button variant="destructive" size="sm" disabled={loading} onClick={() => act('reject')}>반려</Button>
-              <Button size="sm" disabled={loading} onClick={() => act('approve')}>승인</Button>
+              <Button variant="destructive" className="flex-1 gap-1.5" disabled={loading} onClick={() => act('reject')}>
+                <XCircle className="w-4 h-4" />반려
+              </Button>
+              <Button className="flex-1 gap-1.5" disabled={loading} onClick={() => act('approve')}>
+                <CheckCircle2 className="w-4 h-4" />승인
+              </Button>
             </div>
+          </div>
+        )}
+
+        {/* Comments */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+            <MessageSquare className="w-3.5 h-3.5" />댓글 ({comments.length})
+          </p>
+          <div className="space-y-2 mb-3">
+            {comments.map(c => (
+              <div key={c.id} className="flex gap-2">
+                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">{c.user_name[0]}</div>
+                <div className="flex-1 bg-muted/40 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-semibold">{c.user_name}</span>
+                    <span className="text-[10px] text-muted-foreground">{new Date(c.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <p className="text-sm">{c.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder={`${myName}으로 댓글 달기...`}
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+              className="h-9"
+            />
+            <Button size="sm" className="h-9 px-3 shrink-0" onClick={sendComment}>전송</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Create Modal ─────────────────────────────────────────────────────────────
+
+function CreateModal({ users, myId, myName, onClose, onCreated }: {
+  users: User[]; myId: string; myName: string; onClose: () => void; onCreated: (id: string) => void;
+}) {
+  const [step, setStep] = useState<'type' | 'form'>('type');
+  const [formType, setFormType] = useState('');
+  const [form, setForm] = useState({
+    form_title: '', description: '', body_html: '', priority: 'normal', due_date: '',
+    requester_dept: '',
+  });
+  const [steps, setSteps] = useState([{ approverId: '', approverName: '', role: '결재' }]);
+  const [related, setRelated] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [relatedSearch, setRelatedSearch] = useState('');
+  const [allApprovals, setAllApprovals] = useState<Approval[]>([]);
+
+  useEffect(() => {
+    fetch('/api/approvals?tab=mine').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setAllApprovals(d);
+    }).catch(() => {});
+  }, []);
+
+  const selectType = (id: string) => { setFormType(id); setStep('form'); };
+
+  const addStep = () => setSteps(s => [...s, { approverId: '', approverName: '', role: '결재' }]);
+  const removeStep = (i: number) => setSteps(s => s.filter((_, j) => j !== i));
+  const updateStep = (i: number, field: string, value: string) => {
+    setSteps(s => s.map((st, j) => j === i ? { ...st, [field]: value } : st));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.form_title.trim()) { alert('제목을 입력하세요.'); return; }
+    const validSteps = steps.filter(s => s.approverId);
+    if (validSteps.length === 0) { alert('결재자를 1명 이상 추가하세요.'); return; }
+    setLoading(true);
+    const res = await fetch('/api/approvals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        form_type: formType, ...form,
+        steps: validSteps,
+        related,
+      }),
+    }).then(r => r.json()).catch(() => ({}));
+    setLoading(false);
+    if (res.id) onCreated(res.id);
+  };
+
+  const formTypeInfo = formTypes.find(f => f.id === formType);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            {step === 'form' && (
+              <button onClick={() => setStep('type')} className="text-muted-foreground hover:text-foreground">←</button>
+            )}
+            <h3 className="font-semibold">{step === 'type' ? '문서 유형 선택' : `기안서 작성`}</h3>
+            {step === 'form' && formTypeInfo && (
+              <span className={cn('text-xs text-white px-2 py-0.5 rounded-full', formTypeInfo.color)}>{formTypeInfo.label}</span>
+            )}
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {step === 'type' ? (
+            <div className="grid grid-cols-3 gap-3">
+              {formTypes.map(ft => {
+                const Icon = ft.icon;
+                return (
+                  <button key={ft.id} onClick={() => selectType(ft.id)}
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-colors">
+                    <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', ft.color)}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">{ft.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* 기본 정보 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">제목 *</label>
+                  <Input className="mt-1 h-9" value={form.form_title} onChange={e => setForm(f => ({ ...f, form_title: e.target.value }))} placeholder="기안서 제목" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">부서</label>
+                  <Input className="mt-1 h-9" value={form.requester_dept} onChange={e => setForm(f => ({ ...f, requester_dept: e.target.value }))} placeholder="소속 부서" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">마감일</label>
+                  <Input type="date" className="mt-1 h-9" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">우선순위</label>
+                  <select className="w-full mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                    {Object.entries(priorityLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Rich text body */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">본문</label>
+                <RichEditor content={form.body_html} onChange={html => setForm(f => ({ ...f, body_html: html }))} placeholder="기안 내용을 입력하세요..." />
+              </div>
+
+              {/* 결재 라인 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">결재 라인</label>
+                <div className="space-y-2">
+                  {steps.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-10 shrink-0">{i + 1}단계</span>
+                      <select className="w-20 h-9 rounded-md border border-input bg-background px-2 text-xs shrink-0"
+                        value={s.role} onChange={e => updateStep(i, 'role', e.target.value)}>
+                        {stepRoles.map(r => <option key={r}>{r}</option>)}
+                      </select>
+                      <select className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        value={s.approverId}
+                        onChange={e => {
+                          const u = users.find(u => u.id === e.target.value);
+                          updateStep(i, 'approverId', e.target.value);
+                          updateStep(i, 'approverName', u?.name ?? '');
+                        }}>
+                        <option value="">결재자 선택</option>
+                        {users.filter(u => u.id !== myId).map(u => (
+                          <option key={u.id} value={u.id}>{u.name}{u.department ? ` (${u.department})` : ''}</option>
+                        ))}
+                      </select>
+                      {steps.length > 1 && (
+                        <button onClick={() => removeStep(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <Button variant="outline" size="sm" className="w-full h-8 text-xs gap-1" onClick={addStep}>
+                    <Plus className="w-3 h-3" />결재자 추가
+                  </Button>
+                </div>
+              </div>
+
+              {/* 관련 문서 */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block flex items-center gap-1">
+                  <Link2 className="w-3.5 h-3.5" />관련 문서 연결
+                </label>
+                <Input
+                  placeholder="문서 제목 검색..."
+                  value={relatedSearch}
+                  onChange={e => setRelatedSearch(e.target.value)}
+                  className="h-8 mb-2"
+                />
+                {relatedSearch && (
+                  <div className="border border-border rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+                    {allApprovals.filter(a => a.form_title.toLowerCase().includes(relatedSearch.toLowerCase()) && !related.includes(a.id)).map(a => (
+                      <button key={a.id} onClick={() => { setRelated(r => [...r, a.id]); setRelatedSearch(''); }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-0">
+                        <span className="font-mono text-muted-foreground mr-2">{a.business_id}</span>{a.form_title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {related.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {related.map(relId => {
+                      const a = allApprovals.find(x => x.id === relId);
+                      return a ? (
+                        <span key={relId} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
+                          {a.form_title}
+                          <button onClick={() => setRelated(r => r.filter(x => x !== relId))}><X className="w-2.5 h-2.5" /></button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {step === 'form' && (
+          <div className="px-5 py-4 border-t border-border flex gap-2 shrink-0">
+            <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+            <Button className="flex-1" onClick={handleSubmit} disabled={loading}>
+              {loading ? '기안 중...' : '기안 상신'}
+            </Button>
           </div>
         )}
       </div>
@@ -139,64 +578,68 @@ function Detail({
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+const TABS: { key: Tab; label: string; icon: typeof FileText }[] = [
+  { key: 'mine', label: '내 결재함', icon: FileText },
+  { key: 'pending', label: '결재 대기', icon: Clock },
+  { key: 'done', label: '처리 완료', icon: CheckCircle2 },
+  { key: 'archive', label: '보관함', icon: Archive },
+];
+
 export default function ApprovalsPage() {
+  const [tab, setTab] = useState<Tab>('mine');
   const [list, setList] = useState<Approval[]>([]);
   const [selected, setSelected] = useState<Approval | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [myId, setMyId] = useState('');
-
-  const [form, setForm] = useState({
-    form_type: '일반',
-    form_title: '',
-    description: '',
-    steps: [{ approverId: '', approverName: '' }],
-  });
+  const [myName, setMyName] = useState('');
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
-    const [aprRes, meRes] = await Promise.all([
-      fetch('/api/approvals').then(r => r.json()),
-      fetch('/api/auth/me').then(r => r.json()),
-    ]);
-    const aprs: Approval[] = Array.isArray(aprRes) ? aprRes : [];
-    const parsed = aprs.map(a => ({ ...a, steps: parseSteps(a) }));
-    setList(parsed);
-    if (parsed.length > 0 && !selected) setSelected(parsed[0]);
-    if (meRes.user) setMyId(meRes.user.id);
-  }, [selected]);
+    const data = await fetch(`/api/approvals?tab=${tab}`).then(r => r.json()).catch(() => []);
+    const items: Approval[] = Array.isArray(data) ? data.map((a: Approval) => ({ ...a, steps: parseSteps(a) })) : [];
+    setList(items);
+  }, [tab]);
+
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    load();
-    fetch('/api/admin/users').then(r => r.json()).then(d => {
-      if (Array.isArray(d)) setUsers(d);
+    fetch('/api/auth/me').then(r => r.json()).then(j => {
+      if (j.user) { setMyId(j.user.id); setMyName(j.user.name); }
     }).catch(() => {});
+    fetch('/api/admin/users').then(r => r.json()).then(d => { if (Array.isArray(d)) setUsers(d); }).catch(() => {});
   }, []);
 
   const refreshSelected = async () => {
-    const aprs = await fetch('/api/approvals').then(r => r.json());
-    const parsed: Approval[] = (Array.isArray(aprs) ? aprs : []).map((a: Approval) => ({ ...a, steps: parseSteps(a) }));
-    setList(parsed);
+    await load();
     if (selected) {
-      const updated = parsed.find(a => a.id === selected.id);
+      const data = await fetch(`/api/approvals?tab=${tab}`).then(r => r.json()).catch(() => []);
+      const items: Approval[] = Array.isArray(data) ? data.map((a: Approval) => ({ ...a, steps: parseSteps(a) })) : [];
+      const updated = items.find(a => a.id === selected.id);
       if (updated) setSelected(updated);
     }
   };
 
-  const handleCreate = async () => {
-    if (!form.form_title.trim()) return;
-    const steps = form.steps
-      .filter(s => s.approverId)
-      .map((s, i) => ({ order: i + 1, approverId: s.approverId, approverName: s.approverName, status: '대기', comment: null, actedAt: null }));
-    await fetch('/api/approvals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ form_type: form.form_type, form_title: form.form_title, description: form.description, steps }),
-    });
-    setShowCreate(false);
-    setForm({ form_type: '일반', form_title: '', description: '', steps: [{ approverId: '', approverName: '' }] });
-    await refreshSelected();
+  const handleArchive = async (apr: Approval) => {
+    await fetch(`/api/approvals/${apr.id}/archive`, { method: 'POST' });
+    setSelected(null);
+    await load();
   };
+
+  const filtered = list.filter(a =>
+    a.form_title.toLowerCase().includes(search.toLowerCase()) ||
+    a.requester_name.toLowerCase().includes(search.toLowerCase()) ||
+    a.business_id.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const pendingCount = list.filter(a => {
+    if (tab !== 'pending') return false;
+    const steps = parseSteps(a);
+    return steps.some(s => s.approverId === myId && s.status === '대기');
+  }).length;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -205,124 +648,134 @@ export default function ApprovalsPage() {
       {mobileDetail && selected && (
         <div className="md:hidden fixed inset-0 z-40 bg-background flex flex-col">
           <div className="h-12 flex items-center px-4 border-b border-border shrink-0 gap-3">
-            <button onClick={() => setMobileDetail(false)} className="text-sm text-primary">← 목록</button>
-            <span className="font-semibold text-sm truncate">{selected.form_title}</span>
+            <button onClick={() => setMobileDetail(false)} className="text-sm text-primary flex items-center gap-1">
+              ← 목록
+            </button>
+            <span className="font-semibold text-sm truncate flex-1">{selected.form_title}</span>
           </div>
-          <Detail apr={selected} myId={myId} onAction={refreshSelected} />
+          <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} />
         </div>
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-background rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-              <h3 className="font-semibold">기안서 작성</h3>
-              <button onClick={() => setShowCreate(false)}><X className="w-4 h-4" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">문서 유형</label>
-                <select
-                  className="w-full mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  value={form.form_type}
-                  onChange={e => setForm(f => ({ ...f, form_type: e.target.value }))}
-                >
-                  {['일반', '지출', '휴가', '출장', '구매'].map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">제목</label>
-                <Input className="mt-1 h-9" value={form.form_title} onChange={e => setForm(f => ({ ...f, form_title: e.target.value }))} placeholder="기안서 제목" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">내용</label>
-                <textarea
-                  className="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-none"
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="기안 내용"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">결재 라인</label>
-                <div className="space-y-2 mt-1">
-                  {form.steps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-12 shrink-0">{i + 1}차 결재</span>
-                      <select
-                        className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-                        value={step.approverId}
-                        onChange={e => {
-                          const u = users.find(u => u.id === e.target.value);
-                          setForm(f => {
-                            const steps = [...f.steps];
-                            steps[i] = { approverId: e.target.value, approverName: u?.name ?? '' };
-                            return { ...f, steps };
-                          });
-                        }}
-                      >
-                        <option value="">결재자 선택</option>
-                        {users.map(u => <option key={u.id} value={u.id}>{u.name}{u.department ? ` (${u.department})` : ''}</option>)}
-                      </select>
-                      {form.steps.length > 1 && (
-                        <button onClick={() => setForm(f => ({ ...f, steps: f.steps.filter((_, j) => j !== i) }))} className="text-muted-foreground hover:text-destructive">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={() => setForm(f => ({ ...f, steps: [...f.steps, { approverId: '', approverName: '' }] }))}>
-                    결재자 추가
-                  </Button>
-                </div>
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-border flex gap-2 shrink-0">
-              <Button variant="outline" className="flex-1" onClick={() => setShowCreate(false)}>취소</Button>
-              <Button className="flex-1" onClick={handleCreate}>기안</Button>
-            </div>
-          </div>
-        </div>
+        <CreateModal
+          users={users} myId={myId} myName={myName}
+          onClose={() => setShowCreate(false)}
+          onCreated={async (id) => {
+            setShowCreate(false);
+            setTab('mine');
+            await load();
+            const data = await fetch(`/api/approvals?tab=mine`).then(r => r.json()).catch(() => []);
+            const items: Approval[] = Array.isArray(data) ? data.map((a: Approval) => ({ ...a, steps: parseSteps(a) })) : [];
+            const created = items.find(a => a.id === id);
+            if (created) setSelected(created);
+          }}
+        />
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-full md:w-72 lg:w-80 shrink-0 border-r border-border overflow-y-auto">
-          <div className="p-3 border-b border-border flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground">결재 목록</span>
-            <Button size="sm" className="h-7 gap-1 text-xs" onClick={() => setShowCreate(true)}>
-              <Plus className="w-3.5 h-3.5" />기안
+        {/* Sidebar */}
+        <div className="w-full md:w-72 lg:w-80 shrink-0 border-r border-border flex flex-col overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-border shrink-0">
+            {TABS.map(t => {
+              const Icon = t.icon;
+              return (
+                <button key={t.key} onClick={() => { setTab(t.key); setSelected(null); }}
+                  className={cn(
+                    'flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] transition-colors',
+                    tab === t.key ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+                  )}>
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search + New */}
+          <div className="p-3 border-b border-border space-y-2 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <Button size="sm" className="w-full h-8 gap-1.5 text-xs" onClick={() => setShowCreate(true)}>
+              <Plus className="w-3.5 h-3.5" />새 기안서 작성
             </Button>
           </div>
-          {list.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-12">결재 내역이 없습니다.</p>
-          )}
-          {list.map(apr => (
-            <button
-              key={apr.id}
-              onClick={() => { setSelected(apr); setMobileDetail(true); }}
-              className={cn(
-                'w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0',
-                selected?.id === apr.id && 'bg-primary/5 border-l-2 border-l-primary'
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-mono text-muted-foreground">{apr.business_id}</span>
-                <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
-                  {apr.status}
-                </span>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto">
+            {filtered.length === 0 && (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                {tab === 'pending' ? '결재 대기 문서가 없습니다.' :
+                 tab === 'done' ? '처리한 문서가 없습니다.' :
+                 tab === 'archive' ? '보관된 문서가 없습니다.' : '기안한 문서가 없습니다.'}
               </div>
-              <p className="text-sm font-medium mt-1 line-clamp-2">{apr.form_title}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {apr.form_type} · {apr.requester_name} · {new Date(apr.created_at).toLocaleDateString('ko-KR')}
-              </p>
-            </button>
-          ))}
+            )}
+            {filtered.map(apr => {
+              const steps = parseSteps(apr);
+              const myStep = steps.find(s => s.approverId === myId && s.status === '대기');
+              const ft = formTypes.find(f => f.id === apr.form_type);
+
+              return (
+                <button key={apr.id}
+                  onClick={() => { setSelected(apr); setMobileDetail(true); }}
+                  className={cn(
+                    'w-full text-left p-3.5 hover:bg-muted/50 transition-colors border-b border-border last:border-0',
+                    selected?.id === apr.id && 'bg-primary/5 border-l-2 border-l-primary'
+                  )}>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-1.5">
+                      {ft && (
+                        <span className={cn('w-4 h-4 rounded flex items-center justify-center shrink-0', ft.color)}>
+                          <ft.icon className="w-2.5 h-2.5 text-white" />
+                        </span>
+                      )}
+                      <span className="text-[10px] font-mono text-muted-foreground">{apr.business_id}</span>
+                    </div>
+                    <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0', statusStyle[apr.status] ?? 'bg-gray-100 text-gray-600')}>
+                      {apr.status}
+                    </span>
+                  </div>
+                  <p className="text-sm font-medium line-clamp-2 mb-1">{apr.form_title}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">{apr.requester_name} · {new Date(apr.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</p>
+                    {myStep && <span className="text-[10px] bg-primary text-primary-foreground rounded-full px-1.5">내 차례</span>}
+                  </div>
+                  {apr.due_date && (
+                    <p className="text-[10px] text-orange-600 mt-0.5">마감 {apr.due_date}</p>
+                  )}
+                  {/* Step progress */}
+                  <div className="flex gap-1 mt-2">
+                    {steps.map((s, i) => (
+                      <div key={i} className={cn('h-1 flex-1 rounded-full',
+                        s.status === '승인' ? 'bg-green-500' :
+                        s.status === '반려' ? 'bg-red-500' :
+                        s.approverId === myId ? 'bg-primary' : 'bg-muted'
+                      )} />
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
+        {/* Detail */}
         <div className="flex-1 hidden md:flex overflow-hidden">
           {selected
-            ? <Detail apr={selected} myId={myId} onAction={refreshSelected} />
-            : <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">결재를 선택하세요</div>
+            ? <ApprovalDetail apr={selected} myId={myId} myName={myName} onAction={refreshSelected} onArchive={() => handleArchive(selected)} />
+            : (
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+                <FileText className="w-12 h-12 opacity-20" />
+                <p className="text-sm">문서를 선택하거나 새 기안서를 작성하세요.</p>
+                <Button size="sm" className="gap-1.5" onClick={() => setShowCreate(true)}>
+                  <Plus className="w-4 h-4" />새 기안서 작성
+                </Button>
+              </div>
+            )
           }
         </div>
       </div>

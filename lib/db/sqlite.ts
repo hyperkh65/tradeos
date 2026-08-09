@@ -17,6 +17,7 @@ export function getDb(): Database.Database {
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
   initSchema(_db);
+  runMigrations(_db);
   return _db;
 }
 
@@ -266,12 +267,39 @@ function initSchema(db: Database.Database) {
       form_title TEXT NOT NULL,
       requester_id TEXT NOT NULL,
       requester_name TEXT NOT NULL,
+      requester_dept TEXT,
       steps_json TEXT NOT NULL DEFAULT '[]',
       current_step INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT '대기',
       description TEXT,
+      body_html TEXT,
+      priority TEXT NOT NULL DEFAULT 'normal',
+      due_date TEXT,
+      archived INTEGER NOT NULL DEFAULT 0,
+      related_json TEXT NOT NULL DEFAULT '[]',
+      tags_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS approval_attachments (
+      id TEXT PRIMARY KEY,
+      approval_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      uploaded_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS approval_comments (
+      id TEXT PRIMARY KEY,
+      approval_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS channels (
@@ -335,6 +363,21 @@ function initSchema(db: Database.Database) {
       UNIQUE(account_id, uid)
     );
   `);
+}
+
+function runMigrations(db: Database.Database) {
+  const cols = [
+    `ALTER TABLE approvals ADD COLUMN body_html TEXT`,
+    `ALTER TABLE approvals ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'`,
+    `ALTER TABLE approvals ADD COLUMN due_date TEXT`,
+    `ALTER TABLE approvals ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE approvals ADD COLUMN related_json TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE approvals ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE approvals ADD COLUMN requester_dept TEXT`,
+  ];
+  for (const sql of cols) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
 }
 
 export function newId(): string {
