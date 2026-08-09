@@ -13,13 +13,11 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== NAT hairpin test: port 443 (gw.ynk2014.com) ==="
-            curl -sk --max-time 5 https://112.171.143.46/ -H "Host: gw.ynk2014.com" -o /dev/null -w "HTTP %{http_code}\n" || echo "TIMEOUT or FAIL"
-            echo "=== NAT hairpin test: port 80 (erp.ynk2014.com) ==="
-            curl -s --max-time 5 http://112.171.143.46/ -H "Host: erp.ynk2014.com" -o /dev/null -w "HTTP %{http_code}\n" || echo "TIMEOUT or FAIL"
-            echo "=== webservice_portal conf for gw.ynk2014.com ==="
-            cat /usr/local/etc/nginx/conf.d/www.webservice_portal_fba80f1a-ff3a-43fc-b1ec-0642664461ea.conf 2>/dev/null
-            echo "=== gw.ynk2014.com nginx 설정 전체 검색 ==="
-            grep -rn "gw.ynk2014" /usr/local/etc/nginx/conf.d/ /etc/nginx/conf.d/ 2>/dev/null
-            echo "=== port 443 listening ==="
-            ss -tlnp | grep -E ':443|:80|:3103'
+            echo "=== .service conf (actual gw.ynk2014.com config) ==="
+            cat /usr/local/etc/nginx/conf.d/.service.fba80f1a-ff3a-43fc-b1ec-0642664461ea.ca2cdaa3-1b14-4984-b169-ece9d6d75122.conf 2>/dev/null || echo "FILE NOT FOUND"
+            echo "=== all conf files in nginx conf.d ==="
+            ls -la /usr/local/etc/nginx/conf.d/ 2>/dev/null
+            echo "=== search 3103 in all nginx confs ==="
+            grep -rn "3103" /usr/local/etc/nginx/conf.d/ /etc/nginx/conf.d/ 2>/dev/null || echo "NOT FOUND"
+            echo "=== port listening ==="
+            netstat -tlnp 2>/dev/null | grep -E ':443|:80|:3103' || cat /proc/net/tcp | awk '{print $2}' | cut -d: -f2 | while read h; do printf "%d\n" "0x$h"; done | sort -n | grep -E "^80$|^443$|^3103$" || true
