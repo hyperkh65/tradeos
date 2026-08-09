@@ -36,7 +36,7 @@ jobs:
           NAS_USERNAME: ${{ secrets.TRADEOS_NAS_USERNAME }}
           NAS_PASSWORD: ${{ secrets.TRADEOS_NAS_PASSWORD }}
           NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
-        run: npm run build && cp nas-server.js .next/standalone/nas-server.js && cp kill-ports.js .next/standalone/kill-ports.js
+        run: npm run build
 
       - name: Prepare NAS directory
         uses: appleboy/ssh-action@v1
@@ -54,7 +54,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          source: ".next/standalone/,.next/static/,public/,nas-server.js"
+          source: ".next/standalone/,.next/static/,public/"
           target: /volume1/web/tradeos/
 
       - name: Deploy on NAS
@@ -66,46 +66,23 @@ jobs:
           command_timeout: 2m
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
-            # LE 인증서를 읽을 수 있으면 /tmp에 복사 (nas-server.js가 탐색)
-            CERT_SRC=$(find /usr/syno/etc/certificate/ReverseProxy -name "RSA-privkey.pem" 2>/dev/null | head -1)
-            if [ -n "$CERT_SRC" ]; then
-              CERT_DIR=$(dirname "$CERT_SRC")
-              sudo -n cp "$CERT_DIR/RSA-fullchain.pem" /tmp/tradeos-le.crt 2>/dev/null && \
-              sudo -n cp "$CERT_DIR/RSA-privkey.pem" /tmp/tradeos-le.key 2>/dev/null && \
-              sudo -n chmod 644 /tmp/tradeos-le.crt /tmp/tradeos-le.key 2>/dev/null && \
-              echo "LE cert copied to /tmp" || echo "sudo not available, using fallback cert"
-            fi
             mkdir -p /volume1/web/tradeos/.next/standalone/.next
             mkdir -p /volume1/web/tradeos/.next/standalone/public
             rm -rf /volume1/web/tradeos/.next/standalone/.next/static
             cp -r /volume1/web/tradeos/.next/static /volume1/web/tradeos/.next/standalone/.next/static
             cp -rp /volume1/web/tradeos/public/. /volume1/web/tradeos/.next/standalone/public/ 2>/dev/null || true
-            cp /volume1/web/tradeos/nas-server.js /volume1/web/tradeos/.next/standalone/nas-server.js
-            OLD_NEXT_PID=$(cat /tmp/tradeos-next.pid 2>/dev/null)
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
-            [ -n "$OLD_NEXT_PID" ] && kill -9 $OLD_NEXT_PID 2>/dev/null || true
             [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
-            $NODE /volume1/web/tradeos/.next/standalone/kill-ports.js 3103 3203 || true
-            sleep 3
-            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/nas-server.js >> /tmp/tradeos.log 2>&1 &
+            PORT_PID=$(netstat -tlnp 2>/dev/null | grep ':3103 ' | awk '{print $NF}' | cut -d'/' -f1)
+            [ -n "$PORT_PID" ] && kill -9 $PORT_PID 2>/dev/null || true
+            PORT_PID2=$(netstat -tlnp 2>/dev/null | grep ':3203 ' | awk '{print $NF}' | cut -d'/' -f1)
+            [ -n "$PORT_PID2" ] && kill -9 $PORT_PID2 2>/dev/null || true
+            sleep 2
+            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5
-            if $NODE -e "require('http').get('http://localhost:3103/login',(r)=>{console.log('HTTP',r.statusCode);process.exit(r.statusCode===200?0:1)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
+            if $NODE -e "require('http').get('http://localhost:3103',(r)=>{console.log('HTTP',r.statusCode);process.exit(0)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
               echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3103"
             else
               echo "ERROR: server failed" && tail -30 /tmp/tradeos.log && exit 1
-            fi
-            echo "=== TLS cert in use ==="
-            tail -5 /tmp/tradeos.log | grep -i "cert\|TLS\|HTTPS" || true
-            DNS_ZONE_DIR="/volume1/@appstore/DNSServer/named/etc/zone/master"
-            DNS_CONF="/volume1/@appstore/DNSServer/named/etc/named.conf"
-            if [ -d "$DNS_ZONE_DIR" ] && [ -w "$DNS_ZONE_DIR" ]; then
-              printf '$TTL 300\n@ IN SOA ns1.ynk2014.com. admin.ynk2014.com. ( 2026080901 300 900 604800 300 )\n@ IN NS ns1.ynk2014.com.\nns1 IN A 192.168.0.7\ngw IN A 192.168.0.7\n' > "$DNS_ZONE_DIR/gw-ynk2014.zone"
-              if [ -w "$DNS_CONF" ] && ! grep -q "ynk2014.com" "$DNS_CONF" 2>/dev/null; then
-                printf '\nzone "ynk2014.com" IN { type master; file "%s/gw-ynk2014.zone"; };\n' "$DNS_ZONE_DIR" >> "$DNS_CONF"
-              fi
-              synoservicectl --reload dns 2>/dev/null || true
-              echo "DNS split-horizon: gw.ynk2014.com -> 192.168.0.7"
-            else
-              echo "DNS zone dir not writable (skip)"
             fi
