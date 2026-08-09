@@ -36,7 +36,7 @@ jobs:
           NAS_USERNAME: ${{ secrets.TRADEOS_NAS_USERNAME }}
           NAS_PASSWORD: ${{ secrets.TRADEOS_NAS_PASSWORD }}
           NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
-        run: npm run build && cp nas-server.js .next/standalone/nas-server.js
+        run: npm run build && cp nas-server.js .next/standalone/nas-server.js && cp kill-ports.js .next/standalone/kill-ports.js
 
       - name: Prepare NAS directory
         uses: appleboy/ssh-action@v1
@@ -76,9 +76,8 @@ jobs:
             OLD_PID=$(cat /tmp/tradeos.pid 2>/dev/null)
             [ -n "$OLD_NEXT_PID" ] && kill -9 $OLD_NEXT_PID 2>/dev/null || true
             [ -n "$OLD_PID" ] && kill -9 $OLD_PID 2>/dev/null || true
-            fuser -k -9 3103/tcp 2>/dev/null || true
-            fuser -k -9 3203/tcp 2>/dev/null || true
-            sleep 2
+            $NODE /volume1/web/tradeos/.next/standalone/kill-ports.js 3103 3203 || true
+            sleep 3
             PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" $NODE /volume1/web/tradeos/.next/standalone/nas-server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5
