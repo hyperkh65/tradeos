@@ -13,15 +13,11 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== nginx port 443/80 listening? ==="
-            netstat -tlnp 2>/dev/null | grep -E ':443 |:80 ' || echo "443/80 NOT FOUND"
-            echo "=== nginx status ==="
-            ps aux 2>/dev/null | grep nginx | grep -v grep || echo "nginx NOT RUNNING"
-            echo "=== nginx gw proxy config ==="
-            grep -B2 -A10 "proxy_pass.*3103" /etc/nginx/sites-enabled/* 2>/dev/null || echo "no 3103 proxy found"
-            echo "=== curl via nginx (HTTPS) ==="
-            curl -sk -o /dev/null -w "status:%{http_code}" https://localhost/ -H "Host: gw.ynk2014.com" 2>/dev/null || echo "curl https failed"
-            echo "=== curl via nginx (HTTP) ==="
-            curl -s -o /dev/null -w "status:%{http_code}" http://localhost/ -H "Host: gw.ynk2014.com" 2>/dev/null || echo "curl http failed"
-            echo "=== external IP ==="
-            curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "cannot reach ifconfig.me"
+            echo "=== DNS: gw.ynk2014.com ==="
+            nslookup gw.ynk2014.com 8.8.8.8 2>/dev/null | grep -E "Address|Name" || echo "nslookup failed"
+            echo "=== DNS: www.ynk2014.com ==="
+            nslookup www.ynk2014.com 8.8.8.8 2>/dev/null | grep -E "Address|Name" || echo "nslookup failed"
+            echo "=== curl gw.ynk2014.com from NAS (external IP) ==="
+            curl -sk --max-time 5 -o /dev/null -w "status:%{http_code}" https://gw.ynk2014.com/ 2>/dev/null && echo "" || echo "timeout/fail"
+            echo "=== curl www.ynk2014.com from NAS ==="
+            curl -sk --max-time 5 -o /dev/null -w "status:%{http_code}" https://www.ynk2014.com/ 2>/dev/null && echo "" || echo "timeout/fail"
