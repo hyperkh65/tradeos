@@ -61,12 +61,14 @@ type Source = 'internal' | string; // string = account id
 const PROVIDER_ICONS: Record<string, string> = {
   naver: 'N',
   daum: 'D',
+  kakao: 'K',
   gmail: 'G',
   custom: '✉',
 };
 const PROVIDER_COLORS: Record<string, string> = {
   naver: 'bg-green-500',
   daum: 'bg-blue-500',
+  kakao: 'bg-yellow-500',
   gmail: 'bg-red-500',
   custom: 'bg-gray-500',
 };
@@ -597,16 +599,18 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, onChange,
 
 const PROVIDER_LIST = [
   { id: 'naver', label: '네이버', color: 'bg-green-500', help: '네이버 메일 → 환경설정 → POP3/IMAP 설정에서 IMAP 사용을 켜세요.' },
-  { id: 'daum', label: '다음/카카오', color: 'bg-blue-500', help: '다음 메일은 별도 설정 없이 바로 연결됩니다.' },
+  { id: 'daum', label: '다음', color: 'bg-blue-500', help: '다음 메일(@daum.net, @hanmail.net)은 별도 설정 없이 바로 연결됩니다.' },
+  { id: 'kakao', label: '카카오', color: 'bg-yellow-500', help: '카카오메일 → 설정 → IMAP 사용을 켜세요. 비밀번호는 카카오 계정 비밀번호를 입력하세요.' },
   { id: 'gmail', label: 'Gmail', color: 'bg-red-500', help: 'Google 계정 → 보안 → 2단계 인증 켜기 → 앱 비밀번호 발급 후 입력하세요.' },
   { id: 'custom', label: '직접 입력', color: 'bg-gray-500', help: '' },
 ];
 
 const PROVIDER_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
-  naver: { imap: 'imap.naver.com', imapPort: 993, smtp: 'smtp.naver.com', smtpPort: 587 },
-  daum:  { imap: 'imap.daum.net',  imapPort: 993, smtp: 'smtp.daum.net',  smtpPort: 465 },
-  gmail: { imap: 'imap.gmail.com', imapPort: 993, smtp: 'smtp.gmail.com', smtpPort: 587 },
-  custom:{ imap: '', imapPort: 993, smtp: '', smtpPort: 587 },
+  naver:  { imap: 'imap.naver.com',  imapPort: 993, smtp: 'smtp.naver.com',  smtpPort: 587 },
+  daum:   { imap: 'imap.daum.net',   imapPort: 993, smtp: 'smtp.daum.net',   smtpPort: 465 },
+  kakao:  { imap: 'imap.kakao.com',  imapPort: 993, smtp: 'smtp.kakao.com',  smtpPort: 465 },
+  gmail:  { imap: 'imap.gmail.com',  imapPort: 993, smtp: 'smtp.gmail.com',  smtpPort: 587 },
+  custom: { imap: '', imapPort: 993, smtp: '', smtpPort: 587 },
 };
 
 function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {

@@ -4,6 +4,16 @@ import { getSessionUser } from '@/lib/auth/session';
 import { encryptPassword } from '@/lib/mail/crypto';
 import { PROVIDERS } from '@/lib/mail/providers';
 
+// Auto-detect IMAP/SMTP server from email domain
+function inferServers(email: string) {
+  const domain = email.split('@')[1]?.toLowerCase() ?? '';
+  if (domain === 'kakao.com') return { imap_host: 'imap.kakao.com', imap_port: 993, smtp_host: 'smtp.kakao.com', smtp_port: 465 };
+  if (domain === 'daum.net' || domain === 'hanmail.net') return { imap_host: 'imap.daum.net', imap_port: 993, smtp_host: 'smtp.daum.net', smtp_port: 465 };
+  if (domain === 'naver.com') return { imap_host: 'imap.naver.com', imap_port: 993, smtp_host: 'smtp.naver.com', smtp_port: 587 };
+  if (domain === 'gmail.com') return { imap_host: 'imap.gmail.com', imap_port: 993, smtp_host: 'smtp.gmail.com', smtp_port: 587 };
+  return null;
+}
+
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -19,13 +29,18 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { provider = 'custom', email, password, imap_host, imap_port, smtp_host, smtp_port } = body;
+  const { provider = 'custom', email, password } = body;
 
   if (!email || !password) return NextResponse.json({ error: '이메일과 비밀번호를 입력하세요.' }, { status: 400 });
 
+  // Domain inference takes priority over provider preset
+  const inferred = inferServers(email);
   const p = PROVIDERS[provider] ?? PROVIDERS.custom;
-  const host = imap_host || p.imap_host;
-  const port = Number(imap_port || p.imap_port);
+
+  const host = body.imap_host || inferred?.imap_host || p.imap_host;
+  const port = Number(body.imap_port || inferred?.imap_port || p.imap_port);
+  const smtpHost = body.smtp_host || inferred?.smtp_host || p.smtp_host;
+  const smtpPort = Number(body.smtp_port || inferred?.smtp_port || p.smtp_port);
 
   if (!host) return NextResponse.json({ error: 'IMAP 서버를 입력하세요.' }, { status: 400 });
 
@@ -41,7 +56,12 @@ export async function POST(req: NextRequest) {
     await client.connect();
     await client.logout();
   } catch (e) {
-    return NextResponse.json({ error: `연결 실패: ${(e as Error).message}` }, { status: 400 });
+    const msg = (e as Error).message;
+    let hint = '';
+    if (msg.includes('Command failed') || msg.includes('Authentication failed') || msg.includes('Invalid credentials')) {
+      hint = ' — 비밀번호를 확인하거나, 메일 설정에서 IMAP을 허용했는지 확인하세요.';
+    }
+    return NextResponse.json({ error: `연결 실패: ${msg}${hint}` }, { status: 400 });
   }
 
   const db = getDb();
@@ -49,16 +69,7 @@ export async function POST(req: NextRequest) {
   db.prepare(`
     INSERT INTO mail_accounts (id, user_id, provider, label, email, password_enc, imap_host, imap_port, smtp_host, smtp_port, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, user.id, provider,
-    body.label || email,
-    email,
-    encryptPassword(password),
-    host, port,
-    smtp_host || p.smtp_host,
-    Number(smtp_port || p.smtp_port),
-    now()
-  );
+  `).run(id, user.id, provider, body.label || email, email, encryptPassword(password), host, port, smtpHost, smtpPort, now());
 
   const row = db.prepare(
     'SELECT id, provider, label, email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE id = ?'

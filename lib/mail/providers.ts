@@ -17,12 +17,20 @@ export const PROVIDERS: Record<string, MailProvider> = {
     help: '네이버 메일 → 환경설정 → POP3/IMAP 설정에서 IMAP 사용을 켜세요.',
   },
   daum: {
-    label: '다음/카카오',
+    label: '다음',
     imap_host: 'imap.daum.net',
     imap_port: 993,
     smtp_host: 'smtp.daum.net',
     smtp_port: 465,
-    help: '다음 메일은 별도 설정 없이 바로 연결됩니다.',
+    help: '다음 메일(@daum.net, @hanmail.net)은 별도 설정 없이 바로 연결됩니다.',
+  },
+  kakao: {
+    label: '카카오',
+    imap_host: 'imap.kakao.com',
+    imap_port: 993,
+    smtp_host: 'smtp.kakao.com',
+    smtp_port: 465,
+    help: '카카오메일 → 설정 → IMAP 사용을 켜세요. 비밀번호는 카카오 계정 비밀번호를 입력하세요.',
   },
   gmail: {
     label: 'Gmail',
