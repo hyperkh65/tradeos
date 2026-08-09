@@ -11,18 +11,26 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR ||
     ? '/volume1/web/tradeos/data/uploads'
     : path.join(process.cwd(), 'data', 'uploads'));
 
-function createTransport(account: Record<string, unknown>, password: string) {
-  const smtpPort = account.smtp_port as number;
+function buildTransport(account: Record<string, unknown>, password: string) {
+  const smtpPort = Number(account.smtp_port); // Number() 로 명시적 변환 (string '465' 대비)
+  const isSSL = smtpPort === 465 || smtpPort === 994;
+
   return nodemailer.createTransport({
-    host: account.smtp_host as string,
+    host: String(account.smtp_host),
     port: smtpPort,
-    secure: smtpPort === 465,
-    ...(smtpPort === 587 ? { requireTLS: true } : {}),
-    auth: { user: account.email as string, pass: password },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 20000,
-    greetingTimeout: 20000,
-    socketTimeout: 30000,
+    secure: isSSL,
+    ...(isSSL ? {} : { requireTLS: true }),
+    auth: {
+      user: String(account.email),
+      pass: password,
+    },
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1' as 'TLSv1',
+    },
+    connectionTimeout: 25000,
+    greetingTimeout: 25000,
+    socketTimeout: 35000,
   } as Parameters<typeof nodemailer.createTransport>[0]);
 }
 
@@ -37,19 +45,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ).get(id, user.id) as Record<string, unknown> | undefined;
   if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Accept both FormData and JSON
   const ct = req.headers.get('content-type') ?? '';
   let to = '', cc = '', bcc = '', subject = '', body = '', scheduledAt = '';
   const attachFiles: File[] = [];
 
   if (ct.includes('multipart/form-data') || ct.includes('application/x-www-form-urlencoded')) {
     const fd = await req.formData();
-    to = (fd.get('to') as string) ?? '';
-    cc = (fd.get('cc') as string) ?? '';
-    bcc = (fd.get('bcc') as string) ?? '';
-    subject = (fd.get('subject') as string) ?? '';
-    body = (fd.get('body') as string) ?? '';
-    scheduledAt = (fd.get('scheduled_at') as string) ?? '';
+    to = String(fd.get('to') ?? '');
+    cc = String(fd.get('cc') ?? '');
+    bcc = String(fd.get('bcc') ?? '');
+    subject = String(fd.get('subject') ?? '');
+    body = String(fd.get('body') ?? '');
+    scheduledAt = String(fd.get('scheduled_at') ?? '');
     for (const [, v] of fd.entries()) {
       if (v instanceof File && v.size > 0) attachFiles.push(v);
     }
@@ -62,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!to || !subject) return NextResponse.json({ error: '받는 사람과 제목을 입력하세요.' }, { status: 400 });
 
-  // Save attachment files
+  // Save attachment files to disk
   const scheduledDir = path.join(UPLOAD_DIR, 'scheduled');
   const savedPaths: { filename: string; original: string; mime: string }[] = [];
   if (attachFiles.length > 0) {
@@ -75,13 +82,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  // If scheduled for the future, store in DB
-  if (scheduledAt) {
+  // Schedule for future
+  if (scheduledAt && scheduledAt !== 'undefined') {
     const schedDate = new Date(scheduledAt);
     if (!isNaN(schedDate.getTime()) && schedDate > new Date()) {
       const sid = newId();
       db.prepare(`
-        INSERT INTO scheduled_ext_mails (id, account_id, user_id, to_addr, cc, bcc, subject, body_html, attach_paths_json, scheduled_at, status, created_at)
+        INSERT INTO scheduled_ext_mails
+          (id, account_id, user_id, to_addr, cc, bcc, subject, body_html, attach_paths_json, scheduled_at, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(sid, id, user.id, to, cc, bcc, subject, body, JSON.stringify(savedPaths), schedDate.toISOString(), now());
       return NextResponse.json({ scheduled: true, scheduled_at: schedDate.toISOString() });
@@ -91,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Send immediately
   try {
     const password = decryptPassword(account.password_enc as string);
-    const transport = createTransport(account, password);
+    const transport = buildTransport(account, password);
 
     const attachments = savedPaths.map(p => ({
       filename: p.original,
@@ -100,19 +108,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }));
 
     await transport.sendMail({
-      from: `"${user.name}" <${account.email}>`,
+      from: `"${user.name}" <${String(account.email)}>`,
       to,
-      ...(cc ? { cc } : {}),
-      ...(bcc ? { bcc } : {}),
+      ...(cc && cc !== 'undefined' ? { cc } : {}),
+      ...(bcc && bcc !== 'undefined' ? { bcc } : {}),
       subject,
       html: body || '',
-      text: body?.replace(/<[^>]+>/g, '') || '',
+      text: (body || '').replace(/<[^>]+>/g, ''),
       attachments,
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const msg = (e as Error).message || '알 수 없는 오류';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const err = e as Error & { code?: string; response?: string };
+    const detail = err.response ?? err.code ?? '';
+    const msg = err.message || '알 수 없는 오류';
+    const host = String(account.smtp_host);
+    const port = Number(account.smtp_port);
+    console.error(`SMTP error [${host}:${port}]`, msg, detail);
+    return NextResponse.json(
+      { error: `${msg}${detail ? ` (${detail})` : ''} — 서버: ${host}:${port}` },
+      { status: 500 }
+    );
   }
 }

@@ -41,17 +41,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   for (const mail of due) {
     try {
       const password = decryptPassword(account.password_enc as string);
-      const smtpPort = account.smtp_port as number;
+      const smtpPort = Number(account.smtp_port);
+      const isSSL = smtpPort === 465 || smtpPort === 994;
       const transport = nodemailer.createTransport({
-        host: account.smtp_host as string,
+        host: String(account.smtp_host),
         port: smtpPort,
-        secure: smtpPort === 465,
-        ...(smtpPort === 587 ? { requireTLS: true } : {}),
-        auth: { user: account.email as string, pass: password },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 30000,
+        secure: isSSL,
+        ...(isSSL ? {} : { requireTLS: true }),
+        auth: { user: String(account.email), pass: password },
+        tls: { rejectUnauthorized: false, minVersion: 'TLSv1' as 'TLSv1' },
+        connectionTimeout: 25000,
+        greetingTimeout: 25000,
+        socketTimeout: 35000,
       } as Parameters<typeof nodemailer.createTransport>[0]);
 
       const attachPaths: Array<{ filename: string; original: string; mime: string }> = JSON.parse(mail.attach_paths_json as string);
