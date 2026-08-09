@@ -304,6 +304,36 @@ function initSchema(db: Database.Database) {
       starred_by_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS mail_accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'custom',
+      label TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password_enc TEXT NOT NULL,
+      imap_host TEXT NOT NULL,
+      imap_port INTEGER NOT NULL DEFAULT 993,
+      smtp_host TEXT NOT NULL,
+      smtp_port INTEGER NOT NULL DEFAULT 587,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_ext_messages (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      uid TEXT NOT NULL,
+      from_name TEXT,
+      from_email TEXT NOT NULL DEFAULT '',
+      to_json TEXT NOT NULL DEFAULT '[]',
+      subject TEXT NOT NULL DEFAULT '',
+      body_text TEXT,
+      date TEXT NOT NULL,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      is_starred INTEGER NOT NULL DEFAULT 0,
+      synced_at TEXT NOT NULL,
+      UNIQUE(account_id, uid)
+    );
   `);
 }
 
