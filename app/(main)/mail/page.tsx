@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Mail, Star, Search, Pencil, ArrowLeft, X, Send, Inbox,
-  Plus, RefreshCw, Trash2, ChevronRight, Paperclip, Clock,
-  ChevronDown, CheckCircle2, AlertCircle,
+  Plus, RefreshCw, Trash2, Paperclip, Clock,
+  ChevronDown, CheckCircle2, AlertCircle, BookMarked,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -54,6 +54,12 @@ interface InternalUser {
   id: string;
   name: string;
   department?: string;
+}
+
+interface MailContact {
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface ScheduledMail {
@@ -107,6 +113,9 @@ export default function MailPage() {
   const [syncing, setSyncing] = useState(false);
   const [extFolder, setExtFolder] = useState<ExtFolder>('inbox');
 
+  // Contacts (즐겨찾기)
+  const [contacts, setContacts] = useState<MailContact[]>([]);
+
   // Compose
   const [showCompose, setShowCompose] = useState(false);
   const [compose, setCompose] = useState({ to: '', cc: '', bcc: '', subject: '', body: '', scheduledAt: '', files: [] as File[] });
@@ -128,6 +137,9 @@ export default function MailPage() {
     fetch('/api/admin/users').then(r => r.json()).then(d => {
       const list = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
       setInternalUsers(list);
+    }).catch(() => {});
+    fetch('/api/mail/contacts').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setContacts(d);
     }).catch(() => {});
     loadAccounts();
   }, []);
@@ -255,6 +267,29 @@ export default function MailPage() {
     if (!isRead(m)) await toggleRead(m);
   };
 
+  const loadContacts = async () => {
+    const d = await fetch('/api/mail/contacts').then(r => r.json()).catch(() => []);
+    if (Array.isArray(d)) setContacts(d);
+  };
+
+  const saveContact = async (name: string, email: string) => {
+    await fetch('/api/mail/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    });
+    loadContacts();
+  };
+
+  const deleteContact = async (id: string) => {
+    await fetch('/api/mail/contacts', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    loadContacts();
+  };
+
   const defaultCompose = { to: '', cc: '', bcc: '', subject: '', body: '', scheduledAt: '', files: [] as File[] };
 
   // ── Scheduled mails ──
@@ -369,8 +404,11 @@ export default function MailPage() {
           sending={sending}
           error={sendError}
           success={sendSuccess}
+          contacts={contacts}
           onChange={setCompose}
           onSend={handleSend}
+          onSaveContact={saveContact}
+          onDeleteContact={deleteContact}
           onClose={() => { setShowCompose(false); setCompose(defaultCompose); setSendError(''); setSendSuccess(''); }}
         />
       )}
@@ -629,7 +667,7 @@ function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
   );
 }
 
-function ComposeModal({ source, internalUsers, myId, compose, sending, error, success, onChange, onSend, onClose }: {
+function ComposeModal({ source, internalUsers, myId, compose, sending, error, success, contacts, onChange, onSend, onSaveContact, onDeleteContact, onClose }: {
   source: Source;
   internalUsers: InternalUser[];
   myId: string;
@@ -637,15 +675,22 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
   sending: boolean;
   error: string;
   success: string;
+  contacts: MailContact[];
   onChange: (c: typeof compose) => void;
   onSend: () => void;
+  onSaveContact: (name: string, email: string) => void;
+  onDeleteContact: (id: string) => void;
   onClose: () => void;
 }) {
   const isExternal = source !== 'internal';
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showContactDrop, setShowContactDrop] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [showSaveForm, setShowSaveForm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newFiles = Array.from(e.target.files ?? []);
@@ -653,8 +698,36 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
     e.target.value = '';
   };
   const removeFile = (i: number) => onChange({ ...compose, files: compose.files.filter((_, j) => j !== i) });
-
   const minSchedule = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+
+  // 즐겨찾기 자동완성 필터 (마지막 쉼표 이후 텍스트로 검색)
+  const toQuery = compose.to.split(',').pop()?.trim().toLowerCase() ?? '';
+  const filteredContacts = contacts.filter(c =>
+    toQuery.length === 0 ||
+    c.email.toLowerCase().includes(toQuery) ||
+    c.name.toLowerCase().includes(toQuery)
+  );
+
+  const selectContact = (c: MailContact) => {
+    const parts = compose.to.split(',').map(s => s.trim()).filter(Boolean);
+    parts[Math.max(0, parts.length - 1)] = c.email;
+    onChange({ ...compose, to: parts.join(', ') });
+    setShowContactDrop(false);
+    setTimeout(() => toRef.current?.focus(), 0);
+  };
+
+  // 현재 to 필드의 단일 이메일 (즐겨찾기 저장용)
+  const singleEmail = compose.to.split(',').map(s => s.trim()).filter(Boolean);
+  const lastEmail = singleEmail[singleEmail.length - 1] ?? '';
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lastEmail);
+  const alreadySaved = contacts.find(c => c.email.toLowerCase() === lastEmail.toLowerCase());
+
+  const handleSave = () => {
+    if (!isValidEmail) return;
+    onSaveContact(saveName, lastEmail);
+    setShowSaveForm(false);
+    setSaveName('');
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -665,12 +738,10 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* Recipient fields */}
           <div className="px-5 pt-4 space-y-2">
             {error && (
               <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                발송 실패: {error}
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />발송 실패: {error}
               </div>
             )}
             {success && (
@@ -679,23 +750,94 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
               </div>
             )}
 
-            {/* To */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-8 shrink-0">받는</span>
-              {isExternal
-                ? <Input className="flex-1 h-8 text-sm" value={compose.to} onChange={e => onChange({ ...compose, to: e.target.value })} placeholder="이메일 주소 (쉼표로 여러 명)" />
-                : <select className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm"
+            {/* To + 즐겨찾기 */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-8 shrink-0">받는</span>
+                {isExternal ? (
+                  <div className="flex-1 relative">
+                    <Input
+                      ref={toRef}
+                      className="h-8 text-sm w-full"
+                      value={compose.to}
+                      onChange={e => { onChange({ ...compose, to: e.target.value }); setShowContactDrop(true); }}
+                      onFocus={() => setShowContactDrop(true)}
+                      onBlur={() => setTimeout(() => setShowContactDrop(false), 180)}
+                      placeholder="이메일 주소 (쉼표로 여러 명)"
+                    />
+                    {/* Dropdown */}
+                    {showContactDrop && filteredContacts.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-50 bg-background border border-border rounded-lg shadow-lg mt-1 max-h-52 overflow-y-auto">
+                        {filteredContacts.map(c => (
+                          <button
+                            key={c.id}
+                            onMouseDown={e => { e.preventDefault(); selectContact(c); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-muted/60 text-left transition-colors"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                              {(c.name || c.email)[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              {c.name && <p className="text-sm font-medium truncate">{c.name}</p>}
+                              <p className={cn('truncate', c.name ? 'text-xs text-muted-foreground' : 'text-sm')}>{c.email}</p>
+                            </div>
+                            <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <select className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm"
                     value={compose.to} onChange={e => onChange({ ...compose, to: e.target.value })}>
                     <option value="">받는 사람 선택</option>
                     {internalUsers.filter(u => u.id !== myId).map(u => (
                       <option key={u.id} value={u.id}>{u.name}{u.department ? ` (${u.department})` : ''}</option>
                     ))}
                   </select>
-              }
-              {isExternal && (
-                <div className="flex gap-1 shrink-0">
-                  <button onClick={() => setShowCc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showCc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>참조</button>
-                  <button onClick={() => setShowBcc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showBcc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>숨은참조</button>
+                )}
+                {isExternal && (
+                  <div className="flex gap-1 shrink-0">
+                    {/* 즐겨찾기 저장/삭제 버튼 */}
+                    {isValidEmail && (
+                      alreadySaved ? (
+                        <button
+                          onClick={() => onDeleteContact(alreadySaved.id)}
+                          title="즐겨찾기 삭제"
+                          className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/50 text-yellow-400"
+                        >
+                          <Star className="w-4 h-4 fill-yellow-400" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setSaveName(''); setShowSaveForm(v => !v); }}
+                          title="즐겨찾기에 추가"
+                          className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/50 text-muted-foreground hover:text-yellow-400"
+                        >
+                          <Star className="w-4 h-4" />
+                        </button>
+                      )
+                    )}
+                    <button onClick={() => setShowCc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showCc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>참조</button>
+                    <button onClick={() => setShowBcc(v => !v)} className={cn('text-[11px] px-1.5 py-0.5 rounded border transition-colors', showBcc ? 'border-primary text-primary bg-primary/5' : 'border-border text-muted-foreground')}>숨은참조</button>
+                  </div>
+                )}
+              </div>
+
+              {/* 즐겨찾기 저장 폼 */}
+              {isExternal && showSaveForm && isValidEmail && !alreadySaved && (
+                <div className="ml-10 flex items-center gap-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800">
+                  <BookMarked className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                  <Input
+                    className="h-7 text-xs flex-1"
+                    placeholder={`이름 (${lastEmail})`}
+                    value={saveName}
+                    onChange={e => setSaveName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSave()}
+                    autoFocus
+                  />
+                  <button onClick={handleSave} className="text-xs text-primary hover:underline shrink-0">저장</button>
+                  <button onClick={() => setShowSaveForm(false)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
                 </div>
               )}
             </div>
@@ -707,8 +849,6 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
                 <Input className="flex-1 h-8 text-sm" value={compose.cc} onChange={e => onChange({ ...compose, cc: e.target.value })} placeholder="참조 이메일 주소" />
               </div>
             )}
-
-            {/* BCC */}
             {isExternal && showBcc && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground w-8 shrink-0">숨은참조</span>
@@ -773,9 +913,7 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
                     onChange={e => onChange({ ...compose, scheduledAt: e.target.value })}
                   />
                   {compose.scheduledAt && (
-                    <button onClick={() => onChange({ ...compose, scheduledAt: '' })} className="text-xs text-muted-foreground hover:text-destructive">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    <button onClick={() => onChange({ ...compose, scheduledAt: '' })} className="text-muted-foreground hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
                   )}
                 </div>
               )}
@@ -788,13 +926,9 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
           <div className="flex-1" />
           <Button size="sm" className="h-8 gap-1.5 min-w-[100px]" onClick={onSend}
             disabled={sending || !compose.to || !compose.subject}>
-            {sending ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : compose.scheduledAt ? (
-              <><Clock className="w-3.5 h-3.5" />예약 발송</>
-            ) : (
-              <><Send className="w-3.5 h-3.5" />발송</>
-            )}
+            {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              : compose.scheduledAt ? <><Clock className="w-3.5 h-3.5" />예약 발송</>
+              : <><Send className="w-3.5 h-3.5" />발송</>}
           </Button>
         </div>
       </div>

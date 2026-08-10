@@ -364,6 +364,15 @@ function initSchema(db: Database.Database) {
       UNIQUE(account_id, uid)
     );
 
+    CREATE TABLE IF NOT EXISTS mail_contacts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(user_id, email)
+    );
+
     CREATE TABLE IF NOT EXISTS scheduled_ext_mails (
       id TEXT PRIMARY KEY,
       account_id TEXT NOT NULL,
