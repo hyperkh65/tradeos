@@ -96,13 +96,28 @@ function getFileUrl(p: Props, ...keys: string[]): string | undefined {
   return undefined;
 }
 
+function getAllFileUrls(p: Props, ...keys: string[]): string[] {
+  const urls: string[] = [];
+  for (const k of keys) {
+    const f = (p[k] as any);
+    if (!f?.files) continue;
+    for (const file of f.files as any[]) {
+      const url = file.external?.url || file.file?.url;
+      if (url) urls.push(url);
+    }
+  }
+  return urls;
+}
+
 export function notionToProduct(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Product {
   const p = page.properties;
+  const codeFromNotion = getText(p, 'ProductCode', '제품코드', '코드');
+  const allImages = getAllFileUrls(p, 'Image', '이미지', 'FileSpec', 'FileEMI', 'FileEfficiency', 'FileKSKC', 'FileEtc');
   const base: Product = {
     id: page.id,
-    businessId: getText(p, 'ProductCode', '코드') || page.id.slice(0, 8),
-    code: getText(p, 'ProductCode', '제품코드', '코드'),
-    nameKo: getText(p, 'ProductName', '제품명'),
+    businessId: codeFromNotion || page.id,
+    code: codeFromNotion || `ERP-${page.id.slice(0, 10)}`,
+    nameKo: getText(p, 'ProductName', '제품명', 'Name', '이름'),
     nameEn: getText(p, '영문명') || undefined,
     category: getText(p, 'ProductCategory') || getSelect(p, '카테고리') || undefined,
     supplierName: getText(p, 'Supplier', '공급업체') || undefined,
@@ -118,7 +133,8 @@ export function notionToProduct(page: { id: string; properties: Props; created_t
     updatedAt: page.last_edited_time,
   };
   return Object.assign(base, {
-    imageUrl: getFileUrl(p, 'Image', '이미지') || undefined,
+    imageUrl: allImages[0] || undefined,
+    imagesJson: allImages.length > 0 ? JSON.stringify(allImages) : undefined,
     detail: getText(p, 'Detail', '상세') || undefined,
     maker: getText(p, 'Maker', '제조사') || undefined,
     voltage: getText(p, 'Voltage', '전압') || undefined,

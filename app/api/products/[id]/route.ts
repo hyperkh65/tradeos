@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { updateNotionPage, productToNotion, archiveNotionPage } from '@/lib/notion/mapper';
+import { dbToProduct } from '../route';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,11 +12,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const row = db.prepare('SELECT * FROM products WHERE id=?').get(id) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
 
+    const images: string[] = body.images || [];
+    const imagesJson = images.length > 0 ? JSON.stringify(images) : null;
+
     db.prepare(`UPDATE products SET
       code=?, name_ko=?, name_en=?, category=?, supplier_name=?, status=?,
       purchase_price=?, selling_price=?, currency=?, moq=?, lead_time_days=?,
       hs_code=?, country_of_origin=?,
-      image_url=?, detail=?, maker=?,
+      image_url=?, images_json=?,
+      detail=?, maker=?,
       voltage=?, watts=?, cct=?,
       input_a=?, output_v=?, output_a=?, material=?, size_spec=?, converter=?,
       updated_at=?
@@ -26,7 +31,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.purchasePrice ?? null, body.sellingPrice ?? null, body.currency ?? row.currency,
         body.moq ?? null, body.leadTimeDays ?? null,
         body.hsCode ?? null, body.countryOfOrigin ?? null,
-        body.imageUrl ?? null, body.detail ?? null, body.maker ?? null,
+        images[0] ?? null, imagesJson,
+        body.detail ?? null, body.maker ?? null,
         body.voltage ?? null, body.watts ?? null, body.cct ?? null,
         body.inputA ?? null, body.outputV ?? null, body.outputA ?? null,
         body.material ?? null, body.sizeSpec ?? null, body.converter ?? null,
@@ -37,7 +43,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updateNotionPage(row.notion_id as string, productToNotion(body)).catch(() => {});
     }
 
-    return NextResponse.json({ data: { ...row, ...body, updatedAt: ts } });
+    const updated = db.prepare('SELECT * FROM products WHERE id=?').get(id) as Record<string, unknown>;
+    return NextResponse.json({ data: dbToProduct(updated) });
   } catch {
     return NextResponse.json({ error: '수정 실패' }, { status: 500 });
   }

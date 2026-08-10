@@ -440,6 +440,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE companies ADD COLUMN biz_reg_file TEXT`,
     `ALTER TABLE companies ADD COLUMN bank_copy_file TEXT`,
     `ALTER TABLE products ADD COLUMN image_url TEXT`,
+    `ALTER TABLE products ADD COLUMN images_json TEXT`,
     `ALTER TABLE products ADD COLUMN detail TEXT`,
     `ALTER TABLE products ADD COLUMN voltage TEXT`,
     `ALTER TABLE products ADD COLUMN watts TEXT`,

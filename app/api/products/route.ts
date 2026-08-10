@@ -3,7 +3,10 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import { fetchNotionProducts, createNotionProduct } from '@/lib/notion/mapper';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
 
-function dbToProduct(row: Record<string, unknown>) {
+export function dbToProduct(row: Record<string, unknown>) {
+  const images: string[] = (() => {
+    try { return JSON.parse((row.images_json as string) || '[]'); } catch { return []; }
+  })();
   return {
     id: row.id, businessId: row.business_id, code: row.code,
     nameKo: row.name_ko, nameEn: row.name_en || undefined, category: row.category || undefined,
@@ -12,7 +15,8 @@ function dbToProduct(row: Record<string, unknown>) {
     purchasePrice: row.purchase_price || undefined, sellingPrice: row.selling_price || undefined,
     currency: row.currency, moq: row.moq || undefined, leadTimeDays: row.lead_time_days || undefined,
     hsCode: row.hs_code || undefined, countryOfOrigin: row.country_of_origin || undefined,
-    imageUrl: row.image_url || undefined,
+    imageUrl: images[0] || row.image_url || undefined,
+    images,
     detail: row.detail || undefined, maker: row.maker || undefined,
     voltage: row.voltage || undefined, watts: row.watts || undefined, cct: row.cct || undefined,
     inputA: row.input_a || undefined, outputV: row.output_v || undefined, outputA: row.output_a || undefined,
@@ -22,8 +26,8 @@ function dbToProduct(row: Record<string, unknown>) {
 }
 
 const UPSERT_SQL = `INSERT OR REPLACE INTO products
-  (id,business_id,code,name_ko,name_en,category,supplier_name,status,purchase_price,selling_price,currency,moq,lead_time_days,hs_code,country_of_origin,image_url,detail,maker,voltage,watts,cct,input_a,output_v,output_a,material,size_spec,converter,notion_id,created_at,updated_at)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+  (id,business_id,code,name_ko,name_en,category,supplier_name,status,purchase_price,selling_price,currency,moq,lead_time_days,hs_code,country_of_origin,image_url,images_json,detail,maker,voltage,watts,cct,input_a,output_v,output_a,material,size_spec,converter,notion_id,created_at,updated_at)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 export async function GET() {
   try {
@@ -35,14 +39,16 @@ export async function GET() {
       db.transaction(() => {
         for (const p of notionData) {
           const existing = db.prepare('SELECT updated_at FROM products WHERE id=?').get(p.id) as { updated_at: string } | undefined;
-          if (existing && existing.updated_at > p.updatedAt) continue; // local edit is newer, skip
+          if (existing && existing.updated_at > p.updatedAt) continue;
           const ex = p as any;
+          const imagesJson = ex.imagesJson || (ex.imageUrl ? JSON.stringify([ex.imageUrl]) : null);
           upsert.run(
             p.id, p.businessId, p.code, p.nameKo, p.nameEn ?? null, p.category ?? null,
             p.supplierName ?? null, p.status,
             p.purchasePrice ?? null, p.sellingPrice ?? null, p.currency,
             p.moq ?? null, p.leadTimeDays ?? null, p.hsCode ?? null, p.countryOfOrigin ?? null,
-            ex.imageUrl ?? null, ex.detail ?? null, ex.maker ?? null,
+            ex.imageUrl ?? null, imagesJson ?? null,
+            ex.detail ?? null, ex.maker ?? null,
             ex.voltage ?? null, ex.watts ?? null, ex.cct ?? null,
             ex.inputA ?? null, ex.outputV ?? null, ex.outputA ?? null,
             ex.material ?? null, ex.sizeSpec ?? null, ex.converter ?? null,
@@ -75,19 +81,23 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const db = getDb();
-    const id = newId();
+    const id = body.preId || newId();
     const ts = now();
 
     const lastRow = db.prepare(`SELECT business_id FROM products WHERE business_id LIKE 'PRD-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
     const lastNum = lastRow ? parseInt(lastRow.business_id.split('-')[1] || '0') : 0;
     const bizId = body.businessId || `PRD-${String(lastNum + 1).padStart(4, '0')}`;
 
+    const images: string[] = body.images || [];
+    const imagesJson = images.length > 0 ? JSON.stringify(images) : null;
+
     db.prepare(UPSERT_SQL).run(
       id, bizId, body.code, body.nameKo, body.nameEn ?? null, body.category ?? null,
       body.supplierName ?? null, body.status || 'active',
       body.purchasePrice ?? null, body.sellingPrice ?? null, body.currency || 'USD',
       body.moq ?? null, body.leadTimeDays ?? null, body.hsCode ?? null, body.countryOfOrigin ?? null,
-      body.imageUrl ?? null, body.detail ?? null, body.maker ?? null,
+      images[0] ?? null, imagesJson,
+      body.detail ?? null, body.maker ?? null,
       body.voltage ?? null, body.watts ?? null, body.cct ?? null,
       body.inputA ?? null, body.outputV ?? null, body.outputA ?? null,
       body.material ?? null, body.sizeSpec ?? null, body.converter ?? null,
@@ -98,7 +108,7 @@ export async function POST(req: NextRequest) {
       if (notionId) db.prepare('UPDATE products SET notion_id=? WHERE id=?').run(notionId, id);
     }).catch(() => {});
 
-    return NextResponse.json({ data: { id, businessId: bizId, ...body, createdAt: ts, updatedAt: ts } }, { status: 201 });
+    return NextResponse.json({ data: { id, businessId: bizId, ...body, images, createdAt: ts, updatedAt: ts } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
   }
