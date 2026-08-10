@@ -119,7 +119,11 @@ export function notionToProduct(page: { id: string; properties: Props; created_t
     code: codeFromNotion || `ERP-${page.id.slice(0, 10)}`,
     nameKo: getText(p, 'ProductName', '제품명', 'Name', '이름'),
     nameEn: getText(p, '영문명') || undefined,
-    category: getText(p, 'ProductCategory') || getSelect(p, '카테고리') || undefined,
+    category: (() => {
+      const name = getText(p, 'ProductName', '제품명', 'Name', '이름');
+      const cat = getText(p, 'ProductCategory') || getSelect(p, '카테고리') || '';
+      return (cat && cat !== name) ? cat : undefined;
+    })(),
     supplierName: getText(p, 'Supplier', '공급업체') || undefined,
     status: 'active' as Product['status'],
     purchasePrice: getNum(p, 'Cost', '구매단가'),

@@ -4,7 +4,11 @@ import { AppHeader } from '@/components/layout/header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Package, Plus, Search, X, Loader2, Pencil, Trash2, ImageIcon, Upload } from 'lucide-react';
+import {
+  Package, Plus, Search, X, Loader2, Pencil, Trash2, ImageIcon, Upload,
+  ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, Zap, Sun, Thermometer,
+  ArrowRight, Box, Layers, RefreshCw,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Product } from '@/types';
@@ -12,7 +16,408 @@ import type { Product } from '@/types';
 const CATEGORIES = ['조명', '가전', '전자', '생활용품', '산업용품', '기타'];
 const MIN_IMAGE_SLOTS = 5;
 
-// ─── Multi-image grid ────────────────────────────────────────────────────────
+/* ─── Exchange rates ─────────────────────────────────────────────────────── */
+
+interface Rates { KRW: number; CNY: number; updatedAt: string }
+
+function useExchangeRates() {
+  const [rates, setRates] = useState<Rates | null>(null);
+  useEffect(() => {
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then(r => r.json())
+      .then(d => setRates({ KRW: d.rates?.KRW ?? 1340, CNY: d.rates?.CNY ?? 7.2, updatedAt: d.time_last_update_utc ?? '' }))
+      .catch(() => setRates({ KRW: 1340, CNY: 7.2, updatedAt: '' }));
+  }, []);
+  return rates;
+}
+
+/* ─── Sparkline SVG ──────────────────────────────────────────────────────── */
+
+function Sparkline({ values, w = 96, h = 32 }: { values: number[]; w?: number; h?: number }) {
+  if (values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pad = 3;
+  const pts = values.map((v, i) => [
+    pad + (i / (values.length - 1)) * (w - 2 * pad),
+    h - pad - ((v - min) / range) * (h - 2 * pad),
+  ]);
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
+  const up = values[values.length - 1] >= values[0];
+  const color = up ? '#16a34a' : '#dc2626';
+  const last = pts[pts.length - 1];
+  return (
+    <svg width={w} height={h} className="overflow-visible shrink-0">
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
+/* ─── Spec tags for list row ─────────────────────────────────────────────── */
+
+function SpecTags({ product }: { product: Product }) {
+  const ex = product as any;
+  const tags: { label: string; cls: string }[] = [];
+  if (ex.voltage) tags.push({ label: ex.voltage, cls: 'bg-blue-50 text-blue-700 border-blue-200' });
+  if (ex.watts) tags.push({ label: `${ex.watts}W`, cls: 'bg-orange-50 text-orange-700 border-orange-200' });
+  if (ex.cct) tags.push({ label: ex.cct, cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' });
+  if (ex.inputA) tags.push({ label: `IN ${ex.inputA}`, cls: 'bg-green-50 text-green-700 border-green-200' });
+  if (ex.outputV) tags.push({ label: `${ex.outputV}V`, cls: 'bg-purple-50 text-purple-700 border-purple-200' });
+  if (ex.material) tags.push({ label: ex.material, cls: 'bg-gray-100 text-gray-600 border-gray-200' });
+  if (ex.sizeSpec) tags.push({ label: ex.sizeSpec, cls: 'bg-gray-100 text-gray-600 border-gray-200' });
+
+  if (tags.length === 0 && ex.detail) {
+    return <span className="text-xs text-muted-foreground truncate block max-w-[200px]">{ex.detail}</span>;
+  }
+  if (tags.length === 0) return <span className="text-xs text-muted-foreground">-</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.slice(0, 4).map(t => (
+        <span key={t.label} className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap', t.cls)}>{t.label}</span>
+      ))}
+      {tags.length > 4 && <span className="text-[10px] text-muted-foreground">+{tags.length - 4}</span>}
+    </div>
+  );
+}
+
+/* ─── Price cell ─────────────────────────────────────────────────────────── */
+
+function PriceCell({ price, currency, rates }: { price?: number; currency: string; rates: Rates | null }) {
+  if (!price) return <span className="text-xs text-muted-foreground">-</span>;
+  const usd = Number(price);
+  const krw = currency === 'USD' && rates ? Math.round(usd * rates.KRW) : null;
+  return (
+    <div className="text-right">
+      <p className="text-sm font-semibold whitespace-nowrap">{currency} {usd.toFixed(2)}</p>
+      {krw && <p className="text-[10px] text-muted-foreground">₩{krw.toLocaleString()}</p>}
+    </div>
+  );
+}
+
+/* ─── Product Detail Drawer ──────────────────────────────────────────────── */
+
+function ProductDrawer({
+  product, rates, pos, onClose, onEdit, onDelete,
+}: {
+  product: Product; rates: Rates | null;
+  pos: any[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
+}) {
+  const ex = product as any;
+  const imgs: string[] = ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : [];
+  const [imgIdx, setImgIdx] = useState(0);
+  const [tab, setTab] = useState<'info' | 'spec' | 'price'>('info');
+
+  // Related POs (filter by product name or code)
+  const relatedPOs = pos.filter(po =>
+    po.items?.some((it: any) =>
+      it.productName?.includes(product.nameKo.slice(0, 8)) ||
+      it.productName?.includes(product.code)
+    )
+  );
+
+  const priceHistory = relatedPOs
+    .flatMap((po: any) => po.items?.filter((it: any) =>
+      it.productName?.includes(product.nameKo.slice(0, 8)) || it.productName?.includes(product.code)
+    ).map((it: any) => ({ date: po.orderDate || po.createdAt || '', price: it.unitPrice || 0 })) ?? [])
+    .filter((h: any) => h.price > 0)
+    .sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+  const prices = priceHistory.map((h: any) => h.price);
+  const minP = prices.length ? Math.min(...prices) : 0;
+  const maxP = prices.length ? Math.max(...prices) : 0;
+  const latestP = prices[prices.length - 1] ?? product.purchasePrice ?? 0;
+  const prevP = prices[prices.length - 2];
+  const trendPct = prevP ? ((latestP - prevP) / prevP) * 100 : null;
+
+  const usd = Number(product.purchasePrice || 0);
+  const krwPrice = usd && rates ? Math.round(usd * rates.KRW) : null;
+  const cnyPrice = usd && rates ? (usd * rates.CNY).toFixed(2) : null;
+
+  const specRows = [
+    ['전압 (Voltage)', ex.voltage],
+    ['와트 (Watts)', ex.watts],
+    ['색온도 (CCT)', ex.cct],
+    ['입력전류 (InputA)', ex.inputA],
+    ['출력전압 (OutputV)', ex.outputV],
+    ['출력전류 (OutputA)', ex.outputA],
+    ['재질 (Material)', ex.material],
+    ['크기 (Size)', ex.sizeSpec],
+    ['컨버터 (Converter)', ex.converter],
+  ].filter(([, v]) => v);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40 cursor-pointer" onClick={onClose} />
+      <div className="w-full max-w-md bg-background shadow-2xl flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-background shrink-0">
+          <button onClick={onClose} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ChevronLeft className="w-4 h-4" /> 목록
+          </button>
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="sm" className="h-8 gap-1" onClick={onEdit}>
+              <Pencil className="w-3.5 h-3.5" /> 수정
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-red-500 hover:text-red-700" onClick={onDelete}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Image carousel */}
+          <div className="relative bg-muted/20 aspect-[4/3] shrink-0">
+            {imgs.length > 0 ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={imgs[imgIdx]} alt="" className="w-full h-full object-contain"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = '0.2'; }} />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <ImageIcon className="w-16 h-16 text-muted-foreground/20" />
+              </div>
+            )}
+            {imgs.length > 1 && (
+              <>
+                <button onClick={() => setImgIdx(i => (i - 1 + imgs.length) % imgs.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-colors">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button onClick={() => setImgIdx(i => (i + 1) % imgs.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-colors">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1">
+                  {imgs.map((_, i) => (
+                    <button key={i} onClick={() => setImgIdx(i)}
+                      className={cn('w-1.5 h-1.5 rounded-full transition-colors', i === imgIdx ? 'bg-white' : 'bg-white/40')} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Thumbnail strip */}
+          {imgs.length > 1 && (
+            <div className="flex gap-1.5 p-3 border-b overflow-x-auto shrink-0">
+              {imgs.map((url, i) => (
+                <button key={i} onClick={() => setImgIdx(i)}
+                  className={cn('w-12 h-12 rounded-md border-2 overflow-hidden shrink-0 transition-colors',
+                    i === imgIdx ? 'border-primary' : 'border-border hover:border-muted-foreground')}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Identity */}
+          <div className="px-4 py-3 border-b">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-mono text-xs text-muted-foreground">{product.code}</span>
+                  {product.status === 'active' && (
+                    <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium">판매중</span>
+                  )}
+                </div>
+                <h2 className="text-base font-bold leading-snug">{product.nameKo}</h2>
+                {product.nameEn && <p className="text-sm text-muted-foreground mt-0.5">{product.nameEn}</p>}
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  {product.category && <Badge variant="secondary" className="text-xs">{product.category}</Badge>}
+                  {product.supplierName && <span className="text-xs text-muted-foreground">{product.supplierName}</span>}
+                  {ex.maker && <span className="text-xs text-muted-foreground">제조: {ex.maker}</span>}
+                </div>
+              </div>
+
+              {/* Price summary */}
+              <div className="text-right shrink-0">
+                {product.purchasePrice ? (
+                  <>
+                    <p className="text-xl font-bold text-primary">{product.currency} {usd.toFixed(2)}</p>
+                    {krwPrice && <p className="text-sm text-muted-foreground">₩{krwPrice.toLocaleString()}</p>}
+                    {trendPct !== null && (
+                      <div className={cn('flex items-center justify-end gap-0.5 text-xs mt-0.5',
+                        trendPct > 0 ? 'text-red-600' : trendPct < 0 ? 'text-green-600' : 'text-muted-foreground')}>
+                        {trendPct > 0 ? <TrendingUp className="w-3 h-3" /> : trendPct < 0 ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                        {trendPct > 0 ? '+' : ''}{trendPct.toFixed(1)}%
+                      </div>
+                    )}
+                  </>
+                ) : <p className="text-sm text-muted-foreground">가격 미정</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b shrink-0">
+            {(['info', 'spec', 'price'] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={cn('flex-1 py-2.5 text-sm font-medium transition-colors border-b-2',
+                  tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+                {t === 'info' ? '기본정보' : t === 'spec' ? '사양' : '가격/이력'}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="p-4">
+
+            {/* ── 기본정보 ── */}
+            {tab === 'info' && (
+              <div className="space-y-2.5">
+                {[
+                  ['품번 (Code)', product.code],
+                  ['제품명 (한글)', product.nameKo],
+                  ['제품명 (영문)', product.nameEn],
+                  ['카테고리', product.category],
+                  ['공급업체', product.supplierName],
+                  ['제조사', ex.maker],
+                  ['원산지', product.countryOfOrigin],
+                  ['HS Code', product.hsCode],
+                  ['MOQ', product.moq ? `${product.moq.toLocaleString()} pcs` : undefined],
+                  ['리드타임', product.leadTimeDays ? `${product.leadTimeDays}일` : undefined],
+                  ['상세설명', ex.detail],
+                ].filter(([, v]) => v).map(([k, v]) => (
+                  <div key={String(k)} className="flex gap-3 py-1.5 border-b border-border/50 last:border-0">
+                    <span className="text-xs text-muted-foreground w-28 shrink-0 pt-px">{k}</span>
+                    <span className="text-sm flex-1">{String(v)}</span>
+                  </div>
+                ))}
+                {![product.nameEn, product.category, product.supplierName, ex.maker, product.countryOfOrigin].some(Boolean) && (
+                  <p className="text-sm text-muted-foreground text-center py-6">기본 정보를 수정하여 채워주세요.</p>
+                )}
+              </div>
+            )}
+
+            {/* ── 사양 ── */}
+            {tab === 'spec' && (
+              <div>
+                {specRows.length > 0 ? (
+                  <div className="space-y-0">
+                    {specRows.map(([k, v]) => (
+                      <div key={String(k)} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
+                        <span className="text-xs text-muted-foreground w-32 shrink-0">{k}</span>
+                        <span className="text-sm font-medium">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <Box className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+                    <p className="text-sm text-muted-foreground">등록된 사양이 없습니다.</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">수정 버튼을 눌러 사양을 입력하세요.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 가격/이력 ── */}
+            {tab === 'price' && (
+              <div className="space-y-5">
+
+                {/* Currency cards */}
+                {product.purchasePrice ? (
+                  <div>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">현재 환율 기준 가격</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-xl p-3 text-center bg-blue-50 border border-blue-100">
+                        <p className="text-[10px] font-bold text-blue-500 mb-1">USD</p>
+                        <p className="text-base font-bold text-blue-700">${usd.toFixed(2)}</p>
+                      </div>
+                      <div className="rounded-xl p-3 text-center bg-emerald-50 border border-emerald-100">
+                        <p className="text-[10px] font-bold text-emerald-500 mb-1">KRW</p>
+                        <p className="text-base font-bold text-emerald-700">
+                          {krwPrice ? `₩${krwPrice.toLocaleString()}` : '-'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl p-3 text-center bg-red-50 border border-red-100">
+                        <p className="text-[10px] font-bold text-red-500 mb-1">CNY</p>
+                        <p className="text-base font-bold text-red-700">
+                          {cnyPrice ? `¥${cnyPrice}` : '-'}
+                        </p>
+                      </div>
+                    </div>
+                    {rates && (
+                      <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        1 USD = ₩{rates.KRW.toFixed(0)} · ¥{rates.CNY.toFixed(2)}
+                        {rates.updatedAt && <span className="opacity-60"> · {rates.updatedAt.slice(0, 16)}</span>}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">가격 정보 없음</p>
+                )}
+
+                {/* Trend sparkline */}
+                {prices.length >= 2 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">가격 추세</p>
+                    <div className="flex items-center gap-4 p-3 rounded-xl bg-muted/30">
+                      <Sparkline values={prices} w={100} h={40} />
+                      <div className="text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground w-8">최저</span>
+                          <span className="font-semibold text-green-600">${minP.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground w-8">최고</span>
+                          <span className="font-semibold text-red-600">${maxP.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground w-8">현재</span>
+                          <span className="font-semibold">${latestP.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* PO history */}
+                {priceHistory.length > 0 ? (
+                  <div>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      발주 이력 ({priceHistory.length}건)
+                    </p>
+                    <div className="space-y-1">
+                      {(priceHistory as any[]).slice().reverse().slice(0, 8).map((h: any, i: number) => {
+                        const prev = (priceHistory as any[])[priceHistory.length - 2 - i];
+                        const diff = prev ? h.price - prev.price : 0;
+                        return (
+                          <div key={i} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+                            <span className="text-xs text-muted-foreground w-24 shrink-0">{h.date?.slice(0, 10)}</span>
+                            <span className="text-sm font-semibold">${h.price.toFixed(2)}</span>
+                            {diff !== 0 && (
+                              <span className={cn('text-[10px] ml-auto', diff > 0 ? 'text-red-500' : 'text-green-600')}>
+                                {diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Layers className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+                    <p className="text-sm text-muted-foreground">발주 이력이 없습니다</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Multi-image grid ───────────────────────────────────────────────────── */
 
 interface ImageGridProps {
   images: string[];
@@ -35,22 +440,13 @@ function ImageGrid({ images, productId, onChange, disabled }: ImageGridProps) {
       fd.append('file', file);
       const res = await fetch(`/api/products/${productId}/upload`, { method: 'POST', body: fd });
       const j = await res.json();
-      if (j.url) {
-        onChange([...images, j.url]);
-      } else {
-        alert(j.error || '업로드 실패');
-      }
-    } catch {
-      alert('업로드 중 오류가 발생했습니다.');
-    } finally {
-      setUploading(null);
-    }
+      if (j.url) onChange([...images, j.url]);
+      else alert(j.error || '업로드 실패');
+    } catch { alert('업로드 중 오류가 발생했습니다.'); }
+    finally { setUploading(null); }
   }, [images, productId, onChange]);
 
-  const removeImage = (idx: number) => {
-    onChange(images.filter((_, i) => i !== idx));
-  };
-
+  const removeImage = (idx: number) => onChange(images.filter((_, i) => i !== idx));
   const emptySlots = Math.max(MIN_IMAGE_SLOTS - images.length, 1);
   const slots = [
     ...images.map((url, i) => ({ type: 'image' as const, url, idx: i })),
@@ -65,50 +461,30 @@ function ImageGrid({ images, productId, onChange, disabled }: ImageGridProps) {
             return (
               <div key={slot.idx} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-muted/30 group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={slot.url} alt={`제품 이미지 ${slot.idx + 1}`}
-                  className="w-full h-full object-cover"
+                <img src={slot.url} alt="" className="w-full h-full object-cover"
                   onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }} />
                 {!disabled && (
-                  <button
-                    type="button"
-                    onClick={() => removeImage(slot.idx)}
-                    className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
+                  <button type="button" onClick={() => removeImage(slot.idx)}
+                    className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <X className="w-3 h-3" />
                   </button>
                 )}
-                <div className="absolute bottom-1 left-1 bg-black/50 text-white text-[9px] px-1 rounded">
-                  {slot.idx + 1}
-                </div>
+                <div className="absolute bottom-1 left-1 bg-black/50 text-white text-[9px] px-1 rounded">{slot.idx + 1}</div>
               </div>
             );
           }
-          // Empty upload slot
-          const isFirst = slot.idx === images.length; // first empty slot
+          const isFirst = slot.idx === images.length;
           return (
-            <div
-              key={slot.idx}
-              onClick={() => {
-                if (disabled) return;
-                pendingSlot.current = slot.idx;
-                inputRef.current?.click();
-              }}
-              onDrop={e => {
-                e.preventDefault();
-                setDragOverIdx(null);
-                if (disabled) return;
-                const file = e.dataTransfer.files[0];
-                if (file) uploadFile(file, slot.idx);
-              }}
+            <div key={slot.idx}
+              onClick={() => { if (disabled) return; pendingSlot.current = slot.idx; inputRef.current?.click(); }}
+              onDrop={e => { e.preventDefault(); setDragOverIdx(null); if (!disabled) { const f = e.dataTransfer.files[0]; if (f) uploadFile(f, slot.idx); } }}
               onDragOver={e => { e.preventDefault(); setDragOverIdx(slot.idx); }}
               onDragLeave={() => setDragOverIdx(null)}
               className={cn(
                 'aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors',
-                dragOverIdx === slot.idx
-                  ? 'border-primary bg-primary/5'
-                  : isFirst
-                    ? 'border-primary/40 hover:border-primary bg-primary/5'
-                    : 'border-border hover:border-muted-foreground/40',
+                dragOverIdx === slot.idx ? 'border-primary bg-primary/5'
+                  : isFirst ? 'border-primary/40 hover:border-primary bg-primary/5'
+                  : 'border-border hover:border-muted-foreground/40',
                 disabled && 'opacity-50 cursor-not-allowed',
               )}
             >
@@ -127,33 +503,22 @@ function ImageGrid({ images, productId, onChange, disabled }: ImageGridProps) {
         })}
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5">클릭 또는 드래그&드롭 · JPG, PNG, WEBP · 최대 30MB · {images.length}개 등록됨</p>
-      <input
-        ref={inputRef}
-        type="file"
-        hidden
-        accept="image/*"
-        onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) uploadFile(file, pendingSlot.current);
-          e.target.value = '';
-        }}
-      />
+      <input ref={inputRef} type="file" hidden accept="image/*"
+        onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f, pendingSlot.current); e.target.value = ''; }} />
     </div>
   );
 }
 
-// ─── Product Modal ──────────────────────────────────────────────────────────
+/* ─── Product Modal (Edit/Create) ────────────────────────────────────────── */
 
 function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null; preId: string; onClose: () => void; onSave: () => void }) {
   const ex = item as any;
   const productId = item?.id || preId;
-
   const [images, setImages] = useState<string[]>(() => {
     if (ex?.images?.length) return ex.images;
     if (ex?.imageUrl) return [ex.imageUrl];
     return [];
   });
-
   const [form, setForm] = useState({
     code: item?.code || '',
     nameKo: item?.nameKo || '',
@@ -187,163 +552,97 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
     setSaving(true);
     try {
       const body = {
-        ...form,
-        images,
+        ...form, images,
         purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
         sellingPrice: form.sellingPrice ? Number(form.sellingPrice) : undefined,
         moq: form.moq ? Number(form.moq) : undefined,
         leadTimeDays: form.leadTimeDays ? Number(form.leadTimeDays) : undefined,
       };
-      if (item) {
-        await fetch(`/api/products/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      } else {
-        await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, preId }) });
-      }
+      if (item) await fetch(`/api/products/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      else await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, preId }) });
       onSave();
     } finally { setSaving(false); }
   };
 
+  const f = (label: string, key: keyof typeof form, placeholder: string, opts?: { required?: boolean; type?: string }) => (
+    <div>
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}{opts?.required ? ' *' : ''}</label>
+      <Input type={opts?.type || 'text'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} required={opts?.required} />
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background">
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background z-10">
           <h2 className="font-semibold">{item ? '제품 수정' : '제품 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-5">
 
-          {/* 이미지 */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">제품 이미지</p>
             <ImageGrid images={images} productId={productId} onChange={setImages} />
           </div>
 
-          {/* 기본 정보 */}
           <div className="border-t pt-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">기본 정보</p>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">품번 *</label>
-                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="P26-001" required />
-              </div>
+              {f('품번 *', 'code', 'P26-001', { required: true })}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">카테고리</label>
-                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                  <option value="">선택</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <Input value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} placeholder="조명, 태양광..." list="cat-list" />
+                <datalist id="cat-list">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
               </div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">제품명 (한글) *</label>
-              <Input value={form.nameKo} onChange={e => setForm(f => ({ ...f, nameKo: e.target.value }))} placeholder="LED 패널 40W" required />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">제품명 (영문)</label>
-              <Input value={form.nameEn} onChange={e => setForm(f => ({ ...f, nameEn: e.target.value }))} placeholder="LED Panel 40W" />
-            </div>
+            {f('제품명 (한글) *', 'nameKo', 'LED 패널 40W', { required: true })}
+            {f('제품명 (영문)', 'nameEn', 'LED Panel 40W')}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체</label>
-                <Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Ningbo Alpha Lighting" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">제조사</label>
-                <Input value={form.maker} onChange={e => setForm(f => ({ ...f, maker: e.target.value }))} placeholder="Philips" />
-              </div>
+              {f('공급업체', 'supplierName', 'Ningbo Alpha Lighting')}
+              {f('제조사', 'maker', 'Philips')}
             </div>
           </div>
 
-          {/* 사양 */}
           <div className="border-t pt-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">사양 (Spec)</p>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">상세 사양</label>
-              <Input value={form.detail} onChange={e => setForm(f => ({ ...f, detail: e.target.value }))} placeholder="1200x600mm, IP44, IK08" />
+            {f('상세 사양', 'detail', '1200x600mm, IP44, IK08')}
+            <div className="grid grid-cols-3 gap-2">
+              {f('전압', 'voltage', '220V')}
+              {f('와트', 'watts', '40W')}
+              {f('CCT', 'cct', '4000K')}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">전압</label>
-                <Input value={form.voltage} onChange={e => setForm(f => ({ ...f, voltage: e.target.value }))} placeholder="220V" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">와트</label>
-                <Input value={form.watts} onChange={e => setForm(f => ({ ...f, watts: e.target.value }))} placeholder="40W" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">CCT</label>
-                <Input value={form.cct} onChange={e => setForm(f => ({ ...f, cct: e.target.value }))} placeholder="4000K" />
-              </div>
+              {f('InputA', 'inputA', '0.18A')}
+              {f('OutputV', 'outputV', '24V')}
+              {f('OutputA', 'outputA', '1.67A')}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">InputA</label>
-                <Input value={form.inputA} onChange={e => setForm(f => ({ ...f, inputA: e.target.value }))} placeholder="0.18A" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">OutputV</label>
-                <Input value={form.outputV} onChange={e => setForm(f => ({ ...f, outputV: e.target.value }))} placeholder="24V" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">OutputA</label>
-                <Input value={form.outputA} onChange={e => setForm(f => ({ ...f, outputA: e.target.value }))} placeholder="1.67A" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">재질</label>
-                <Input value={form.material} onChange={e => setForm(f => ({ ...f, material: e.target.value }))} placeholder="알루미늄" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">크기</label>
-                <Input value={form.sizeSpec} onChange={e => setForm(f => ({ ...f, sizeSpec: e.target.value }))} placeholder="1200×600×70mm" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">컨버터</label>
-                <Input value={form.converter} onChange={e => setForm(f => ({ ...f, converter: e.target.value }))} placeholder="내장" />
-              </div>
+              {f('재질', 'material', '알루미늄')}
+              {f('크기', 'sizeSpec', '1200×600mm')}
+              {f('컨버터', 'converter', '내장')}
             </div>
           </div>
 
-          {/* 가격 */}
           <div className="border-t pt-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">가격 / 거래</p>
             <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-2">
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">구매단가</label>
-                <Input type="number" value={form.purchasePrice} onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value }))} placeholder="17.50" />
-              </div>
+              <div className="col-span-2">{f('구매단가', 'purchasePrice', '17.50', { type: 'number' })}</div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
-                <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <select value={form.currency} onChange={e => setForm(p => ({ ...p, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                   <option>USD</option><option>EUR</option><option>CNY</option><option>KRW</option>
                 </select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">판매단가 (KRW)</label>
-                <Input type="number" value={form.sellingPrice} onChange={e => setForm(f => ({ ...f, sellingPrice: e.target.value }))} placeholder="32000" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">MOQ</label>
-                <Input type="number" value={form.moq} onChange={e => setForm(f => ({ ...f, moq: e.target.value }))} placeholder="200" />
-              </div>
+              {f('판매단가 (KRW)', 'sellingPrice', '32000', { type: 'number' })}
+              {f('MOQ', 'moq', '200', { type: 'number' })}
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">리드타임(일)</label>
-                <Input type="number" value={form.leadTimeDays} onChange={e => setForm(f => ({ ...f, leadTimeDays: e.target.value }))} placeholder="45" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">원산지</label>
-                <Input value={form.countryOfOrigin} onChange={e => setForm(f => ({ ...f, countryOfOrigin: e.target.value }))} placeholder="중국" />
-              </div>
+              {f('리드타임(일)', 'leadTimeDays', '45', { type: 'number' })}
+              {f('원산지', 'countryOfOrigin', '중국')}
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">HS Code</label>
-              <Input value={form.hsCode} onChange={e => setForm(f => ({ ...f, hsCode: e.target.value }))} placeholder="9405.10" />
-            </div>
+            {f('HS Code', 'hsCode', '9405.10')}
           </div>
 
           <div className="flex gap-2 pt-2">
@@ -358,18 +657,26 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
   );
 }
 
-// ─── Products Page ───────────────────────────────────────────────────────────
+/* ─── Products Page ──────────────────────────────────────────────────────── */
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [pos, setPos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('전체');
   const [modal, setModal] = useState<{ open: boolean; item?: Product | null; preId: string }>({ open: false, preId: '' });
+  const [drawer, setDrawer] = useState<Product | null>(null);
+  const rates = useExchangeRates();
 
   const load = async () => {
     setLoading(true);
-    const res = await fetch('/api/products').then(r => r.json());
-    if (res.data) setProducts(res.data);
+    const [prodRes, poRes] = await Promise.all([
+      fetch('/api/products').then(r => r.json()),
+      fetch('/api/purchase-orders').then(r => r.json()),
+    ]);
+    if (prodRes.data) setProducts(prodRes.data);
+    if (poRes.data) setPos(poRes.data);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -378,6 +685,7 @@ export default function ProductsPage() {
     if (!confirm('제품을 삭제하시겠습니까?')) return;
     await fetch(`/api/products/${id}`, { method: 'DELETE' });
     load();
+    if (drawer?.id === id) setDrawer(null);
   };
 
   const openModal = (item?: Product | null) => {
@@ -385,85 +693,112 @@ export default function ProductsPage() {
     setModal({ open: true, item, preId });
   };
 
-  const filtered = products.filter(p =>
-    p.nameKo.includes(search) || (p.nameEn ?? '').includes(search) || p.code.includes(search) || (p.supplierName ?? '').includes(search)
-  );
+  // Categories from loaded products
+  const allCats = ['전체', ...Array.from(new Set(products.map(p => p.category).filter(Boolean) as string[])).sort()];
+
+  const filtered = products.filter(p => {
+    const ms = p.nameKo.includes(search) || (p.nameEn ?? '').includes(search) || p.code.includes(search) || ((p as any).maker ?? '').includes(search) || (p.supplierName ?? '').includes(search);
+    const mc = catFilter === '전체' || p.category === catFilter;
+    return ms && mc;
+  });
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="제품" />
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
-        <div className="flex items-center gap-3 mb-4">
+
+        {/* Search + filter bar */}
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="제품명, 코드 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
+            <Input placeholder="제품명, 코드, 제조사 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <span className="text-xs text-muted-foreground hidden sm:block">{filtered.length}개</span>
-          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => openModal(null)}>
-            <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {allCats.slice(0, 8).map(c => (
+              <button key={c} onClick={() => setCatFilter(c)}
+                className={cn('shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
+                  catFilter === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-foreground')}>
+                {c}
+              </button>
+            ))}
+            <span className="text-xs text-muted-foreground hidden sm:block ml-1">{filtered.length}개</span>
+            <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => openModal(null)}>
+              <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
+            </Button>
+          </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
-            {/* Desktop */}
-            <div className="hidden md:block rounded-lg border border-border overflow-x-auto">
+            {/* ── Desktop rich list ── */}
+            <div className="hidden md:block rounded-xl border border-border overflow-x-auto">
               <table className="w-full text-sm min-w-[560px]">
-                <thead className="bg-muted/50">
+                <thead className="bg-muted/40 border-b border-border">
                   <tr>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-16">사진</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">코드</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">제품명</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">카테고리</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">공급업체</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">사양</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden xl:table-cell">단가</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground w-14">사진</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground">제품 정보</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground hidden lg:table-cell">사양</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground hidden lg:table-cell">공급업체</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground">단가</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-muted-foreground w-20">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(p => {
                     const ex = p as any;
-                    const imgs: string[] = ex.images || (ex.imageUrl ? [ex.imageUrl] : []);
-                    const spec = [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ');
+                    const imgs: string[] = ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : [];
                     return (
-                      <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-3 py-2">
-                          <div className="flex gap-0.5">
-                            {imgs.slice(0, 2).map((url, i) => (
-                              <div key={i} className="w-10 h-10 rounded border border-border overflow-hidden bg-muted/30 flex items-center justify-center shrink-0">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={url} alt="" className="w-full h-full object-cover"
-                                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                              </div>
-                            ))}
-                            {imgs.length === 0 && (
-                              <div className="w-10 h-10 rounded border border-border bg-muted/30 flex items-center justify-center">
-                                <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/30" />
-                              </div>
+                      <tr key={p.id}
+                        className="hover:bg-muted/30 transition-colors cursor-pointer"
+                        onClick={() => setDrawer(p)}>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <div className="w-10 h-10 rounded-lg border border-border overflow-hidden bg-muted/30 flex items-center justify-center shrink-0 relative">
+                            {imgs[0] ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={imgs[0]} alt="" className="w-full h-full object-cover"
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                            ) : (
+                              <ImageIcon className="w-4 h-4 text-muted-foreground/30" />
                             )}
-                            {imgs.length > 2 && (
-                              <div className="w-10 h-10 rounded border border-border bg-muted/50 flex items-center justify-center text-[10px] text-muted-foreground font-medium">
-                                +{imgs.length - 2}
+                            {imgs.length > 1 && (
+                              <div className="absolute -bottom-0.5 -right-0.5 bg-primary text-primary-foreground text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                                {imgs.length}
                               </div>
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 font-mono text-xs whitespace-nowrap">{p.code}</td>
-                        <td className="px-3 py-3">
-                          <p className="font-medium text-sm">{p.nameKo}</p>
-                          {p.nameEn && <p className="text-xs text-muted-foreground">{p.nameEn}</p>}
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] text-muted-foreground">{p.code}</span>
+                                {p.category && <Badge variant="outline" className="text-[9px] h-4 px-1 py-0">{p.category}</Badge>}
+                              </div>
+                              <p className="font-semibold text-sm leading-snug mt-0.5">{p.nameKo}</p>
+                              {p.nameEn && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{p.nameEn}</p>}
+                              {ex.maker && <p className="text-[10px] text-muted-foreground/60">{ex.maker}</p>}
+                            </div>
+                          </div>
                         </td>
-                        <td className="px-3 py-3 hidden lg:table-cell"><Badge variant="secondary" className="text-xs whitespace-nowrap">{p.category ?? '-'}</Badge></td>
-                        <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[120px]">{p.supplierName ?? '-'}</span></td>
-                        <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{spec || '-'}</td>
-                        <td className="px-3 py-3 text-right text-xs font-mono whitespace-nowrap hidden xl:table-cell">{p.purchasePrice ? `${p.currency} ${Number(p.purchasePrice).toFixed(2)}` : '-'}</td>
-                        <td className="px-3 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openModal(p)}><Pencil className="w-3.5 h-3.5" /></Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        <td className="px-3 py-2.5 hidden lg:table-cell">
+                          <SpecTags product={p} />
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground hidden lg:table-cell">
+                          <span className="block truncate max-w-[120px]">{p.supplierName ?? '-'}</span>
+                        </td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <PriceCell price={p.purchasePrice} currency={p.currency} rates={rates} />
+                        </td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openModal(p)}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -471,17 +806,23 @@ export default function ProductsPage() {
                   })}
                 </tbody>
               </table>
-              {filtered.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground"><Package className="w-8 h-8 mx-auto mb-2 opacity-30" />제품이 없습니다.</div>}
+              {filtered.length === 0 && (
+                <div className="py-14 text-center text-sm text-muted-foreground">
+                  <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />제품이 없습니다.
+                </div>
+              )}
             </div>
 
-            {/* Mobile 2-col grid */}
+            {/* ── Mobile 2-col grid ── */}
             <div className="md:hidden grid grid-cols-2 gap-3">
               {filtered.map(p => {
                 const ex = p as any;
-                const imgs: string[] = ex.images || (ex.imageUrl ? [ex.imageUrl] : []);
-                const spec = [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ');
+                const imgs: string[] = ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : [];
+                const usd = Number(p.purchasePrice || 0);
+                const krw = usd && rates ? Math.round(usd * rates.KRW) : null;
                 return (
-                  <div key={p.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div key={p.id} className="bg-card border border-border rounded-xl overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                    onClick={() => setDrawer(p)}>
                     <div className="aspect-square bg-muted/30 relative">
                       {imgs[0] ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
@@ -492,11 +833,9 @@ export default function ProductsPage() {
                         </div>
                       )}
                       {imgs.length > 1 && (
-                        <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full">
-                          {imgs.length}장
-                        </div>
+                        <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full">{imgs.length}장</div>
                       )}
-                      <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+                      <div className="absolute bottom-1.5 right-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
                         <button type="button" onClick={() => openModal(p)} className="bg-white/90 rounded-full p-1 shadow"><Pencil className="w-3 h-3 text-gray-700" /></button>
                         <button type="button" onClick={() => handleDelete(p.id)} className="bg-white/90 rounded-full p-1 shadow"><Trash2 className="w-3 h-3 text-red-500" /></button>
                       </div>
@@ -504,8 +843,13 @@ export default function ProductsPage() {
                     <div className="p-2.5">
                       <p className="text-[10px] font-mono text-muted-foreground">{p.code}</p>
                       <p className="font-semibold text-sm mt-0.5 line-clamp-2 leading-snug">{p.nameKo}</p>
-                      {spec && <p className="text-[10px] text-muted-foreground mt-1">{spec}</p>}
-                      {p.purchasePrice && <p className="text-xs font-semibold mt-1">{p.currency} {Number(p.purchasePrice).toFixed(2)}</p>}
+                      {p.category && <Badge variant="secondary" className="text-[9px] mt-1 h-4 px-1">{p.category}</Badge>}
+                      {usd > 0 && (
+                        <div className="mt-1.5">
+                          <p className="text-xs font-bold">{p.currency} {usd.toFixed(2)}</p>
+                          {krw && <p className="text-[10px] text-muted-foreground">₩{krw.toLocaleString()}</p>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -516,12 +860,25 @@ export default function ProductsPage() {
         )}
       </div>
 
+      {/* Edit/Create modal */}
       {modal.open && (
         <ProductModal
           item={modal.item}
           preId={modal.preId}
           onClose={() => setModal({ open: false, preId: '' })}
           onSave={() => { setModal({ open: false, preId: '' }); load(); }}
+        />
+      )}
+
+      {/* Detail drawer */}
+      {drawer && (
+        <ProductDrawer
+          product={drawer}
+          rates={rates}
+          pos={pos}
+          onClose={() => setDrawer(null)}
+          onEdit={() => { setDrawer(null); openModal(drawer); }}
+          onDelete={() => { handleDelete(drawer.id); }}
         />
       )}
     </div>
