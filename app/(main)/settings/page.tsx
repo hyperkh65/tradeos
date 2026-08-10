@@ -4,25 +4,38 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, User, Key, Database, Bell } from 'lucide-react';
+import { Loader2, CheckCircle2, User, Key, Database, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tab = 'profile' | 'notion' | 'security';
+type Tab = 'profile' | 'company' | 'notion' | 'security';
+
+interface CompanySettings {
+  name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
+  address: string; tel: string; fax: string; email: string;
+  bank: string; bankForeign1: string; bankForeign2: string;
+  logoUrl: string; stampUrl: string;
+}
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('profile');
   const [user, setUser] = useState<{ name: string; email: string; department: string; role: string } | null>(null);
   const [profile, setProfile] = useState({ name: '', department: '' });
   const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
+  const [company, setCompany] = useState<CompanySettings>({
+    name: '', ceo: '', bizNo: '', bizType: '', bizItem: '',
+    address: '', tel: '', fax: '', email: '',
+    bank: '', bankForeign1: '', bankForeign2: '',
+    logoUrl: '', stampUrl: '',
+  });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => {
-      if (j.user) {
-        setUser(j.user);
-        setProfile({ name: j.user.name, department: j.user.department ?? '' });
-      }
+      if (j.user) { setUser(j.user); setProfile({ name: j.user.name, department: j.user.department ?? '' }); }
+    });
+    fetch('/api/settings/company').then(r => r.json()).then(j => {
+      if (j.data) setCompany(j.data);
     });
   }, []);
 
@@ -32,16 +45,20 @@ export default function SettingsPage() {
   };
 
   const saveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+    e.preventDefault(); setSaving(true);
     try {
       const res = await fetch('/api/auth/me', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profile) });
       const j = await res.json();
-      if (res.ok) showMsg('success', '프로필이 저장됐습니다.');
-      else showMsg('error', j.error ?? '오류가 발생했습니다.');
-    } finally {
-      setSaving(false);
-    }
+      if (res.ok) showMsg('success', '프로필이 저장됐습니다.'); else showMsg('error', j.error ?? '오류가 발생했습니다.');
+    } finally { setSaving(false); }
+  };
+
+  const saveCompany = async (e: React.FormEvent) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      const res = await fetch('/api/settings/company', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(company) });
+      if (res.ok) showMsg('success', '회사정보가 저장됐습니다.'); else showMsg('error', '저장 중 오류가 발생했습니다.');
+    } finally { setSaving(false); }
   };
 
   const changePassword = async (e: React.FormEvent) => {
@@ -54,13 +71,12 @@ export default function SettingsPage() {
       const j = await res.json();
       if (res.ok) { showMsg('success', '비밀번호가 변경됐습니다.'); setPasswords({ current: '', next: '', confirm: '' }); }
       else showMsg('error', j.error ?? '오류가 발생했습니다.');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'profile', label: '프로필', icon: <User className="w-4 h-4" /> },
+    { id: 'company', label: '회사정보', icon: <Building2 className="w-4 h-4" /> },
     { id: 'security', label: '보안', icon: <Key className="w-4 h-4" /> },
     { id: 'notion', label: 'Notion 연동', icon: <Database className="w-4 h-4" /> },
   ];
@@ -85,21 +101,18 @@ export default function SettingsPage() {
 
           {msg && (
             <div className={cn('mb-4 px-4 py-2.5 rounded-lg text-sm flex items-center gap-2', msg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200')}>
-              {msg.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-              {msg.text}
+              {msg.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}{msg.text}
             </div>
           )}
 
-          {/* Tab nav */}
-          <div className="flex gap-1 mb-6 border-b border-border">
+          <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
             {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} className={cn('flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px', tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              <button key={t.id} onClick={() => setTab(t.id)} className={cn('flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap', tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
                 {t.icon}{t.label}
               </button>
             ))}
           </div>
 
-          {/* Profile */}
           {tab === 'profile' && (
             <form onSubmit={saveProfile} className="space-y-4">
               <h2 className="font-semibold text-base">프로필 정보</h2>
@@ -120,13 +133,109 @@ export default function SettingsPage() {
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">부서</label>
                 <Input value={profile.department} onChange={e => setProfile(p => ({ ...p, department: e.target.value }))} placeholder="수출팀" />
               </div>
-              <Button type="submit" disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
-              </Button>
+              <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}</Button>
             </form>
           )}
 
-          {/* Security */}
+          {tab === 'company' && (
+            <form onSubmit={saveCompany} className="space-y-4">
+              <h2 className="font-semibold text-base">회사 기초 정보</h2>
+              <p className="text-xs text-muted-foreground">견적서, 발주서 등 출력 문서에 자동으로 입력됩니다.</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">회사명 *</label>
+                  <Input value={company.name} onChange={e => setCompany(c => ({ ...c, name: e.target.value }))} placeholder="(주)와이엔케이" required />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">대표자</label>
+                  <Input value={company.ceo} onChange={e => setCompany(c => ({ ...c, ceo: e.target.value }))} placeholder="홍길동" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">사업자번호</label>
+                  <Input value={company.bizNo} onChange={e => setCompany(c => ({ ...c, bizNo: e.target.value }))} placeholder="000-00-00000" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">업태</label>
+                  <Input value={company.bizType} onChange={e => setCompany(c => ({ ...c, bizType: e.target.value }))} placeholder="도소매" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">종목</label>
+                  <Input value={company.bizItem} onChange={e => setCompany(c => ({ ...c, bizItem: e.target.value }))} placeholder="상품중개업" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">이메일</label>
+                  <Input value={company.email} onChange={e => setCompany(c => ({ ...c, email: e.target.value }))} placeholder="global@company.com" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">주소</label>
+                <Input value={company.address} onChange={e => setCompany(c => ({ ...c, address: e.target.value }))} placeholder="인천시 미추홀구..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">전화</label>
+                  <Input value={company.tel} onChange={e => setCompany(c => ({ ...c, tel: e.target.value }))} placeholder="032-000-0000" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">팩스</label>
+                  <Input value={company.fax} onChange={e => setCompany(c => ({ ...c, fax: e.target.value }))} placeholder="032-000-0000" />
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3">입금 계좌</h3>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">국내 계좌</label>
+                  <textarea value={company.bank} onChange={e => setCompany(c => ({ ...c, bank: e.target.value }))}
+                    rows={2} placeholder="하나은행 000-000-000 (주)회사명" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" />
+                </div>
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">해외 계좌 1 (SWIFT)</label>
+                  <textarea value={company.bankForeign1} onChange={e => setCompany(c => ({ ...c, bankForeign1: e.target.value }))}
+                    rows={3} placeholder="SHINHAN BANK&#10;000-000-000&#10;SWIFT CODE: XXXXXXXX&#10;COMPANY NAME LTD" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none font-mono text-xs" />
+                </div>
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">해외 계좌 2 (선택)</label>
+                  <textarea value={company.bankForeign2} onChange={e => setCompany(c => ({ ...c, bankForeign2: e.target.value }))}
+                    rows={3} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none font-mono text-xs" />
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3">로고 / 직인</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">로고 URL</label>
+                    <Input value={company.logoUrl} onChange={e => setCompany(c => ({ ...c, logoUrl: e.target.value }))} placeholder="https://..." />
+                    {company.logoUrl && (
+                      <div className="mt-2 border rounded-lg p-2 bg-muted/30">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={company.logoUrl} alt="로고 미리보기" className="max-h-16 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">직인 URL</label>
+                    <Input value={company.stampUrl} onChange={e => setCompany(c => ({ ...c, stampUrl: e.target.value }))} placeholder="https://..." />
+                    {company.stampUrl && (
+                      <div className="mt-2 border rounded-lg p-2 bg-muted/30">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={company.stampUrl} alt="직인 미리보기" className="max-h-16 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}</Button>
+            </form>
+          )}
+
           {tab === 'security' && (
             <form onSubmit={changePassword} className="space-y-4">
               <h2 className="font-semibold text-base">비밀번호 변경</h2>
@@ -142,13 +251,10 @@ export default function SettingsPage() {
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">새 비밀번호 확인</label>
                 <Input type="password" value={passwords.confirm} onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))} placeholder="••••••••" required />
               </div>
-              <Button type="submit" disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '비밀번호 변경'}
-              </Button>
+              <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '비밀번호 변경'}</Button>
             </form>
           )}
 
-          {/* Notion */}
           {tab === 'notion' && (
             <div className="space-y-4">
               <h2 className="font-semibold text-base">Notion 연동 설정</h2>
