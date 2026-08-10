@@ -4,33 +4,53 @@ import type { Company, Product, PurchaseOrder, Task, Quote, Inspection, Shipment
 // ─── helpers ────────────────────────────────────────────────────────────────
 type Props = Record<string, { type: string; [key: string]: unknown }>;
 
-const getText = (props: Props, key: string): string => {
-  const p = props[key];
-  if (!p) return '';
-  if (p.type === 'title') return (p.title as Array<{ plain_text: string }>).map(t => t.plain_text).join('') ?? '';
-  if (p.type === 'rich_text') return (p.rich_text as Array<{ plain_text: string }>).map(t => t.plain_text).join('') ?? '';
-  if (p.type === 'email') return (p.email as string) ?? '';
-  if (p.type === 'phone_number') return (p.phone_number as string) ?? '';
-  if (p.type === 'url') return (p.url as string) ?? '';
+const getText = (props: Props, ...keys: string[]): string => {
+  for (const key of keys) {
+    const p = props[key];
+    if (!p) continue;
+    if (p.type === 'title') {
+      const v = (p.title as Array<{ plain_text: string }>).map(t => t.plain_text).join('');
+      if (v) return v;
+    }
+    if (p.type === 'rich_text') {
+      const v = (p.rich_text as Array<{ plain_text: string }>).map(t => t.plain_text).join('');
+      if (v) return v;
+    }
+    if (p.type === 'email') { const v = p.email as string; if (v) return v; }
+    if (p.type === 'phone_number') { const v = p.phone_number as string; if (v) return v; }
+    if (p.type === 'url') { const v = p.url as string; if (v) return v; }
+  }
   return '';
 };
 
-const getSelect = (props: Props, key: string): string => {
-  const p = props[key];
-  if (!p || p.type !== 'select') return '';
-  return (p.select as { name: string } | null)?.name ?? '';
+const getSelect = (props: Props, ...keys: string[]): string => {
+  for (const key of keys) {
+    const p = props[key];
+    if (!p || p.type !== 'select') continue;
+    const v = (p.select as { name: string } | null)?.name;
+    if (v) return v;
+  }
+  return '';
 };
 
-const getNum = (props: Props, key: string): number | undefined => {
-  const p = props[key];
-  if (!p || p.type !== 'number') return undefined;
-  return (p.number as number | null) ?? undefined;
+const getNum = (props: Props, ...keys: string[]): number | undefined => {
+  for (const key of keys) {
+    const p = props[key];
+    if (!p || p.type !== 'number') continue;
+    const v = p.number as number | null;
+    if (v != null) return v;
+  }
+  return undefined;
 };
 
-const getDate = (props: Props, key: string): string | undefined => {
-  const p = props[key];
-  if (!p || p.type !== 'date') return undefined;
-  return (p.date as { start: string } | null)?.start ?? undefined;
+const getDate = (props: Props, ...keys: string[]): string | undefined => {
+  for (const key of keys) {
+    const p = props[key];
+    if (!p || p.type !== 'date') continue;
+    const v = (p.date as { start: string } | null)?.start;
+    if (v) return v;
+  }
+  return undefined;
 };
 
 const getBool = (props: Props, key: string): boolean => {
@@ -40,21 +60,27 @@ const getBool = (props: Props, key: string): boolean => {
 };
 
 // ─── Notion → Type converters ───────────────────────────────────────────────
+// Tries ERP (English) field names first, then Korean fallbacks
 
 export function notionToCompany(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Company {
   const p = page.properties;
   return {
     id: page.id,
-    businessId: getText(p, '코드') || page.id.slice(0, 8),
-    name: getText(p, '이름'),
+    businessId: getText(p, 'BusinessNo', '코드') || page.id.slice(0, 8),
+    name: getText(p, 'ClientName', '이름'),
     nameEn: getText(p, '영문명') || undefined,
-    type: (getSelect(p, '유형') || '기타') as Company['type'],
+    type: (getSelect(p, 'Type', '유형') || '기타') as Company['type'],
     country: getText(p, '국가') || getSelect(p, '국가') || '한국',
-    email: getText(p, '이메일') || undefined,
-    phone: getText(p, '전화번호') || undefined,
-    website: getText(p, '웹사이트') || undefined,
+    email: getText(p, 'Email', '이메일') || undefined,
+    phone: getText(p, 'Tel', '전화번호') || undefined,
+    website: getText(p, 'Website', '웹사이트') || undefined,
     wechat: getText(p, '위챗') || undefined,
-    memo: getText(p, '비고') || undefined,
+    memo: [
+      getText(p, 'Address'),
+      getText(p, 'CEO') ? `대표: ${getText(p, 'CEO')}` : '',
+      getText(p, 'Industry') ? `업종: ${getText(p, 'Industry')}` : '',
+      getText(p, '비고'),
+    ].filter(Boolean).join(' | ') || undefined,
     createdAt: page.created_time,
     updatedAt: page.last_edited_time,
   };
@@ -64,16 +90,16 @@ export function notionToProduct(page: { id: string; properties: Props; created_t
   const p = page.properties;
   return {
     id: page.id,
-    businessId: getText(p, '코드') || page.id.slice(0, 8),
-    code: getText(p, '제품코드') || getText(p, '코드'),
-    nameKo: getText(p, '제품명'),
+    businessId: getText(p, 'ProductCode', '코드') || page.id.slice(0, 8),
+    code: getText(p, 'ProductCode', '제품코드', '코드'),
+    nameKo: getText(p, 'ProductName', '제품명'),
     nameEn: getText(p, '영문명') || undefined,
-    category: getSelect(p, '카테고리') || undefined,
-    supplierName: getText(p, '공급업체') || undefined,
-    status: (getSelect(p, '상태') || 'active') as Product['status'],
-    purchasePrice: getNum(p, '구매단가'),
+    category: getText(p, 'ProductCategory') || getSelect(p, '카테고리') || undefined,
+    supplierName: getText(p, 'Supplier', 'Maker', '공급업체') || undefined,
+    status: 'active' as Product['status'],
+    purchasePrice: getNum(p, 'Cost', '구매단가'),
     sellingPrice: getNum(p, '판매단가'),
-    currency: getSelect(p, '통화') || 'USD',
+    currency: getText(p, 'Currency') || getSelect(p, '통화') || 'USD',
     moq: getNum(p, 'MOQ'),
     leadTimeDays: getNum(p, '리드타임'),
     hsCode: getText(p, 'HS코드') || undefined,
@@ -100,49 +126,193 @@ export function notionToTask(page: { id: string; properties: Props; created_time
   };
 }
 
-// ─── Type → Notion properties ────────────────────────────────────────────────
+// ─── ERP PO row → grouped PurchaseOrder ─────────────────────────────────────
+// ERP stores one Notion page per line item. Group by PoNo to get PurchaseOrder.
 
-const title = (v: string) => ({ title: [{ text: { content: v } }] });
-const rich = (v: string) => ({ rich_text: [{ text: { content: v } }] });
+interface ERPPORow {
+  pageId: string;
+  poNo: string;
+  date: string;
+  supplier: string;
+  currency: string;
+  incoterm: string;
+  remark: string;
+  product: string;
+  description: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  amount: number;
+  remarks: string;
+  createdAt: string;
+}
+
+function notionToERPPORow(page: { id: string; properties: Props; created_time: string }): ERPPORow {
+  const p = page.properties;
+  const qty = getNum(p, 'Qty') ?? 0;
+  const unitPrice = getNum(p, 'UnitPrice') ?? 0;
+  return {
+    pageId: page.id,
+    poNo: getText(p, 'PoNo', 'PoNo1'),
+    date: getDate(p, 'Date') ?? page.created_time.slice(0, 10),
+    supplier: getText(p, 'Supplier'),
+    currency: getText(p, 'Currency') || getSelect(p, 'Currency', 'Unit') || 'USD',
+    incoterm: getText(p, 'GeneralInfo', 'generalInfo'),
+    remark: getText(p, 'SpecialNotes', 'specialNotes'),
+    product: getText(p, 'Product'),
+    description: getText(p, 'Description'),
+    unit: getSelect(p, 'Unit') || getText(p, 'Unit') || 'PCS',
+    unitPrice,
+    qty,
+    amount: getNum(p, 'Amount') ?? (qty * unitPrice),
+    remarks: getText(p, 'Remarks'),
+    createdAt: page.created_time,
+  };
+}
+
+function groupERPPORows(rows: ERPPORow[]): PurchaseOrder[] {
+  const grouped: Record<string, { meta: ERPPORow; items: ERPPORow[] }> = {};
+  for (const row of rows) {
+    const key = row.poNo || row.pageId;
+    if (!grouped[key]) grouped[key] = { meta: row, items: [] };
+    if (row.product) grouped[key].items.push(row);
+  }
+  return Object.values(grouped).map(({ meta, items }) => ({
+    id: meta.pageId,
+    businessId: meta.poNo || meta.pageId,
+    supplierId: '',
+    supplierName: meta.supplier,
+    items: items.map((it, i) => ({
+      id: it.pageId,
+      productId: '',
+      productCode: '',
+      productName: it.product,
+      specification: [it.description, it.unit, it.remarks].filter(Boolean).join(' | ') || undefined,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      amount: it.amount,
+    })),
+    currency: meta.currency,
+    totalAmount: items.reduce((s, it) => s + it.amount, 0),
+    orderDate: meta.date,
+    status: 'confirmed' as PurchaseOrder['status'],
+    incoterm: meta.incoterm || undefined,
+    remark: meta.remark || undefined,
+    createdBy: 'ynk-erp',
+    createdAt: meta.createdAt,
+    updatedAt: meta.createdAt,
+  }));
+}
+
+// ─── ERP Quote row → grouped Quote ──────────────────────────────────────────
+
+interface ERPQuoteRow {
+  pageId: string;
+  estimateNo: string;
+  date: string;
+  client: string;
+  currency: string;
+  generalInfo: string;
+  specialNotes: string;
+  product: string;
+  description: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  amount: number;
+  remarks: string;
+  createdAt: string;
+}
+
+function notionToERPQuoteRow(page: { id: string; properties: Props; created_time: string }): ERPQuoteRow {
+  const p = page.properties;
+  const qty = getNum(p, 'Qty') ?? 0;
+  const unitPrice = getNum(p, 'UnitPrice') ?? 0;
+  return {
+    pageId: page.id,
+    estimateNo: getText(p, 'EstimateNo1', 'EstimateNo'),
+    date: getDate(p, 'Date') ?? page.created_time.slice(0, 10),
+    client: getText(p, 'Client'),
+    currency: getText(p, 'Currency') || 'KRW',
+    generalInfo: getText(p, 'GeneralInfo', 'generalInfo'),
+    specialNotes: getText(p, 'SpecialNotes', 'specialNotes'),
+    product: getText(p, 'Product'),
+    description: getText(p, 'Description'),
+    unit: getSelect(p, 'Unit') || getText(p, 'Unit') || 'PCS',
+    unitPrice,
+    qty,
+    amount: getNum(p, 'Amount') ?? (qty * unitPrice),
+    remarks: getText(p, 'Remarks'),
+    createdAt: page.created_time,
+  };
+}
+
+function groupERPQuoteRows(rows: ERPQuoteRow[]): Quote[] {
+  const grouped: Record<string, { meta: ERPQuoteRow; items: ERPQuoteRow[] }> = {};
+  for (const row of rows) {
+    const key = row.estimateNo || row.pageId;
+    if (!grouped[key]) grouped[key] = { meta: row, items: [] };
+    if (row.product) grouped[key].items.push(row);
+  }
+  return Object.values(grouped).map(({ meta, items }) => ({
+    id: meta.pageId,
+    businessId: meta.estimateNo || meta.pageId,
+    type: 'customer' as Quote['type'],
+    companyId: '',
+    companyName: meta.client,
+    items: items.map(it => ({
+      productId: '',
+      productName: it.product,
+      quantity: it.qty,
+      unitPrice: it.unitPrice,
+    })),
+    currency: meta.currency,
+    incoterm: meta.generalInfo || undefined,
+    paymentTerms: undefined,
+    validity: undefined,
+    status: 'sent' as Quote['status'],
+    remark: meta.specialNotes || undefined,
+    createdBy: 'ynk-erp',
+    createdAt: meta.createdAt,
+  }));
+}
+
+// ─── Type → Notion properties ────────────────────────────────────────────────
+// Writes to ERP field names (since DBs point to ERP Notion)
+
+const titleProp = (v: string) => ({ title: [{ text: { content: v } }] });
+const rich = (v: string) => ({ rich_text: [{ text: { content: v || '' } }] });
 const sel = (v: string) => ({ select: { name: v } });
 const num = (v: number | undefined) => ({ number: v ?? null });
 const dt = (v: string | undefined) => ({ date: v ? { start: v } : null });
 
 export function companyToNotion(c: Partial<Company> & { name: string }) {
   return {
-    '이름': title(c.name),
-    ...(c.nameEn ? { '영문명': rich(c.nameEn) } : {}),
-    ...(c.businessId ? { '코드': rich(c.businessId) } : {}),
-    ...(c.type ? { '유형': sel(c.type) } : {}),
-    ...(c.country ? { '국가': rich(c.country) } : {}),
-    ...(c.email ? { '이메일': { email: c.email } } : {}),
-    ...(c.phone ? { '전화번호': { phone_number: c.phone } } : {}),
-    ...(c.wechat ? { '위챗': rich(c.wechat) } : {}),
-    ...(c.memo ? { '비고': rich(c.memo) } : {}),
+    'ClientName': titleProp(c.name),
+    ...(c.businessId ? { 'BusinessNo': rich(c.businessId) } : {}),
+    ...(c.phone ? { 'Tel': rich(c.phone) } : {}),
+    ...(c.email ? { 'Email': { email: c.email } } : {}),
+    ...(c.memo ? { 'Address': rich(c.memo) } : {}),
   };
 }
 
 export function productToNotion(p: Partial<Product> & { nameKo: string; code: string }) {
   return {
-    '제품명': title(p.nameKo),
+    '이름': titleProp(p.code || p.nameKo),
+    'ProductCode': rich(p.code),
+    'ProductName': rich(p.nameKo),
     ...(p.nameEn ? { '영문명': rich(p.nameEn) } : {}),
-    ...(p.code ? { '제품코드': rich(p.code) } : {}),
-    ...(p.category ? { '카테고리': sel(p.category) } : {}),
-    ...(p.supplierName ? { '공급업체': rich(p.supplierName) } : {}),
-    ...(p.status ? { '상태': sel(p.status) } : {}),
-    ...(p.purchasePrice !== undefined ? { '구매단가': num(p.purchasePrice) } : {}),
-    ...(p.sellingPrice !== undefined ? { '판매단가': num(p.sellingPrice) } : {}),
-    ...(p.currency ? { '통화': sel(p.currency) } : {}),
+    ...(p.category ? { 'ProductCategory': rich(p.category) } : {}),
+    ...(p.supplierName ? { 'Supplier': rich(p.supplierName) } : {}),
+    ...(p.purchasePrice !== undefined ? { 'Cost': num(p.purchasePrice) } : {}),
+    ...(p.currency ? { 'Currency': rich(p.currency) } : {}),
     ...(p.moq !== undefined ? { 'MOQ': num(p.moq) } : {}),
-    ...(p.leadTimeDays !== undefined ? { '리드타임': num(p.leadTimeDays) } : {}),
-    ...(p.hsCode ? { 'HS코드': rich(p.hsCode) } : {}),
-    ...(p.countryOfOrigin ? { '원산지': sel(p.countryOfOrigin) } : {}),
   };
 }
 
 export function taskToNotion(t: Partial<Task> & { title: string }) {
   return {
-    '제목': title(t.title),
+    '제목': titleProp(t.title),
     ...(t.description ? { '설명': rich(t.description) } : {}),
     ...(t.priority ? { '우선순위': sel(t.priority) } : {}),
     ...(t.status ? { '상태': sel(t.status) } : {}),
@@ -154,21 +324,33 @@ export function taskToNotion(t: Partial<Task> & { title: string }) {
 
 // ─── Fetch from Notion ───────────────────────────────────────────────────────
 
+async function fetchAllPages(dbId: string): Promise<Array<{ id: string; properties: Props; created_time: string; last_edited_time: string }>> {
+  if (!dbId || isDemoMode()) return [];
+  const notion = getNotionClient();
+  const results: Array<{ id: string; properties: Props; created_time: string; last_edited_time: string }> = [];
+  let cursor: string | undefined;
+  try {
+    do {
+      const res = await notion.databases.query({
+        database_id: dbId,
+        page_size: 100,
+        start_cursor: cursor,
+      });
+      results.push(...res.results.filter(p => p.object === 'page') as unknown as typeof results);
+      cursor = res.has_more && res.next_cursor ? res.next_cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    console.error('[Notion] fetchAllPages error:', e);
+  }
+  return results;
+}
+
 async function fetchFromNotion<T>(
   dbId: string,
   mapper: (page: { id: string; properties: Props; created_time: string; last_edited_time: string }) => T
 ): Promise<T[]> {
-  if (!dbId || isDemoMode()) return [];
-  try {
-    const notion = getNotionClient();
-    const res = await notion.databases.query({ database_id: dbId, page_size: 100 });
-    return res.results
-      .filter(p => p.object === 'page')
-      .map(p => mapper(p as Parameters<typeof mapper>[0]));
-  } catch (e) {
-    console.error('[Notion] fetch error:', e);
-    return [];
-  }
+  const pages = await fetchAllPages(dbId);
+  return pages.map(mapper);
 }
 
 export async function fetchNotionCompanies(): Promise<Company[]> {
@@ -182,6 +364,32 @@ export async function fetchNotionProducts(): Promise<Product[]> {
 export async function fetchNotionTasks(): Promise<Task[]> {
   return fetchFromNotion(DB.tasks, notionToTask);
 }
+
+export async function fetchNotionPurchaseOrders(): Promise<PurchaseOrder[]> {
+  if (!DB.purchaseOrders || isDemoMode()) return [];
+  try {
+    const pages = await fetchAllPages(DB.purchaseOrders);
+    const rows = pages.map(p => notionToERPPORow(p as { id: string; properties: Props; created_time: string }));
+    return groupERPPORows(rows);
+  } catch (e) {
+    console.error('[Notion] fetchNotionPurchaseOrders error:', e);
+    return [];
+  }
+}
+
+export async function fetchNotionQuotes(): Promise<Quote[]> {
+  if (!DB.quotes || isDemoMode()) return [];
+  try {
+    const pages = await fetchAllPages(DB.quotes);
+    const rows = pages.map(p => notionToERPQuoteRow(p as { id: string; properties: Props; created_time: string }));
+    return groupERPQuoteRows(rows);
+  } catch (e) {
+    console.error('[Notion] fetchNotionQuotes error:', e);
+    return [];
+  }
+}
+
+// ─── Create in Notion ────────────────────────────────────────────────────────
 
 export async function createNotionCompany(c: Partial<Company> & { name: string }): Promise<string | null> {
   if (!DB.companies || isDemoMode()) return null;
@@ -228,6 +436,86 @@ export async function createNotionTask(t: Partial<Task> & { title: string }): Pr
   }
 }
 
+// Create PO in Notion: one page per line item (ERP-compatible format)
+export async function createNotionPurchaseOrder(po: PurchaseOrder): Promise<string | null> {
+  if (!DB.purchaseOrders || isDemoMode()) return null;
+  const notion = getNotionClient();
+  let firstPageId: string | null = null;
+  try {
+    const itemsToCreate = po.items.length > 0 ? po.items : [{ productId: '', productCode: '', productName: '', qty: 0, unitPrice: 0, amount: 0 }];
+    for (let i = 0; i < itemsToCreate.length; i++) {
+      const item = itemsToCreate[i];
+      const page = await notion.pages.create({
+        parent: { database_id: DB.purchaseOrders },
+        properties: {
+          'Estimate No': titleProp(po.supplierName),
+          'PoNo': rich(po.businessId),
+          'index': rich(String(i + 1)),
+          'Date': dt(po.orderDate),
+          'Supplier': rich(po.supplierName),
+          'Currency': rich(po.currency),
+          'Product': rich(item.productName || ''),
+          'Description': rich((item as { specification?: string }).specification || ''),
+          'Unit': sel('PCS'),
+          'UnitPrice': num(item.unitPrice),
+          'Qty': num(item.qty),
+          'Amount': num(item.amount),
+          'Remarks': rich(''),
+          'GeneralInfo': rich(po.incoterm || ''),
+          'SpecialNotes': rich(po.remark || ''),
+        },
+      });
+      if (i === 0) firstPageId = page.id;
+    }
+    return firstPageId;
+  } catch (e) {
+    console.error('[Notion] create PO error:', e);
+    return null;
+  }
+}
+
+// Create Quote in Notion: one page per line item (ERP-compatible format)
+export async function createNotionQuote(q: Quote): Promise<string | null> {
+  if (!DB.quotes || isDemoMode()) return null;
+  const notion = getNotionClient();
+  let firstPageId: string | null = null;
+  try {
+    const itemsToCreate = q.items.length > 0 ? q.items : [{ productId: '', productName: '', quantity: 0, unitPrice: 0 }];
+    for (let i = 0; i < itemsToCreate.length; i++) {
+      const item = itemsToCreate[i];
+      const qty = (item as { quantity?: number; qty?: number }).quantity ?? (item as { qty?: number }).qty ?? 0;
+      const amount = qty * (item.unitPrice ?? 0);
+      const page = await notion.pages.create({
+        parent: { database_id: DB.quotes },
+        properties: {
+          'EstimateNo1': titleProp(q.businessId),
+          'EstimateNo': rich(q.businessId),
+          'index': rich(String(i + 1)),
+          'Date': dt(q.createdAt?.slice(0, 10)),
+          'Client': rich(q.companyName),
+          'Currency': rich(q.currency),
+          'Product': rich(item.productName || ''),
+          'Description': rich(''),
+          'Unit': sel('PCS'),
+          'UnitPrice': num(item.unitPrice),
+          'Qty': num(qty),
+          'Amount': num(amount),
+          'Remarks': rich(''),
+          'GeneralInfo': rich(q.incoterm || ''),
+          'SpecialNotes': rich(q.remark || ''),
+        },
+      });
+      if (i === 0) firstPageId = page.id;
+    }
+    return firstPageId;
+  } catch (e) {
+    console.error('[Notion] create Quote error:', e);
+    return null;
+  }
+}
+
+// ─── Update / Delete in Notion ───────────────────────────────────────────────
+
 export async function updateNotionPage(pageId: string, props: Record<string, unknown>): Promise<void> {
   if (!pageId || isDemoMode()) return;
   try {
@@ -246,4 +534,50 @@ export async function archiveNotionPage(pageId: string): Promise<void> {
   } catch (e) {
     console.error('[Notion] archive error:', e);
   }
+}
+
+// Delete all Notion pages for a PO (by PoNo)
+export async function deleteNotionPurchaseOrder(poNo: string): Promise<void> {
+  if (!DB.purchaseOrders || isDemoMode() || !poNo) return;
+  try {
+    const notion = getNotionClient();
+    const res = await notion.databases.query({
+      database_id: DB.purchaseOrders,
+      filter: { property: 'PoNo', rich_text: { equals: poNo } },
+    });
+    await Promise.all(
+      res.results.map(p => notion.pages.update({ page_id: p.id, archived: true }))
+    );
+  } catch (e) {
+    console.error('[Notion] delete PO error:', e);
+  }
+}
+
+// Delete all Notion pages for a Quote (by EstimateNo)
+export async function deleteNotionQuote(estimateNo: string): Promise<void> {
+  if (!DB.quotes || isDemoMode() || !estimateNo) return;
+  try {
+    const notion = getNotionClient();
+    const res = await notion.databases.query({
+      database_id: DB.quotes,
+      filter: { property: 'EstimateNo', rich_text: { equals: estimateNo } },
+    });
+    await Promise.all(
+      res.results.map(p => notion.pages.update({ page_id: p.id, archived: true }))
+    );
+  } catch (e) {
+    console.error('[Notion] delete Quote error:', e);
+  }
+}
+
+// Update PO: delete existing items then recreate
+export async function updateNotionPurchaseOrder(poNo: string, po: PurchaseOrder): Promise<void> {
+  await deleteNotionPurchaseOrder(poNo);
+  await createNotionPurchaseOrder(po);
+}
+
+// Update Quote: delete existing items then recreate
+export async function updateNotionQuote(estimateNo: string, q: Quote): Promise<void> {
+  await deleteNotionQuote(estimateNo);
+  await createNotionQuote(q);
 }
