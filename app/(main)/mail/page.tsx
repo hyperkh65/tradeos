@@ -411,161 +411,141 @@ export default function MailPage() {
         />
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-full md:w-64 lg:w-72 shrink-0 border-r border-border flex flex-col overflow-hidden">
-          {/* Search + compose */}
-          <div className="p-3 border-b border-border space-y-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="메일 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            <div className="flex gap-1.5">
-              <Button size="sm" className="flex-1 h-8 gap-1.5 text-xs" onClick={() => setShowCompose(true)}>
-                <Pencil className="w-3.5 h-3.5" />새 메일 작성
-              </Button>
-              {source !== 'internal' && scheduledMails.length > 0 && (
-                <Button size="sm" variant="outline" className="h-8 gap-1 text-xs px-2" onClick={() => setShowScheduled(true)}>
-                  <Clock className="w-3.5 h-3.5" />{scheduledMails.length}
-                </Button>
+      {/* Top control bar */}
+      <div className="border-b border-border px-3 py-2 flex items-center gap-2 shrink-0 flex-wrap">
+        {/* Account tabs */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {accounts.map(acc => (
+            <button
+              key={acc.id}
+              onClick={() => source !== acc.id && selectAccount(acc)}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors',
+                source === acc.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               )}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            <div className="px-2 pt-3 pb-2 space-y-0.5">
-              {accounts.length === 0 && (
-                <div className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  <Mail className="w-6 h-6 mx-auto mb-2 opacity-30" />
-                  외부 메일 계정을 추가하세요
-                </div>
+            >
+              <span className={cn('w-4 h-4 rounded text-white text-[9px] font-bold flex items-center justify-center shrink-0', PROVIDER_COLORS[acc.provider] ?? 'bg-gray-500')}>
+                {PROVIDER_ICONS[acc.provider] ?? '✉'}
+              </span>
+              <span className="max-w-[140px] truncate">{acc.email}</span>
+              {source === acc.id && (
+                <button onClick={e => deleteAccount(acc, e)} className="ml-0.5 text-muted-foreground hover:text-destructive">
+                  <X className="w-3 h-3" />
+                </button>
               )}
-              {accounts.map(acc => (
-                <div key={acc.id}>
-                  <button
-                    onClick={() => selectAccount(acc)}
-                    className={cn(
-                      'w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors group',
-                      source === acc.id ? 'text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    )}
-                  >
-                    <span className={cn('w-5 h-5 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0', PROVIDER_COLORS[acc.provider] ?? 'bg-gray-500')}>
-                      {PROVIDER_ICONS[acc.provider] ?? '✉'}
-                    </span>
-                    <span className="flex-1 text-left truncate text-xs">{acc.email}</span>
-                    {source !== acc.id && (
-                      <button onClick={e => deleteAccount(acc, e)} className="hidden group-hover:flex w-4 h-4 items-center justify-center shrink-0 text-muted-foreground hover:text-destructive">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </button>
-                  {source === acc.id && (
-                    <div className="ml-7 mt-0.5 space-y-0.5 mb-1">
-                      <button
-                        onClick={() => changeExtFolder('inbox')}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
-                          extFolder === 'inbox' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                        )}
-                      >
-                        <Inbox className="w-3 h-3 shrink-0" />받은편지함
-                      </button>
-                      <button
-                        onClick={() => changeExtFolder('sent')}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors',
-                          extFolder === 'sent' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                        )}
-                      >
-                        <Send className="w-3 h-3 shrink-0" />보낸편지함
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <button
-                onClick={() => setShowAddAccount(true)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />계정 추가
-              </button>
-            </div>
-          </div>
+            </button>
+          ))}
+          <button
+            onClick={() => setShowAddAccount(true)}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />계정 추가
+          </button>
         </div>
 
-        {/* Mail list */}
-        <div className={cn('flex-1 flex flex-col overflow-hidden', mobileDetail ? 'hidden md:flex' : 'flex')}>
-          {/* External mail toolbar */}
-          {source !== 'internal' && currentAccount && (
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
-              <span className={cn('w-5 h-5 rounded text-white text-[10px] font-bold flex items-center justify-center shrink-0', PROVIDER_COLORS[currentAccount.provider] ?? 'bg-gray-500')}>
-                {PROVIDER_ICONS[currentAccount.provider] ?? '✉'}
-              </span>
-              <span className="text-sm font-medium">{currentAccount.email}</span>
-              <span className="text-xs text-muted-foreground">/ {extFolder === 'inbox' ? '받은편지함' : '보낸편지함'}</span>
-              <div className="flex-1" />
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
-                <RefreshCw className={cn('w-3 h-3', syncing && 'animate-spin')} />
-                {syncing ? '동기화 중...' : '동기화'}
-              </Button>
+        {/* Folder tabs (only when account selected) */}
+        {source !== 'internal' && (
+          <>
+            <div className="h-4 w-px bg-border shrink-0" />
+            <div className="flex gap-1">
+              <button
+                onClick={() => changeExtFolder('inbox')}
+                className={cn('flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                  extFolder === 'inbox' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}
+              >
+                <Inbox className="w-3.5 h-3.5" />받은편지함
+              </button>
+              <button
+                onClick={() => changeExtFolder('sent')}
+                className={cn('flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                  extFolder === 'sent' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}
+              >
+                <Send className="w-3.5 h-3.5" />보낸편지함
+              </button>
             </div>
-          )}
+          </>
+        )}
 
-          <div className="flex-1 flex overflow-hidden">
-            {/* List panel */}
-            <div className="w-full md:w-72 lg:w-80 shrink-0 md:border-r border-border overflow-y-auto">
-              {source === 'internal' ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  메일 계정을 선택하거나 추가하세요
-                </div>
-              ) : (
-                filteredExt.length === 0
-                  ? <EmptyState />
-                  : filteredExt.map(m => {
-                      const isSentFolder = extFolder === 'sent';
-                      const displayName = isSentFolder
-                        ? (() => { try { return (JSON.parse(m.to_json) as string[])[0] || '(수신자 없음)'; } catch { return '(수신자 없음)'; } })()
-                        : (m.from_name || m.from_email);
-                      const unread = m.is_read === 0 && !isSentFolder;
-                      return (
-                        <button
-                          key={m.uid}
-                          onClick={() => selectExtMail(m)}
-                          className={cn('w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0', selectedExt?.uid === m.uid && 'bg-primary/5')}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', unread ? 'bg-primary' : 'bg-transparent')} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className={cn('text-sm truncate', unread && 'font-semibold')}>{displayName}</p>
-                                <p className="text-xs text-muted-foreground shrink-0">
-                                  {new Date(m.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
-                                </p>
-                              </div>
-                              <p className={cn('text-xs mt-0.5 truncate', unread ? 'text-foreground font-medium' : 'text-muted-foreground')}>{m.subject}</p>
-                              <p className="text-xs text-muted-foreground truncate mt-0.5">{isSentFolder ? `보낸 사람: 나` : m.from_email}</p>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })
-              )}
+        <div className="flex-1" />
+
+        {/* Search */}
+        <div className="relative hidden sm:block">
+          <Search className="absolute left-2.5 top-1.5 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="검색..." className="pl-8 h-7 w-40 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+
+        {/* Actions */}
+        <Button size="sm" className="h-7 gap-1 text-xs px-3" onClick={() => setShowCompose(true)}>
+          <Pencil className="w-3.5 h-3.5" />새 메일
+        </Button>
+        {source !== 'internal' && (
+          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
+            <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
+            {syncing ? '동기화 중' : '동기화'}
+          </Button>
+        )}
+        {source !== 'internal' && scheduledMails.length > 0 && (
+          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => setShowScheduled(true)}>
+            <Clock className="w-3.5 h-3.5" />{scheduledMails.length}
+          </Button>
+        )}
+      </div>
+
+      {/* Main 2-pane area */}
+      <div className={cn('flex-1 flex overflow-hidden', mobileDetail ? 'hidden md:flex' : 'flex')}>
+        {/* Mail list — fixed width */}
+        <div className="w-full md:w-72 lg:w-80 shrink-0 border-r border-border overflow-y-auto">
+          {source === 'internal' ? (
+            <div className="py-16 text-center text-sm text-muted-foreground">
+              <Mail className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <p>메일 계정을 선택하거나 추가하세요</p>
+              <button onClick={() => setShowAddAccount(true)} className="mt-3 text-xs text-primary hover:underline">
+                + 계정 추가
+              </button>
             </div>
-
-            {/* Detail panel (desktop) */}
-            <div className="flex-1 hidden md:flex overflow-hidden">
-              {source === 'internal' && selectedInternal
-                ? <div className="flex-1 overflow-y-auto p-5"><InternalDetail mail={selectedInternal} myId={myId} starred={isStarred(selectedInternal)} onStar={e => toggleStar(e, selectedInternal)} /></div>
-                : source !== 'internal' && selectedExt
-                  ? <div className="flex-1 overflow-y-auto p-5"><ExtDetail msg={selectedExt} body={extBody} /></div>
-                  : <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                      <Mail className="w-10 h-10 opacity-20" />
-                      <p className="text-sm">메일을 선택하세요</p>
+          ) : filteredExt.length === 0 ? (
+            <EmptyState />
+          ) : (
+            filteredExt.map(m => {
+              const isSentFolder = extFolder === 'sent';
+              const displayName = isSentFolder
+                ? (() => { try { return (JSON.parse(m.to_json) as string[])[0] || '(수신자 없음)'; } catch { return '(수신자 없음)'; } })()
+                : (m.from_name || m.from_email);
+              const unread = m.is_read === 0 && !isSentFolder;
+              return (
+                <button
+                  key={m.uid}
+                  onClick={() => selectExtMail(m)}
+                  className={cn('w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0', selectedExt?.uid === m.uid && 'bg-primary/5')}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', unread ? 'bg-primary' : 'bg-transparent')} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cn('text-sm truncate', unread && 'font-semibold')}>{displayName}</p>
+                        <p className="text-xs text-muted-foreground shrink-0">
+                          {new Date(m.date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                        </p>
+                      </div>
+                      <p className={cn('text-xs mt-0.5 truncate', unread ? 'text-foreground font-medium' : 'text-muted-foreground')}>{m.subject}</p>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{isSentFolder ? '나' : m.from_email}</p>
                     </div>
-              }
-            </div>
-          </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Detail panel — fills all remaining space */}
+        <div className="flex-1 hidden md:flex flex-col overflow-hidden">
+          {selectedExt
+            ? <div className="flex-1 overflow-y-auto p-6"><ExtDetail msg={selectedExt} body={extBody} /></div>
+            : <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <Mail className="w-12 h-12 opacity-15" />
+                <p className="text-sm">메일을 선택하세요</p>
+              </div>
+          }
         </div>
       </div>
     </div>
