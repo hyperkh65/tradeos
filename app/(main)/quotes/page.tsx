@@ -17,14 +17,14 @@ const emptyItem = () => ({ id: Date.now().toString(), productName: '', specifica
 
 function QuoteModal({ item, onClose, onSave }: { item?: Quote | null; onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState({
-    type: item?.type || 'customer',
+    type: (item?.type || 'customer') as string,
     companyName: item?.companyName || '',
     currency: item?.currency || 'KRW',
     validity: item?.validity || '',
     paymentTerms: item?.paymentTerms || '',
     incoterm: item?.incoterm || '',
-    status: item?.status || 'draft',
-    items: item?.items?.length ? item.items.map((i, idx) => ({ ...i, id: String(idx), specification: (i as any).specification || '', voltage: (i as any).voltage || '', watts: (i as any).watts || '', cct: (i as any).cct || '' })) : [emptyItem()],
+    status: (item?.status || 'draft') as string,
+    items: (item?.items?.length ? item.items.map((i, idx) => ({ ...i, id: String(idx), specification: (i as any).specification || '', voltage: (i as any).voltage || '', watts: (i as any).watts || '', cct: (i as any).cct || '' })) : [emptyItem()]) as any[],
   });
   const [saving, setSaving] = useState(false);
 

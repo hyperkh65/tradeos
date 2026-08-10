@@ -21,8 +21,8 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
     etd: item?.etd || '',
     paymentTerms: item?.paymentTerms || '30% T/T',
     incoterm: item?.incoterm || 'FOB',
-    status: item?.status || 'draft',
-    depositRatio: (item as any)?.depositRatio || '30',
+    status: (item?.status || 'draft') as string,
+    depositRatio: ((item as any)?.depositRatio || '30') as string,
     items: item?.items?.length ? item.items.map((i, idx) => ({
       id: String(idx),
       productName: i.productName,

@@ -14,9 +14,9 @@ const typeStyle: Record<string, string> = { FCL: 'bg-blue-50 text-blue-700', LCL
 
 function ShipmentModal({ item, onClose, onSave }: { item?: Shipment | null; onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState({
-    type: item?.type || 'LCL',
+    type: (item?.type || 'LCL') as string,
     forwarderName: item?.forwarderName || '',
-    origin: (item as any)?.origin || '',
+    origin: ((item as any)?.origin || '') as string,
     pol: item?.pol || '',
     pod: item?.pod || '',
     etd: item?.etd || '',
@@ -26,11 +26,11 @@ function ShipmentModal({ item, onClose, onSave }: { item?: Shipment | null; onCl
     blNo: item?.blNo || '',
     cbm: item?.cbm?.toString() || '',
     grossWeight: item?.grossWeight?.toString() || '',
-    status: item?.status || 'booked',
-    poNo: (item as any)?.poNo || '',
-    containerNo: (item as any)?.containerNo || '',
-    freightCost: (item as any)?.freightCost?.toString() || '',
-    freightCurrency: (item as any)?.freightCurrency || 'USD',
+    status: (item?.status || 'booked') as string,
+    poNo: ((item as any)?.poNo || '') as string,
+    containerNo: ((item as any)?.containerNo || '') as string,
+    freightCost: ((item as any)?.freightCost?.toString() || '') as string,
+    freightCurrency: ((item as any)?.freightCurrency || 'USD') as string,
   });
   const [saving, setSaving] = useState(false);
 

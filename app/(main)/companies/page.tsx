@@ -24,11 +24,11 @@ function CompanyModal({ item, onClose, onSave }: { item?: Company | null; onClos
   const [form, setForm] = useState({
     name: item?.name || '',
     nameEn: item?.nameEn || '',
-    type: item?.type || '공급업체',
+    type: (item?.type || '공급업체') as string,
     country: item?.country || '중국',
     phone: item?.phone || '',
     email: item?.email || '',
-    contactPerson: item?.contactPerson || '',
+    contactPerson: (item as any)?.contactPerson || '',
     businessNo: (item as any)?.businessNo || '',
     ceo: (item as any)?.ceo || '',
     address: (item as any)?.address || '',

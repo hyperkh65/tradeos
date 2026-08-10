@@ -32,7 +32,7 @@ function HRModal({ item, onClose, onSave }: { item?: HRRecord | null; onClose: (
     joinDate: item?.joinDate || '',
     phone: item?.phone || '',
     email: item?.email || '',
-    status: item?.status || 'active',
+    status: (item?.status || 'active') as string,
     salary: item?.salary?.toString() || '',
     memo: item?.memo || '',
   });

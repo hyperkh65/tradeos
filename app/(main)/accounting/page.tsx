@@ -26,7 +26,7 @@ function ExpenseModal({ item, onClose, onSave }: { item?: Expense | null; onClos
     currency: item?.currency || 'KRW',
     exchangeRate: item?.exchangeRate?.toString() || '1380',
     relatedName: item?.relatedName || '',
-    status: item?.status || 'pending',
+    status: (item?.status || 'pending') as string,
   });
   const [saving, setSaving] = useState(false);
 

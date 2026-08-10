@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { Bell, Plus, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,7 +13,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '@/lib/sidebar-context';
 
-export function AppHeader({ title }: { title?: string }) {
+export function AppHeader({ title, icon }: { title?: string; icon?: React.ReactNode }) {
   const router = useRouter();
   const { toggle } = useSidebar();
 

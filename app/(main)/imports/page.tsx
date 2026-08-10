@@ -24,10 +24,10 @@ function ImportModal({ item, onClose, onSave }: { item?: Import | null; onClose:
     vat: item?.vat?.toString() || '',
     brokerFee: item?.brokerFee?.toString() || '',
     ftaApplicable: item?.ftaApplicable || false,
-    coStatus: item?.coStatus || '미수령',
-    status: item?.status || 'in_progress',
+    coStatus: (item?.coStatus || '미수령') as string,
+    status: (item?.status || 'in_progress') as string,
     invoiceValue: (item as any)?.invoiceValue?.toString() || '',
-    invoiceCurrency: (item as any)?.invoiceCurrency || 'USD',
+    invoiceCurrency: ((item as any)?.invoiceCurrency || 'USD') as string,
   });
   const [saving, setSaving] = useState(false);
 

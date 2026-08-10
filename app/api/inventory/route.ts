@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
-import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
+import { getNotionClient, isDemoMode } from '@/lib/notion/client';
 
 interface InventoryItem {
   id: string; productName: string; productCode: string;
@@ -23,7 +23,7 @@ function dbToItem(row: Record<string, unknown>): InventoryItem {
 }
 
 async function fetchFromNotion(): Promise<InventoryItem[]> {
-  const dbId = DB.inventory ?? (process.env.NOTION_DB_INVENTORY || '');
+  const dbId = process.env.NOTION_DB_INVENTORY || '';
   if (!dbId || isDemoMode()) return [];
   try {
     const notion = getNotionClient();
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   // Save to Notion
   let notionId: string | null = null;
-  const dbId = DB.inventory ?? (process.env.NOTION_DB_INVENTORY || '');
+  const dbId = process.env.NOTION_DB_INVENTORY || '';
   if (dbId && !isDemoMode()) {
     try {
       const notion = getNotionClient();
