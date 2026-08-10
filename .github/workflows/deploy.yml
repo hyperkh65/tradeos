@@ -34,6 +34,9 @@ jobs:
           NOTION_DB_IMPORTS: ${{ secrets.TRADEOS_NOTION_DB_IMPORTS }}
           NOTION_DB_CLAIMS: ${{ secrets.TRADEOS_NOTION_DB_CLAIMS }}
           NOTION_DB_EXPENSES: ${{ secrets.TRADEOS_NOTION_DB_EXPENSES }}
+          NOTION_DB_HR: ${{ secrets.TRADEOS_NOTION_DB_HR }}
+          NOTION_DB_INVENTORY: ${{ secrets.TRADEOS_NOTION_DB_INVENTORY }}
+          NOTION_DB_SALES: ${{ secrets.TRADEOS_NOTION_DB_SALES }}
           NAS_WEBDAV_URL: ${{ secrets.TRADEOS_NAS_WEBDAV_URL }}
           NAS_USERNAME: ${{ secrets.TRADEOS_NAS_USERNAME }}
           NAS_PASSWORD: ${{ secrets.TRADEOS_NAS_PASSWORD }}
@@ -106,6 +109,9 @@ jobs:
             NOTION_DB_EXPENSES="${{ secrets.TRADEOS_NOTION_DB_EXPENSES }}" \
             NOTION_DB_CLAIMS="${{ secrets.TRADEOS_NOTION_DB_CLAIMS }}" \
             NOTION_DB_INSPECTIONS="${{ secrets.TRADEOS_NOTION_DB_INSPECTIONS }}" \
+            NOTION_DB_HR="${{ secrets.TRADEOS_NOTION_DB_HR }}" \
+            NOTION_DB_INVENTORY="${{ secrets.TRADEOS_NOTION_DB_INVENTORY }}" \
+            NOTION_DB_SALES="${{ secrets.TRADEOS_NOTION_DB_SALES }}" \
             $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5

@@ -4,15 +4,33 @@ import { AppHeader } from '@/components/layout/header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Package, Plus, Search, X, Loader2 } from 'lucide-react';
+import { Package, Plus, Search, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import type { Product } from '@/types';
 
 const CATEGORIES = ['조명', '가전', '전자', '생활용품', '산업용품', '기타'];
 
-function ProductModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Product) => void }) {
-  const [form, setForm] = useState({ code: '', nameKo: '', nameEn: '', category: '', supplierName: '', purchasePrice: '', sellingPrice: '', currency: 'USD', moq: '', leadTimeDays: '', hsCode: '', countryOfOrigin: '중국' });
+function ProductModal({ item, onClose, onSave }: { item?: Product | null; onClose: () => void; onSave: () => void }) {
+  const [form, setForm] = useState({
+    code: item?.code || '',
+    nameKo: item?.nameKo || '',
+    nameEn: item?.nameEn || '',
+    category: item?.category || '',
+    supplierName: item?.supplierName || '',
+    purchasePrice: item?.purchasePrice?.toString() || '',
+    sellingPrice: item?.sellingPrice?.toString() || '',
+    currency: item?.currency || 'USD',
+    moq: item?.moq?.toString() || '',
+    leadTimeDays: item?.leadTimeDays?.toString() || '',
+    hsCode: item?.hsCode || '',
+    countryOfOrigin: item?.countryOfOrigin || '중국',
+    detail: (item as any)?.detail || '',
+    voltage: (item as any)?.voltage || '',
+    watts: (item as any)?.watts || '',
+    cct: (item as any)?.cct || '',
+    maker: (item as any)?.maker || '',
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,28 +38,27 @@ function ProductModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Pr
     if (!form.nameKo || !form.code) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
-          sellingPrice: form.sellingPrice ? Number(form.sellingPrice) : undefined,
-          moq: form.moq ? Number(form.moq) : undefined,
-          leadTimeDays: form.leadTimeDays ? Number(form.leadTimeDays) : undefined,
-        })
-      });
-      const json = await res.json();
-      if (json.data) onSave(json.data);
-    } finally {
-      setSaving(false);
-    }
+      const body = {
+        ...form,
+        purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
+        sellingPrice: form.sellingPrice ? Number(form.sellingPrice) : undefined,
+        moq: form.moq ? Number(form.moq) : undefined,
+        leadTimeDays: form.leadTimeDays ? Number(form.leadTimeDays) : undefined,
+      };
+      if (item) {
+        await fetch(`/api/products/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      onSave();
+    } finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-lg max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background">
-          <h2 className="font-semibold">제품 등록</h2>
+          <h2 className="font-semibold">{item ? '제품 수정' : '제품 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
@@ -67,8 +84,32 @@ function ProductModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Pr
             <Input value={form.nameEn} onChange={e => setForm(f => ({ ...f, nameEn: e.target.value }))} placeholder="LED Panel 40W 1x1ft" />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체</label>
-            <Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Ningbo Alpha Lighting" />
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">상세 사양</label>
+            <Input value={form.detail} onChange={e => setForm(f => ({ ...f, detail: e.target.value }))} placeholder="1200x600mm, IP44" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">전압</label>
+              <Input value={form.voltage} onChange={e => setForm(f => ({ ...f, voltage: e.target.value }))} placeholder="220V" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">와트</label>
+              <Input value={form.watts} onChange={e => setForm(f => ({ ...f, watts: e.target.value }))} placeholder="40W" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">CCT</label>
+              <Input value={form.cct} onChange={e => setForm(f => ({ ...f, cct: e.target.value }))} placeholder="4000K" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체</label>
+              <Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Ningbo Alpha Lighting" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">제조사</label>
+              <Input value={form.maker} onChange={e => setForm(f => ({ ...f, maker: e.target.value }))} placeholder="Philips" />
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-2">
@@ -109,7 +150,7 @@ function ProductModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Pr
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정' : '저장')}
             </Button>
           </div>
         </form>
@@ -122,11 +163,21 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [modal, setModal] = useState<{ open: boolean; item?: Product | null }>({ open: false });
 
-  useEffect(() => {
-    fetch('/api/products').then(r => r.json()).then(j => { if (j.data) setProducts(j.data); }).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    const res = await fetch('/api/products').then(r => r.json());
+    if (res.data) setProducts(res.data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('제품을 삭제하시겠습니까?')) return;
+    await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    load();
+  };
 
   const filtered = products.filter(p =>
     p.nameKo.includes(search) || (p.nameEn ?? '').includes(search) || p.code.includes(search) || (p.supplierName ?? '').includes(search)
@@ -135,14 +186,13 @@ export default function ProductsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="제품" />
-      {showModal && <ProductModal onClose={() => setShowModal(false)} onSave={p => { setProducts(prev => [p, ...prev]); setShowModal(false); }} />}
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input placeholder="제품명, 코드 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setShowModal(true)}>
+          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
           </Button>
         </div>
@@ -154,11 +204,11 @@ export default function ProductsPage() {
             <div className="hidden md:block rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
-                  <tr>{['코드', '제품명', '카테고리', '공급업체', '구매단가', '판매단가', 'MOQ', '리드타임'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['구매단가', '판매단가'].includes(h) ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>{['코드', '제품명', '카테고리', '공급업체', '구매단가', '판매단가', 'MOQ', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['구매단가', '판매단가'].includes(h) ? 'text-right' : h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(p => (
-                    <tr key={p.id} className="hover:bg-muted/30 cursor-pointer transition-colors">
+                    <tr key={p.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs">{p.code}</td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{p.nameKo}</p>
@@ -169,7 +219,16 @@ export default function ProductsPage() {
                       <td className="px-4 py-3 text-right text-xs font-mono">{p.purchasePrice ? `${p.currency} ${Number(p.purchasePrice).toFixed(2)}` : '-'}</td>
                       <td className="px-4 py-3 text-right text-xs font-mono">{p.sellingPrice ? `₩${Number(p.sellingPrice).toLocaleString()}` : '-'}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{p.moq ? Number(p.moq).toLocaleString() : '-'}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{p.leadTimeDays ? `${p.leadTimeDays}일` : '-'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: p })}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -186,22 +245,17 @@ export default function ProductsPage() {
                       <p className="font-semibold text-sm mt-0.5">{p.nameKo}</p>
                       {p.nameEn && <p className="text-xs text-muted-foreground">{p.nameEn}</p>}
                     </div>
-                    {p.category && <Badge variant="secondary" className="text-xs shrink-0">{p.category}</Badge>}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {p.category && <Badge variant="secondary" className="text-xs">{p.category}</Badge>}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: p })}><Pencil className="w-3.5 h-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">{p.supplierName}</p>
                   <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <p className="text-muted-foreground">구매단가</p>
-                      <p className="font-semibold">{p.purchasePrice ? `$${p.purchasePrice}` : '-'}</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <p className="text-muted-foreground">판매단가</p>
-                      <p className="font-semibold">{p.sellingPrice ? `₩${Number(p.sellingPrice).toLocaleString()}` : '-'}</p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-2">
-                      <p className="text-muted-foreground">MOQ</p>
-                      <p className="font-semibold">{p.moq ? Number(p.moq).toLocaleString() : '-'}</p>
-                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">구매단가</p><p className="font-semibold">{p.purchasePrice ? `$${p.purchasePrice}` : '-'}</p></div>
+                    <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">판매단가</p><p className="font-semibold">{p.sellingPrice ? `₩${Number(p.sellingPrice).toLocaleString()}` : '-'}</p></div>
+                    <div className="bg-muted/50 rounded-lg p-2"><p className="text-muted-foreground">MOQ</p><p className="font-semibold">{p.moq ? Number(p.moq).toLocaleString() : '-'}</p></div>
                   </div>
                 </div>
               ))}
@@ -210,6 +264,9 @@ export default function ProductsPage() {
           </>
         )}
       </div>
+      {modal.open && (
+        <ProductModal item={modal.item} onClose={() => setModal({ open: false })} onSave={() => { setModal({ open: false }); load(); }} />
+      )}
     </div>
   );
 }

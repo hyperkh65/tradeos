@@ -373,6 +373,35 @@ function initSchema(db: Database.Database) {
       UNIQUE(user_id, email)
     );
 
+    CREATE TABLE IF NOT EXISTS inventory (
+      id TEXT PRIMARY KEY,
+      product_name TEXT NOT NULL,
+      product_code TEXT NOT NULL DEFAULT '',
+      qty REAL NOT NULL DEFAULT 0,
+      location TEXT NOT NULL DEFAULT '본사 창고',
+      memo TEXT,
+      notion_id TEXT,
+      updated_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sales (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      sale_date TEXT NOT NULL,
+      customer TEXT NOT NULL,
+      sale_type TEXT NOT NULL DEFAULT '일반',
+      salesperson TEXT,
+      po_no TEXT,
+      items_json TEXT NOT NULL DEFAULT '[]',
+      net_amount REAL NOT NULL DEFAULT 0,
+      vat REAL NOT NULL DEFAULT 0,
+      total_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'KRW',
+      notion_id TEXT,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS scheduled_ext_mails (
       id TEXT PRIMARY KEY,
       account_id TEXT NOT NULL,

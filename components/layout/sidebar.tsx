@@ -8,7 +8,8 @@ import {
   LayoutDashboard, Building2, Package, ClipboardList, FileText,
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
-  Compass, Search, LogOut, Boxes,
+  Compass, Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
+  Receipt, UserCog, GitMerge,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +32,7 @@ const navGroups = [
     items: [
       { label: '거래처', href: '/companies', icon: Building2 },
       { label: '제품', href: '/products', icon: Package },
+      { label: '재고', href: '/inventory', icon: Warehouse },
       { label: '견적', href: '/quotes', icon: ClipboardList },
       { label: '발주', href: '/purchase-orders', icon: Boxes },
       { label: '검품', href: '/inspections', icon: CheckSquare },
@@ -40,9 +42,17 @@ const navGroups = [
     ],
   },
   {
+    label: '영업',
+    items: [
+      { label: '매출관리', href: '/crm', icon: ShoppingCart },
+      { label: '회계/청구', href: '/accounting', icon: Receipt },
+    ],
+  },
+  {
     label: '재무',
     items: [
       { label: '비용', href: '/expenses', icon: DollarSign },
+      { label: 'SCM', href: '/scm', icon: GitMerge },
     ],
   },
   {
@@ -54,6 +64,7 @@ const navGroups = [
   {
     label: '회사',
     items: [
+      { label: '인사(HR)', href: '/hr', icon: UserCog },
       { label: '직원', href: '/employees', icon: Users },
     ],
   },

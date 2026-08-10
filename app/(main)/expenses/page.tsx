@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DollarSign, Plus, Search, X, Loader2 } from 'lucide-react';
+import { DollarSign, Plus, Search, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import type { Expense } from '@/types';
@@ -13,8 +13,16 @@ const statusLabel: Record<string, string> = { pending: '대기', approved: '승�
 const catColor: Record<string, string> = { '해상운임': 'bg-blue-50 text-blue-700', '통관비': 'bg-orange-50 text-orange-700', '검품비': 'bg-purple-50 text-purple-700', '샘플비': 'bg-green-50 text-green-700' };
 const CATEGORIES = ['해상운임', '통관비', '검품비', '샘플비', '보험료', '창고비', '기타'];
 
-function ExpenseModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Expense) => void }) {
-  const [form, setForm] = useState({ category: '해상운임', description: '', amount: '', currency: 'KRW', exchangeRate: '1380', relatedName: '', status: 'pending' });
+function ExpenseModal({ item, onClose, onSave }: { item?: Expense | null; onClose: () => void; onSave: () => void }) {
+  const [form, setForm] = useState({
+    category: item?.category || '해상운임',
+    description: item?.description || '',
+    amount: item?.amount?.toString() || '',
+    currency: item?.currency || 'KRW',
+    exchangeRate: item?.exchangeRate?.toString() || '1380',
+    relatedName: item?.relatedName || '',
+    status: item?.status || 'pending',
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,27 +30,39 @@ function ExpenseModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Ex
     if (!form.description || !form.amount) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, amount: Number(form.amount), exchangeRate: form.currency !== 'KRW' ? Number(form.exchangeRate) : undefined }) });
-      const json = await res.json();
-      if (json.data) onSave(json.data);
-    } finally {
-      setSaving(false);
-    }
+      const body = { ...form, amount: Number(form.amount), exchangeRate: form.currency !== 'KRW' ? Number(form.exchangeRate) : undefined };
+      if (item) {
+        await fetch(`/api/expenses/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        await fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      onSave();
+    } finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="font-semibold">비용 등록</h2>
+          <h2 className="font-semibold">{item ? '비용 수정' : '비용 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">카테고리</label>
-            <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">카테고리</label>
+              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="pending">대기</option>
+                <option value="approved">승인</option>
+                <option value="paid">지급완료</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">설명 *</label>
@@ -79,7 +99,7 @@ function ExpenseModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Ex
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정' : '저장')}
             </Button>
           </div>
         </form>
@@ -92,11 +112,21 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [modal, setModal] = useState<{ open: boolean; item?: Expense | null }>({ open: false });
 
-  useEffect(() => {
-    fetch('/api/expenses').then(r => r.json()).then(j => { if (j.data) setExpenses(j.data); }).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    const res = await fetch('/api/expenses').then(r => r.json());
+    if (res.data) setExpenses(res.data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('비용을 삭제하시겠습니까?')) return;
+    await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+    load();
+  };
 
   const filtered = expenses.filter(e =>
     e.businessId.includes(search) || e.description.includes(search) || e.category.includes(search)
@@ -106,7 +136,6 @@ export default function ExpensesPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="비용" />
-      {showModal && <ExpenseModal onClose={() => setShowModal(false)} onSave={e => { setExpenses(prev => [e, ...prev]); setShowModal(false); }} />}
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-card border border-border rounded-xl p-3">
@@ -128,7 +157,7 @@ export default function ExpensesPage() {
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input placeholder="비용번호, 설명 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setShowModal(true)}>
+          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">비용 등록</span>
           </Button>
         </div>
@@ -140,11 +169,11 @@ export default function ExpensesPage() {
             <div className="hidden md:block rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
-                  <tr>{['번호', '카테고리', '설명', '금액', '원화금액', '관련', '상태'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['금액', '원화금액'].includes(h) ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>{['번호', '카테고리', '설명', '금액', '원화금액', '관련', '상태', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['금액', '원화금액'].includes(h) ? 'text-right' : h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(e => (
-                    <tr key={e.id} className="hover:bg-muted/30 cursor-pointer transition-colors">
+                    <tr key={e.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs">{e.businessId}</td>
                       <td className="px-4 py-3"><span className={cn('text-xs px-2 py-0.5 rounded-full', catColor[e.category] ?? 'bg-gray-100 text-gray-600')}>{e.category}</span></td>
                       <td className="px-4 py-3 text-sm max-w-[200px] truncate">{e.description}</td>
@@ -152,6 +181,12 @@ export default function ExpensesPage() {
                       <td className="px-4 py-3 text-right font-semibold text-sm">₩{Number(e.amountKrw ?? e.amount).toLocaleString()}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[120px]">{e.relatedName ?? '-'}</td>
                       <td className="px-4 py-3"><span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', statusStyle[e.status])}>{statusLabel[e.status]}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: e })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(e.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -176,6 +211,10 @@ export default function ExpensesPage() {
                     </div>
                   </div>
                   {e.relatedName && <p className="text-xs text-muted-foreground mt-1">{e.relatedName}</p>}
+                  <div className="flex justify-end gap-1 mt-2">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: e })}><Pencil className="w-3.5 h-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(e.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                  </div>
                 </div>
               ))}
               {filtered.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">비용 내역이 없습니다.</div>}
@@ -183,6 +222,9 @@ export default function ExpensesPage() {
           </>
         )}
       </div>
+      {modal.open && (
+        <ExpenseModal item={modal.item} onClose={() => setModal({ open: false })} onSave={() => { setModal({ open: false }); load(); }} />
+      )}
     </div>
   );
 }

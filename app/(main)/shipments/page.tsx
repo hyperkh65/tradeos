@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Ship, Plus, Search, X, Loader2 } from 'lucide-react';
+import { Ship, Plus, Search, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import type { Shipment } from '@/types';
@@ -12,8 +12,26 @@ const statusStyle: Record<string, string> = { booked: 'bg-blue-100 text-blue-700
 const statusLabel: Record<string, string> = { booked: '예약', departed: '출발', in_transit: '운송중', arrived: '도착', customs: '통관', completed: '완료' };
 const typeStyle: Record<string, string> = { FCL: 'bg-blue-50 text-blue-700', LCL: 'bg-green-50 text-green-700', AIR: 'bg-purple-50 text-purple-700', COURIER: 'bg-orange-50 text-orange-700' };
 
-function ShipmentModal({ onClose, onSave }: { onClose: () => void; onSave: (s: Shipment) => void }) {
-  const [form, setForm] = useState({ type: 'LCL', forwarderName: '', origin: '', pol: '', pod: '', etd: '', eta: '', vessel: '', voyage: '', blNo: '', cbm: '', grossWeight: '' });
+function ShipmentModal({ item, onClose, onSave }: { item?: Shipment | null; onClose: () => void; onSave: () => void }) {
+  const [form, setForm] = useState({
+    type: item?.type || 'LCL',
+    forwarderName: item?.forwarderName || '',
+    origin: (item as any)?.origin || '',
+    pol: item?.pol || '',
+    pod: item?.pod || '',
+    etd: item?.etd || '',
+    eta: item?.eta || '',
+    vessel: item?.vessel || '',
+    voyage: item?.voyage || '',
+    blNo: item?.blNo || '',
+    cbm: item?.cbm?.toString() || '',
+    grossWeight: item?.grossWeight?.toString() || '',
+    status: item?.status || 'booked',
+    poNo: (item as any)?.poNo || '',
+    containerNo: (item as any)?.containerNo || '',
+    freightCost: (item as any)?.freightCost?.toString() || '',
+    freightCurrency: (item as any)?.freightCurrency || 'USD',
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,19 +39,26 @@ function ShipmentModal({ onClose, onSave }: { onClose: () => void; onSave: (s: S
     if (!form.pol || !form.pod) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/shipments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, cbm: form.cbm ? Number(form.cbm) : undefined, grossWeight: form.grossWeight ? Number(form.grossWeight) : undefined }) });
-      const json = await res.json();
-      if (json.data) onSave(json.data);
-    } finally {
-      setSaving(false);
-    }
+      const body = {
+        ...form,
+        cbm: form.cbm ? Number(form.cbm) : undefined,
+        grossWeight: form.grossWeight ? Number(form.grossWeight) : undefined,
+        freightCost: form.freightCost ? Number(form.freightCost) : undefined,
+      };
+      if (item) {
+        await fetch(`/api/shipments/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        await fetch('/api/shipments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      onSave();
+    } finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-lg max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background">
-          <h2 className="font-semibold">선적 등록</h2>
+          <h2 className="font-semibold">{item ? '선적 수정' : '선적 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
@@ -45,8 +70,20 @@ function ShipmentModal({ onClose, onSave }: { onClose: () => void; onSave: (s: S
               </select>
             </div>
             <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">포워더</label>
               <Input value={form.forwarderName} onChange={e => setForm(f => ({ ...f, forwarderName: e.target.value }))} placeholder="한진해운포워딩" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">발주번호 연결</label>
+              <Input value={form.poNo} onChange={e => setForm(f => ({ ...f, poNo: e.target.value }))} placeholder="PO-2026-0031" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -83,6 +120,10 @@ function ShipmentModal({ onClose, onSave }: { onClose: () => void; onSave: (s: S
             <label className="text-xs font-medium text-muted-foreground mb-1 block">B/L No</label>
             <Input value={form.blNo} onChange={e => setForm(f => ({ ...f, blNo: e.target.value }))} placeholder="HJKU2026083501" />
           </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">컨테이너 번호</label>
+            <Input value={form.containerNo} onChange={e => setForm(f => ({ ...f, containerNo: e.target.value }))} placeholder="TCKU1234567" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">CBM</label>
@@ -93,10 +134,22 @@ function ShipmentModal({ onClose, onSave }: { onClose: () => void; onSave: (s: S
               <Input type="number" value={form.grossWeight} onChange={e => setForm(f => ({ ...f, grossWeight: e.target.value }))} placeholder="4200" />
             </div>
           </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">운임</label>
+              <Input type="number" value={form.freightCost} onChange={e => setForm(f => ({ ...f, freightCost: e.target.value }))} placeholder="1200" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
+              <select value={form.freightCurrency} onChange={e => setForm(f => ({ ...f, freightCurrency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option>USD</option><option>KRW</option><option>EUR</option>
+              </select>
+            </div>
+          </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정' : '저장')}
             </Button>
           </div>
         </form>
@@ -109,11 +162,21 @@ export default function ShipmentsPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [modal, setModal] = useState<{ open: boolean; item?: Shipment | null }>({ open: false });
 
-  useEffect(() => {
-    fetch('/api/shipments').then(r => r.json()).then(j => { if (j.data) setShipments(j.data); }).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    const res = await fetch('/api/shipments').then(r => r.json());
+    if (res.data) setShipments(res.data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('선적을 삭제하시겠습니까?')) return;
+    await fetch(`/api/shipments/${id}`, { method: 'DELETE' });
+    load();
+  };
 
   const filtered = shipments.filter(s =>
     s.businessId.includes(search) || (s.blNo ?? '').includes(search) || (s.vessel ?? '').includes(search)
@@ -122,14 +185,13 @@ export default function ShipmentsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="선적" />
-      {showModal && <ShipmentModal onClose={() => setShowModal(false)} onSave={s => { setShipments(prev => [s, ...prev]); setShowModal(false); }} />}
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input placeholder="선적번호, B/L 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setShowModal(true)}>
+          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">선적 등록</span>
           </Button>
         </div>
@@ -141,11 +203,11 @@ export default function ShipmentsPage() {
             <div className="hidden md:block rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
-                  <tr>{['선적번호', '유형', '포워더', '경로', '선박/항차', 'B/L No', 'ETD', 'ETA', '상태'].map(h => <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>)}</tr>
+                  <tr>{['선적번호', '유형', '포워더', '경로', '선박/항차', 'B/L No', 'ETD', 'ETA', '상태', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(s => (
-                    <tr key={s.id} className="hover:bg-muted/30 cursor-pointer transition-colors">
+                    <tr key={s.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs font-medium">{s.businessId}</td>
                       <td className="px-4 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', typeStyle[s.type])}>{s.type}</span></td>
                       <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">{s.forwarderName ?? '-'}</td>
@@ -155,6 +217,12 @@ export default function ShipmentsPage() {
                       <td className="px-4 py-3 text-xs">{s.etd ?? '-'}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{s.eta ?? '-'}</td>
                       <td className="px-4 py-3"><span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', statusStyle[s.status])}>{statusLabel[s.status]}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: s })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(s.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -173,7 +241,11 @@ export default function ShipmentsPage() {
                         <span className="text-sm font-semibold">{s.pol} → {s.pod}</span>
                       </div>
                     </div>
-                    <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0', statusStyle[s.status])}>{statusLabel[s.status]}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', statusStyle[s.status])}>{statusLabel[s.status]}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: s })}><Pencil className="w-3.5 h-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(s.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
                   </div>
                   {s.vessel && <p className="text-xs text-muted-foreground mb-2">🚢 {s.vessel} {s.voyage}</p>}
                   {s.blNo && <p className="text-xs text-muted-foreground font-mono mb-2">B/L: {s.blNo}</p>}
@@ -188,6 +260,9 @@ export default function ShipmentsPage() {
           </>
         )}
       </div>
+      {modal.open && (
+        <ShipmentModal item={modal.item} onClose={() => setModal({ open: false })} onSave={() => { setModal({ open: false }); load(); }} />
+      )}
     </div>
   );
 }

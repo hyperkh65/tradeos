@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { TruckIcon, Plus, Search, X, Loader2 } from 'lucide-react';
+import { TruckIcon, Plus, Search, X, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import type { Import } from '@/types';
@@ -12,8 +12,23 @@ const statusStyle: Record<string, string> = { in_progress: 'bg-blue-100 text-blu
 const statusLabel: Record<string, string> = { in_progress: '진행중', declared: '신고', released: '반출', completed: '완료' };
 const coStyle: Record<string, string> = { '수령': 'bg-green-50 text-green-700', '미수령': 'bg-orange-50 text-orange-700', '불필요': 'bg-gray-50 text-gray-600' };
 
-function ImportModal({ onClose, onSave }: { onClose: () => void; onSave: (i: Import) => void }) {
-  const [form, setForm] = useState({ shipmentBusinessId: '', brokerName: '', declarationNo: '', releaseDate: '', hsCode: '', dutyRate: '', duty: '', vat: '', brokerFee: '', ftaApplicable: false, coStatus: '미수령' });
+function ImportModal({ item, onClose, onSave }: { item?: Import | null; onClose: () => void; onSave: () => void }) {
+  const [form, setForm] = useState({
+    shipmentBusinessId: item?.shipmentBusinessId || '',
+    brokerName: item?.brokerName || '',
+    declarationNo: item?.declarationNo || '',
+    releaseDate: item?.releaseDate || '',
+    hsCode: item?.hsCode || '',
+    dutyRate: item?.dutyRate?.toString() || '',
+    duty: item?.duty?.toString() || '',
+    vat: item?.vat?.toString() || '',
+    brokerFee: item?.brokerFee?.toString() || '',
+    ftaApplicable: item?.ftaApplicable || false,
+    coStatus: item?.coStatus || '미수령',
+    status: item?.status || 'in_progress',
+    invoiceValue: (item as any)?.invoiceValue?.toString() || '',
+    invoiceCurrency: (item as any)?.invoiceCurrency || 'USD',
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,34 +36,42 @@ function ImportModal({ onClose, onSave }: { onClose: () => void; onSave: (i: Imp
     if (!form.shipmentBusinessId) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/imports', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form, shipmentId: '',
-          dutyRate: form.dutyRate ? Number(form.dutyRate) : undefined,
-          duty: form.duty ? Number(form.duty) : undefined,
-          vat: form.vat ? Number(form.vat) : undefined,
-          brokerFee: form.brokerFee ? Number(form.brokerFee) : undefined,
-        })
-      });
-      const json = await res.json();
-      if (json.data) onSave(json.data);
-    } finally {
-      setSaving(false);
-    }
+      const body = {
+        ...form,
+        dutyRate: form.dutyRate ? Number(form.dutyRate) : undefined,
+        duty: form.duty ? Number(form.duty) : undefined,
+        vat: form.vat ? Number(form.vat) : undefined,
+        brokerFee: form.brokerFee ? Number(form.brokerFee) : undefined,
+        invoiceValue: form.invoiceValue ? Number(form.invoiceValue) : undefined,
+      };
+      if (item) {
+        await fetch(`/api/imports/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        await fetch('/api/imports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, shipmentId: '' }) });
+      }
+      onSave();
+    } finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-md max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background">
-          <h2 className="font-semibold">통관 등록</h2>
+          <h2 className="font-semibold">{item ? '통관 수정' : '통관 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">선적번호 *</label>
-            <Input value={form.shipmentBusinessId} onChange={e => setForm(f => ({ ...f, shipmentBusinessId: e.target.value }))} placeholder="SHP-2026-0035" required />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">선적번호 *</label>
+              <Input value={form.shipmentBusinessId} onChange={e => setForm(f => ({ ...f, shipmentBusinessId: e.target.value }))} placeholder="SHP-2026-0035" required />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">관세사</label>
@@ -62,6 +85,18 @@ function ImportModal({ onClose, onSave }: { onClose: () => void; onSave: (i: Imp
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">반출일</label>
               <Input type="date" value={form.releaseDate} onChange={e => setForm(f => ({ ...f, releaseDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">인보이스 금액</label>
+              <Input type="number" value={form.invoiceValue} onChange={e => setForm(f => ({ ...f, invoiceValue: e.target.value }))} placeholder="15000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
+              <select value={form.invoiceCurrency} onChange={e => setForm(f => ({ ...f, invoiceCurrency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option>USD</option><option>CNY</option><option>EUR</option>
+              </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -105,7 +140,7 @@ function ImportModal({ onClose, onSave }: { onClose: () => void; onSave: (i: Imp
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정' : '저장')}
             </Button>
           </div>
         </form>
@@ -118,11 +153,21 @@ export default function ImportsPage() {
   const [imports, setImports] = useState<Import[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [modal, setModal] = useState<{ open: boolean; item?: Import | null }>({ open: false });
 
-  useEffect(() => {
-    fetch('/api/imports').then(r => r.json()).then(j => { if (j.data) setImports(j.data); }).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    const res = await fetch('/api/imports').then(r => r.json());
+    if (res.data) setImports(res.data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('통관 내역을 삭제하시겠습니까?')) return;
+    await fetch(`/api/imports/${id}`, { method: 'DELETE' });
+    load();
+  };
 
   const filtered = imports.filter(i =>
     i.businessId.includes(search) || i.shipmentBusinessId.includes(search) || (i.declarationNo ?? '').includes(search)
@@ -131,14 +176,13 @@ export default function ImportsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="수입통관" />
-      {showModal && <ImportModal onClose={() => setShowModal(false)} onSave={i => { setImports(prev => [i, ...prev]); setShowModal(false); }} />}
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input placeholder="통관번호, 선적번호 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setShowModal(true)}>
+          <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">통관 등록</span>
           </Button>
         </div>
@@ -150,11 +194,11 @@ export default function ImportsPage() {
             <div className="hidden md:block rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
-                  <tr>{['통관번호', '선적', '관세사', '관세', '부가세', 'C/O', '반출일', '상태'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['관세', '부가세'].includes(h) ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>{['통관번호', '선적', '관세사', '관세', '부가세', 'C/O', '반출일', '상태', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', ['관세', '부가세'].includes(h) ? 'text-right' : h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(imp => (
-                    <tr key={imp.id} className="hover:bg-muted/30 cursor-pointer">
+                    <tr key={imp.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs">{imp.businessId}</td>
                       <td className="px-4 py-3 text-xs font-medium">{imp.shipmentBusinessId}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{imp.brokerName ?? '-'}</td>
@@ -163,6 +207,12 @@ export default function ImportsPage() {
                       <td className="px-4 py-3">{imp.coStatus && <span className={cn('text-xs px-2 py-0.5 rounded-full', coStyle[imp.coStatus])}>{imp.coStatus}</span>}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{imp.releaseDate ?? '-'}</td>
                       <td className="px-4 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', statusStyle[imp.status])}>{statusLabel[imp.status]}</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: imp })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(imp.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -178,7 +228,11 @@ export default function ImportsPage() {
                       <p className="text-xs font-mono text-muted-foreground">{imp.businessId}</p>
                       <p className="font-semibold text-sm mt-0.5">{imp.shipmentBusinessId}</p>
                     </div>
-                    <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full', statusStyle[imp.status])}>{statusLabel[imp.status]}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full', statusStyle[imp.status])}>{statusLabel[imp.status]}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: imp })}><Pencil className="w-3.5 h-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(imp.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">{imp.brokerName ?? '관세사 미지정'}</p>
                   <div className="grid grid-cols-3 gap-2 text-xs">
@@ -194,6 +248,9 @@ export default function ImportsPage() {
           </>
         )}
       </div>
+      {modal.open && (
+        <ImportModal item={modal.item} onClose={() => setModal({ open: false })} onSave={() => { setModal({ open: false }); load(); }} />
+      )}
     </div>
   );
 }
