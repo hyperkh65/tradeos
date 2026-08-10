@@ -1,5 +1,5 @@
 import { getNotionClient, DB, isDemoMode } from './client';
-import type { Company, Product, PurchaseOrder, Task, Quote, Inspection, Shipment, Claim, Expense } from '@/types';
+import type { Company, Product, PurchaseOrder, Task, Quote, Shipment, Import, Expense } from '@/types';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 type Props = Record<string, { type: string; [key: string]: unknown }>;
@@ -113,14 +113,14 @@ export function notionToTask(page: { id: string; properties: Props; created_time
   const p = page.properties;
   return {
     id: page.id,
-    title: getText(p, '제목'),
-    description: getText(p, '설명') || undefined,
+    title: getText(p, '제목', 'Title', 'Name', '이름'),
+    description: getText(p, '설명', 'Description') || undefined,
     ownerId: 'user-1',
-    ownerName: getText(p, '담당자') || '김대표',
-    dueDate: getDate(p, '마감일'),
-    priority: (getSelect(p, '우선순위') || 'medium') as Task['priority'],
-    status: (getSelect(p, '상태') || '해야 함') as Task['status'],
-    relatedName: getText(p, '관련항목') || undefined,
+    ownerName: getText(p, '담당자', 'Assignee', 'Owner') || '김대표',
+    dueDate: getDate(p, '마감일', 'DueDate', 'Due', 'Date'),
+    priority: (getSelect(p, '우선순위', 'Priority') || 'medium') as Task['priority'],
+    status: (getSelect(p, '상태', 'Status') || '해야 함') as Task['status'],
+    relatedName: getText(p, '관련항목', 'Related') || undefined,
     createdAt: page.created_time,
     updatedAt: page.last_edited_time,
   };
@@ -322,6 +322,106 @@ export function taskToNotion(t: Partial<Task> & { title: string }) {
   };
 }
 
+// ─── ERP Shipment / Import (DB_IMPORTS_MASTER) ──────────────────────────────
+// Each Notion page is one import shipment with both transport and customs data.
+
+function notionToShipment(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Shipment {
+  const p = page.properties;
+  const importNo = getText(p, 'ImportNo');
+  const transportType = getText(p, 'TransportType').toUpperCase();
+  let type: Shipment['type'] = 'LCL';
+  if (transportType.includes('FCL')) type = 'FCL';
+  else if (transportType.includes('AIR') || transportType.includes('항공')) type = 'AIR';
+  else if (transportType.includes('COURIER') || transportType.includes('특송')) type = 'COURIER';
+
+  const vesselVoyage = getText(p, 'VesselVoyage');
+  const parts = vesselVoyage.split('/').map(s => s.trim());
+
+  const clearanceDate = getDate(p, 'ClearanceDate');
+  let status: Shipment['status'] = 'booked';
+  if (clearanceDate) status = 'completed';
+  else if (getText(p, 'BLNoMaster') || getText(p, 'BLNoHouse')) status = 'in_transit';
+
+  return {
+    id: page.id,
+    businessId: importNo || page.id.slice(0, 8),
+    type,
+    forwarderName: getText(p, 'Forwarder') || undefined,
+    origin: getText(p, 'Exporter') || undefined,
+    pol: getText(p, 'POL') || undefined,
+    pod: getText(p, 'POD') || undefined,
+    vessel: parts[0] || vesselVoyage || undefined,
+    voyage: parts[1] || undefined,
+    blNo: getText(p, 'BLNoMaster') || getText(p, 'BLNoHouse') || undefined,
+    containerType: getText(p, 'ContainerType') || undefined,
+    poIds: [],
+    status,
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time,
+  };
+}
+
+function notionToImport(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Import {
+  const p = page.properties;
+  const importNo = getText(p, 'ImportNo');
+  const clearanceDate = getDate(p, 'ClearanceDate');
+
+  return {
+    id: page.id + '_imp',
+    businessId: importNo ? `IMP-${importNo}` : `IMP-${page.id.slice(0, 8)}`,
+    shipmentId: page.id,
+    shipmentBusinessId: importNo || page.id.slice(0, 8),
+    brokerName: getText(p, 'Importer') || undefined,
+    releaseDate: clearanceDate || undefined,
+    duty: getNum(p, 'DutyAmount') || undefined,
+    vat: getNum(p, 'VATAmount') || undefined,
+    ftaApplicable: false,
+    status: clearanceDate ? 'completed' : 'in_progress',
+    createdAt: page.created_time,
+  };
+}
+
+// ─── ERP Expense (DB_INVOICES) ───────────────────────────────────────────────
+
+function notionToExpense(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Expense {
+  const p = page.properties;
+  const invoiceNo = getText(p, 'InvoiceNo');
+  const issueDate = getDate(p, 'IssueDate') || getDate(p, 'Date') || page.created_time.slice(0, 10);
+
+  return {
+    id: page.id,
+    businessId: invoiceNo || page.id.slice(0, 8),
+    category: getText(p, 'BillingReason') || '매출',
+    description: getText(p, 'Description') || getText(p, 'Client') || '',
+    amount: getNum(p, 'Amount') || 0,
+    currency: 'KRW',
+    relatedName: getText(p, 'Client') || undefined,
+    invoiceNo: invoiceNo || undefined,
+    paidDate: issueDate,
+    status: 'paid' as Expense['status'],
+    createdBy: 'ynk-erp',
+    createdAt: page.created_time,
+  };
+}
+
+// ─── ERP Task (DB_SCHEDULE) ──────────────────────────────────────────────────
+
+function notionToERPTask(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Task {
+  const p = page.properties;
+  return {
+    id: page.id,
+    title: getText(p, 'Title', '이름', 'Name', '제목'),
+    description: getText(p, 'Description', '설명') || undefined,
+    ownerId: 'user-1',
+    ownerName: getText(p, 'Assignee', '담당자') || '김대표',
+    dueDate: getDate(p, 'DueDate', 'Date', '마감일'),
+    priority: (getSelect(p, '우선순위') || 'medium') as Task['priority'],
+    status: (getSelect(p, 'Status', '상태') || '해야 함') as Task['status'],
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time,
+  };
+}
+
 // ─── Fetch from Notion ───────────────────────────────────────────────────────
 
 async function fetchAllPages(dbId: string): Promise<Array<{ id: string; properties: Props; created_time: string; last_edited_time: string }>> {
@@ -363,6 +463,23 @@ export async function fetchNotionProducts(): Promise<Product[]> {
 
 export async function fetchNotionTasks(): Promise<Task[]> {
   return fetchFromNotion(DB.tasks, notionToTask);
+}
+
+export async function fetchNotionShipments(): Promise<Shipment[]> {
+  return fetchFromNotion(DB.shipments, notionToShipment);
+}
+
+export async function fetchNotionImports(): Promise<Import[]> {
+  return fetchFromNotion(DB.imports, notionToImport);
+}
+
+export async function fetchNotionExpenses(): Promise<Expense[]> {
+  return fetchFromNotion(DB.expenses, notionToExpense);
+}
+
+export async function fetchNotionERPTasks(): Promise<Task[]> {
+  if (!DB.tasks || isDemoMode()) return [];
+  return fetchFromNotion(DB.tasks, notionToERPTask);
 }
 
 export async function fetchNotionPurchaseOrders(): Promise<PurchaseOrder[]> {
@@ -432,6 +549,54 @@ export async function createNotionTask(t: Partial<Task> & { title: string }): Pr
     return page.id;
   } catch (e) {
     console.error('[Notion] create task error:', e);
+    return null;
+  }
+}
+
+export async function createNotionShipment(s: Shipment): Promise<string | null> {
+  if (!DB.shipments || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const page = await notion.pages.create({
+      parent: { database_id: DB.shipments },
+      properties: {
+        'ImportNo': rich(s.businessId),
+        'Forwarder': rich(s.forwarderName || ''),
+        'TransportType': rich(s.type),
+        'POL': rich(s.pol || ''),
+        'POD': rich(s.pod || ''),
+        'VesselVoyage': rich([s.vessel, s.voyage].filter(Boolean).join(' / ')),
+        'BLNoMaster': rich(s.blNo || ''),
+        'ContainerType': rich(s.containerType || ''),
+        'Exporter': rich(s.origin || ''),
+      },
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[Notion] create shipment error:', e);
+    return null;
+  }
+}
+
+export async function createNotionExpense(e: Expense): Promise<string | null> {
+  if (!DB.expenses || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const page = await notion.pages.create({
+      parent: { database_id: DB.expenses },
+      properties: {
+        '이름': titleProp(e.invoiceNo || e.businessId),
+        'InvoiceNo': rich(e.invoiceNo || e.businessId),
+        'Client': rich(e.relatedName || ''),
+        'Amount': num(e.amount),
+        'BillingReason': rich(e.category),
+        'Description': rich(e.description),
+        ...(e.paidDate ? { 'IssueDate': dt(e.paidDate) } : {}),
+      },
+    });
+    return page.id;
+  } catch (e2) {
+    console.error('[Notion] create expense error:', e2);
     return null;
   }
 }

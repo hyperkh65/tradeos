@@ -1,36 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
-import { DEMO_IMPORTS } from '@/lib/demo-data';
+import { fetchNotionImports } from '@/lib/notion/mapper';
+import type { Import } from '@/types';
 
-function dbToImport(row: Record<string, unknown>) {
+function dbToImport(row: Record<string, unknown>): Import {
   return {
-    id: row.id, businessId: row.business_id,
-    shipmentId: row.shipment_id, shipmentBusinessId: row.shipment_business_id,
-    brokerName: row.broker_name || undefined, declarationNo: row.declaration_no || undefined,
-    releaseDate: row.release_date || undefined, hsCode: row.hs_code || undefined,
-    dutyRate: row.duty_rate || undefined, duty: row.duty || undefined,
-    vat: row.vat || undefined, brokerFee: row.broker_fee || undefined,
-    ftaApplicable: Boolean(row.fta_applicable), coStatus: row.co_status || undefined,
-    status: row.status, createdAt: row.created_at,
+    id: row.id as string,
+    businessId: row.business_id as string,
+    shipmentId: row.shipment_id as string,
+    shipmentBusinessId: row.shipment_business_id as string,
+    brokerName: (row.broker_name as string) || undefined,
+    declarationNo: (row.declaration_no as string) || undefined,
+    releaseDate: (row.release_date as string) || undefined,
+    hsCode: (row.hs_code as string) || undefined,
+    dutyRate: (row.duty_rate as number) || undefined,
+    duty: (row.duty as number) || undefined,
+    vat: (row.vat as number) || undefined,
+    brokerFee: (row.broker_fee as number) || undefined,
+    ftaApplicable: Boolean(row.fta_applicable),
+    coStatus: (row.co_status as Import['coStatus']) || undefined,
+    status: (row.status as Import['status']) || 'in_progress',
+    createdAt: row.created_at as string,
   };
 }
 
-export async function GET() {
-  try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM imports ORDER BY created_at DESC').all() as Record<string, unknown>[];
-    if (rows.length > 0) return NextResponse.json({ data: rows.map(dbToImport) });
+function syncImportToDb(db: ReturnType<typeof getDb>, imp: Import) {
+  db.prepare(`INSERT OR REPLACE INTO imports
+    (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,release_date,hs_code,duty_rate,duty,vat,broker_fee,fta_applicable,co_status,status,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(imp.id, imp.businessId, imp.shipmentId, imp.shipmentBusinessId,
+      imp.brokerName ?? null, imp.declarationNo ?? null, imp.releaseDate ?? null,
+      imp.hsCode ?? null, imp.dutyRate ?? null, imp.duty ?? null, imp.vat ?? null,
+      imp.brokerFee ?? null, imp.ftaApplicable ? 1 : 0, imp.coStatus ?? null,
+      imp.status, imp.createdAt);
+}
 
-    const seed = db.prepare(`INSERT OR IGNORE INTO imports (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,release_date,hs_code,duty_rate,duty,vat,broker_fee,fta_applicable,co_status,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-    db.transaction(() => {
-      for (const imp of DEMO_IMPORTS) {
-        seed.run(imp.id, imp.businessId, imp.shipmentId, imp.shipmentBusinessId, imp.brokerName ?? null, imp.declarationNo ?? null, imp.releaseDate ?? null, imp.hsCode ?? null, imp.dutyRate ?? null, imp.duty ?? null, imp.vat ?? null, imp.brokerFee ?? null, imp.ftaApplicable ? 1 : 0, imp.coStatus ?? null, imp.status, imp.createdAt);
-      }
-    })();
-    return NextResponse.json({ data: DEMO_IMPORTS });
-  } catch {
-    return NextResponse.json({ data: DEMO_IMPORTS });
+export async function GET() {
+  const db = getDb();
+
+  try {
+    const notionImports = await fetchNotionImports();
+    if (notionImports.length > 0) {
+      db.transaction(() => {
+        for (const imp of notionImports) syncImportToDb(db, imp);
+      })();
+      return NextResponse.json({ data: notionImports });
+    }
+  } catch (e) {
+    console.error('[Imports] Notion fetch error:', e);
   }
+
+  const rows = db.prepare('SELECT * FROM imports ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  return NextResponse.json({ data: rows.map(dbToImport) });
 }
 
 export async function POST(req: NextRequest) {
@@ -45,10 +66,21 @@ export async function POST(req: NextRequest) {
     const year = new Date().getFullYear();
     const bizId = body.businessId || `IMP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
 
-    db.prepare(`INSERT INTO imports (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,release_date,hs_code,duty_rate,duty,vat,broker_fee,fta_applicable,co_status,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, bizId, body.shipmentId || '', body.shipmentBusinessId || '', body.brokerName ?? null, body.declarationNo ?? null, body.releaseDate ?? null, body.hsCode ?? null, body.dutyRate ?? null, body.duty ?? null, body.vat ?? null, body.brokerFee ?? null, body.ftaApplicable ? 1 : 0, body.coStatus ?? null, body.status || 'in_progress', ts);
+    const imp: Import = {
+      id, businessId: bizId,
+      shipmentId: body.shipmentId || '',
+      shipmentBusinessId: body.shipmentBusinessId || '',
+      brokerName: body.brokerName, declarationNo: body.declarationNo,
+      releaseDate: body.releaseDate, hsCode: body.hsCode,
+      dutyRate: body.dutyRate, duty: body.duty, vat: body.vat,
+      brokerFee: body.brokerFee, ftaApplicable: body.ftaApplicable || false,
+      coStatus: body.coStatus,
+      status: body.status || 'in_progress',
+      createdAt: ts,
+    };
 
-    return NextResponse.json({ data: { id, businessId: bizId, ...body, createdAt: ts } }, { status: 201 });
+    syncImportToDb(db, imp);
+    return NextResponse.json({ data: imp }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
   }
