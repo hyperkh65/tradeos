@@ -86,16 +86,26 @@ export function notionToCompany(page: { id: string; properties: Props; created_t
   };
 }
 
+function getFileUrl(p: Props, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const f = (p[k] as any);
+    if (!f) continue;
+    const url = f.files?.[0]?.external?.url || f.files?.[0]?.file?.url;
+    if (url) return url;
+  }
+  return undefined;
+}
+
 export function notionToProduct(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Product {
   const p = page.properties;
-  return {
+  const base: Product = {
     id: page.id,
     businessId: getText(p, 'ProductCode', '코드') || page.id.slice(0, 8),
     code: getText(p, 'ProductCode', '제품코드', '코드'),
     nameKo: getText(p, 'ProductName', '제품명'),
     nameEn: getText(p, '영문명') || undefined,
     category: getText(p, 'ProductCategory') || getSelect(p, '카테고리') || undefined,
-    supplierName: getText(p, 'Supplier', 'Maker', '공급업체') || undefined,
+    supplierName: getText(p, 'Supplier', '공급업체') || undefined,
     status: 'active' as Product['status'],
     purchasePrice: getNum(p, 'Cost', '구매단가'),
     sellingPrice: getNum(p, '판매단가'),
@@ -107,6 +117,20 @@ export function notionToProduct(page: { id: string; properties: Props; created_t
     createdAt: page.created_time,
     updatedAt: page.last_edited_time,
   };
+  return Object.assign(base, {
+    imageUrl: getFileUrl(p, 'Image', '이미지') || undefined,
+    detail: getText(p, 'Detail', '상세') || undefined,
+    maker: getText(p, 'Maker', '제조사') || undefined,
+    voltage: getText(p, 'Voltage', '전압') || undefined,
+    watts: getText(p, 'Watts', '와트') || undefined,
+    cct: getText(p, 'CCT') || undefined,
+    inputA: getText(p, 'InputA') || undefined,
+    outputV: getText(p, 'OutputV') || undefined,
+    outputA: getText(p, 'OutputA') || undefined,
+    material: getText(p, 'Material', '재질') || undefined,
+    sizeSpec: getText(p, 'Size', '사이즈') || undefined,
+    converter: getText(p, 'Converter') || undefined,
+  });
 }
 
 export function notionToTask(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Task {
@@ -296,7 +320,7 @@ export function companyToNotion(c: Partial<Company> & { name: string }) {
   };
 }
 
-export function productToNotion(p: Partial<Product> & { nameKo: string; code: string }) {
+export function productToNotion(p: Partial<Product> & { nameKo: string; code: string } & Record<string, any>) {
   return {
     '이름': titleProp(p.code || p.nameKo),
     'ProductCode': rich(p.code),
@@ -307,6 +331,17 @@ export function productToNotion(p: Partial<Product> & { nameKo: string; code: st
     ...(p.purchasePrice !== undefined ? { 'Cost': num(p.purchasePrice) } : {}),
     ...(p.currency ? { 'Currency': rich(p.currency) } : {}),
     ...(p.moq !== undefined ? { 'MOQ': num(p.moq) } : {}),
+    ...(p.detail ? { 'Detail': rich(p.detail) } : {}),
+    ...(p.maker ? { 'Maker': rich(p.maker) } : {}),
+    ...(p.voltage ? { 'Voltage': rich(p.voltage) } : {}),
+    ...(p.watts ? { 'Watts': rich(p.watts) } : {}),
+    ...(p.cct ? { 'CCT': rich(p.cct) } : {}),
+    ...(p.inputA ? { 'InputA': rich(p.inputA) } : {}),
+    ...(p.outputV ? { 'OutputV': rich(p.outputV) } : {}),
+    ...(p.outputA ? { 'OutputA': rich(p.outputA) } : {}),
+    ...(p.material ? { 'Material': rich(p.material) } : {}),
+    ...(p.sizeSpec ? { 'Size': rich(p.sizeSpec) } : {}),
+    ...(p.converter ? { 'Converter': rich(p.converter) } : {}),
   };
 }
 

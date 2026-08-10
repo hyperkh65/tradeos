@@ -430,6 +430,18 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE approvals ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE approvals ADD COLUMN requester_dept TEXT`,
     `ALTER TABLE mail_ext_messages ADD COLUMN folder TEXT NOT NULL DEFAULT 'inbox'`,
+    `ALTER TABLE products ADD COLUMN image_url TEXT`,
+    `ALTER TABLE products ADD COLUMN detail TEXT`,
+    `ALTER TABLE products ADD COLUMN voltage TEXT`,
+    `ALTER TABLE products ADD COLUMN watts TEXT`,
+    `ALTER TABLE products ADD COLUMN cct TEXT`,
+    `ALTER TABLE products ADD COLUMN maker TEXT`,
+    `ALTER TABLE products ADD COLUMN input_a TEXT`,
+    `ALTER TABLE products ADD COLUMN output_v TEXT`,
+    `ALTER TABLE products ADD COLUMN output_a TEXT`,
+    `ALTER TABLE products ADD COLUMN material TEXT`,
+    `ALTER TABLE products ADD COLUMN size_spec TEXT`,
+    `ALTER TABLE products ADD COLUMN converter TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

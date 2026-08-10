@@ -11,8 +11,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const row = db.prepare('SELECT * FROM products WHERE id=?').get(id) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
 
-    db.prepare(`UPDATE products SET code=?,name_ko=?,name_en=?,category=?,supplier_name=?,status=?,purchase_price=?,selling_price=?,currency=?,moq=?,lead_time_days=?,hs_code=?,country_of_origin=?,updated_at=? WHERE id=?`)
-      .run(body.code ?? row.code, body.nameKo ?? row.name_ko, body.nameEn ?? null, body.category ?? null, body.supplierName ?? null, body.status ?? row.status, body.purchasePrice ?? null, body.sellingPrice ?? null, body.currency ?? row.currency, body.moq ?? null, body.leadTimeDays ?? null, body.hsCode ?? null, body.countryOfOrigin ?? null, ts, id);
+    db.prepare(`UPDATE products SET
+      code=?, name_ko=?, name_en=?, category=?, supplier_name=?, status=?,
+      purchase_price=?, selling_price=?, currency=?, moq=?, lead_time_days=?,
+      hs_code=?, country_of_origin=?,
+      image_url=?, detail=?, maker=?,
+      voltage=?, watts=?, cct=?,
+      input_a=?, output_v=?, output_a=?, material=?, size_spec=?, converter=?,
+      updated_at=?
+      WHERE id=?`)
+      .run(
+        body.code ?? row.code, body.nameKo ?? row.name_ko, body.nameEn ?? null,
+        body.category ?? null, body.supplierName ?? null, body.status ?? row.status,
+        body.purchasePrice ?? null, body.sellingPrice ?? null, body.currency ?? row.currency,
+        body.moq ?? null, body.leadTimeDays ?? null,
+        body.hsCode ?? null, body.countryOfOrigin ?? null,
+        body.imageUrl ?? null, body.detail ?? null, body.maker ?? null,
+        body.voltage ?? null, body.watts ?? null, body.cct ?? null,
+        body.inputA ?? null, body.outputV ?? null, body.outputA ?? null,
+        body.material ?? null, body.sizeSpec ?? null, body.converter ?? null,
+        ts, id,
+      );
 
     if (row.notion_id) {
       updateNotionPage(row.notion_id as string, productToNotion(body)).catch(() => {});
