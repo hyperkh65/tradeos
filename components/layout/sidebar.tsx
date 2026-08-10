@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Compass, Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -70,6 +70,8 @@ const navGroups = [
   },
 ];
 
+const allItems = navGroups.flatMap(g => g.items);
+
 interface AppSidebarProps {
   onNavigate?: () => void;
 }
@@ -77,8 +79,8 @@ interface AppSidebarProps {
 export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { close } = useSidebar();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { close, collapsed, toggleCollapsed } = useSidebar();
+  const [groupCollapsed, setGroupCollapsed] = useState<Record<string, boolean>>({});
   const [me, setMe] = useState<{ name: string; role: string } | null>(null);
 
   useEffect(() => {
@@ -86,7 +88,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   }, []);
 
   const toggleGroup = (label: string) => {
-    setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
+    setGroupCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
   const isActive = (href: string) =>
@@ -104,14 +106,74 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
     close();
   };
 
+  /* ── COLLAPSED (icon-only) mode ─────────────────────────────── */
+  if (collapsed) {
+    return (
+      <aside className="flex flex-col h-full w-full border-r border-border bg-sidebar shrink-0">
+        {/* Logo icon */}
+        <div className="h-12 flex items-center justify-center border-b border-sidebar-border shrink-0">
+          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
+            <Compass className="w-4 h-4 text-primary-foreground" />
+          </div>
+        </div>
+
+        {/* Nav icons */}
+        <nav className="flex-1 overflow-y-auto py-2 px-1.5 space-y-0.5">
+          {allItems.map(item => {
+            const active = isActive(item.href);
+            return (
+              <button
+                key={item.href}
+                onClick={() => handleNav(item.href)}
+                title={item.label}
+                className={cn(
+                  'w-full flex items-center justify-center py-2 rounded-md transition-colors relative',
+                  active
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                )}
+              >
+                <item.icon className="w-4 h-4 shrink-0" />
+                {item.badge && (
+                  <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-destructive rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Bottom icons */}
+        <div className="shrink-0 border-t border-sidebar-border py-2 px-1.5 space-y-0.5">
+          <button onClick={() => handleNav('/admin')} title="사용자 관리" className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+            <Users className="w-4 h-4" />
+          </button>
+          <button onClick={() => handleNav('/settings')} title="설정" className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+            <Settings className="w-4 h-4" />
+          </button>
+          <button onClick={toggleCollapsed} title="사이드바 펼치기" className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
+  /* ── EXPANDED mode ───────────────────────────────────────────── */
   return (
-    <aside className="flex flex-col h-full w-56 border-r border-border bg-sidebar shrink-0">
+    <aside className="flex flex-col h-full w-full border-r border-border bg-sidebar shrink-0">
       {/* Logo */}
       <div className="h-12 flex items-center gap-2 px-4 border-b border-sidebar-border shrink-0">
         <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
           <Compass className="w-4 h-4 text-primary-foreground" />
         </div>
         <span className="font-bold text-sidebar-foreground tracking-tight text-sm">NEXPORT</span>
+        <button
+          onClick={toggleCollapsed}
+          title="사이드바 접기"
+          className="ml-auto text-muted-foreground hover:text-sidebar-foreground transition-colors"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Search */}
@@ -133,11 +195,11 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
             >
               {group.label}
               <ChevronDown
-                className={cn('w-3 h-3 transition-transform', collapsed[group.label] && '-rotate-90')}
+                className={cn('w-3 h-3 transition-transform', groupCollapsed[group.label] && '-rotate-90')}
               />
             </button>
 
-            {!collapsed[group.label] && (
+            {!groupCollapsed[group.label] && (
               <div className="space-y-0.5 mt-0.5">
                 {group.items.map((item) => {
                   const active = isActive(item.href);

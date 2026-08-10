@@ -1,19 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SidebarContext } from '@/lib/sidebar-context';
 import { AppSidebar } from './sidebar';
+import { cn } from '@/lib/utils';
 
 export function MainShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved !== null) setCollapsed(JSON.parse(saved));
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebar-collapsed', JSON.stringify(next));
+      return next;
+    });
+  };
 
   return (
     <SidebarContext.Provider
-      value={{ toggle: () => setOpen((p) => !p), close: () => setOpen(false) }}
+      value={{ toggle: () => setOpen(p => !p), close: () => setOpen(false), collapsed, toggleCollapsed }}
     >
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Desktop sidebar */}
-        <div className="hidden md:flex shrink-0">
+        <div className={cn(
+          'hidden md:flex shrink-0 transition-[width] duration-200 ease-in-out',
+          collapsed ? 'w-14' : 'w-56'
+        )}>
           <AppSidebar />
         </div>
 

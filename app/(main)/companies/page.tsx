@@ -324,10 +324,20 @@ export default function CompaniesPage() {
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
-            <div className="hidden md:block rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="hidden md:block rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
                 <thead className="bg-muted/50">
-                  <tr>{['코드', '거래처명', '유형', '국가', '대표자', '연락처', '이메일', '서류', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">코드</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">거래처명</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">유형</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">국가</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">대표자</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">연락처</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">이메일</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">서류</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(c => {
@@ -336,28 +346,28 @@ export default function CompaniesPage() {
                     const hasBankCopy = !!ex.bankCopyFile;
                     return (
                       <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.businessId}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{c.businessId}</td>
+                        <td className="px-3 py-3">
                           <p className="font-medium text-sm">{c.name}</p>
                           {c.nameEn && <p className="text-xs text-muted-foreground">{c.nameEn}</p>}
                         </td>
-                        <td className="px-4 py-3"><Badge className={cn('text-xs border', typeColor[c.type])} variant="outline">{c.type}</Badge></td>
-                        <td className="px-4 py-3 text-xs">{countryFlag[c.country] ?? ''} {c.country}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{ex.ceo ?? '-'}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{c.phone ?? '-'}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[140px]">{c.email ?? '-'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3"><Badge className={cn('text-xs border whitespace-nowrap', typeColor[c.type])} variant="outline">{c.type}</Badge></td>
+                        <td className="px-3 py-3 text-xs whitespace-nowrap hidden lg:table-cell">{countryFlag[c.country] ?? ''} {c.country}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">{ex.ceo ?? '-'}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{c.phone ?? '-'}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground hidden xl:table-cell"><span className="truncate block max-w-[160px]">{c.email ?? '-'}</span></td>
+                        <td className="px-3 py-3 hidden lg:table-cell">
                           <div className="flex gap-1">
                             {hasBizReg && (
-                              <a href={ex.bizRegFile} target="_blank" rel="noreferrer" title="사업자등록증" className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">사업자</a>
+                              <a href={ex.bizRegFile} target="_blank" rel="noreferrer" title="사업자등록증" className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 whitespace-nowrap">사업자</a>
                             )}
                             {hasBankCopy && (
-                              <a href={ex.bankCopyFile} target="_blank" rel="noreferrer" title="통장사본" className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200">통장</a>
+                              <a href={ex.bankCopyFile} target="_blank" rel="noreferrer" title="통장사본" className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-200 whitespace-nowrap">통장</a>
                             )}
                             {!hasBizReg && !hasBankCopy && <span className="text-xs text-muted-foreground/40">-</span>}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openModal(c)}><Pencil className="w-3.5 h-3.5" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(c.id)}><Trash2 className="w-3.5 h-3.5" /></Button>

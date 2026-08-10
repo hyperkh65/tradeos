@@ -409,18 +409,18 @@ export default function ProductsPage() {
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden md:block rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="hidden md:block rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-20">사진</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">코드</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">제품명</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">카테고리</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">공급업체</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">사양</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">단가</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground w-16">사진</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">코드</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">제품명</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">카테고리</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">공급업체</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">사양</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground hidden xl:table-cell">단가</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -431,37 +431,36 @@ export default function ProductsPage() {
                     return (
                       <tr key={p.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-3 py-2">
-                          <div className="flex gap-1">
-                            {imgs.slice(0, 3).map((url, i) => (
-                              <div key={i} className="w-12 h-12 rounded border border-border overflow-hidden bg-muted/30 flex items-center justify-center shrink-0">
+                          <div className="flex gap-0.5">
+                            {imgs.slice(0, 2).map((url, i) => (
+                              <div key={i} className="w-10 h-10 rounded border border-border overflow-hidden bg-muted/30 flex items-center justify-center shrink-0">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={url} alt="" className="w-full h-full object-cover"
                                   onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                               </div>
                             ))}
                             {imgs.length === 0 && (
-                              <div className="w-12 h-12 rounded border border-border bg-muted/30 flex items-center justify-center">
-                                <ImageIcon className="w-4 h-4 text-muted-foreground/30" />
+                              <div className="w-10 h-10 rounded border border-border bg-muted/30 flex items-center justify-center">
+                                <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/30" />
                               </div>
                             )}
-                            {imgs.length > 3 && (
-                              <div className="w-12 h-12 rounded border border-border bg-muted/50 flex items-center justify-center text-xs text-muted-foreground font-medium">
-                                +{imgs.length - 3}
+                            {imgs.length > 2 && (
+                              <div className="w-10 h-10 rounded border border-border bg-muted/50 flex items-center justify-center text-[10px] text-muted-foreground font-medium">
+                                +{imgs.length - 2}
                               </div>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs">{p.code}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 font-mono text-xs whitespace-nowrap">{p.code}</td>
+                        <td className="px-3 py-3">
                           <p className="font-medium text-sm">{p.nameKo}</p>
                           {p.nameEn && <p className="text-xs text-muted-foreground">{p.nameEn}</p>}
-                          {ex.detail && <p className="text-xs text-muted-foreground/60 truncate max-w-[180px]">{ex.detail}</p>}
                         </td>
-                        <td className="px-4 py-3"><Badge variant="secondary" className="text-xs">{p.category ?? '-'}</Badge></td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[120px] truncate">{p.supplierName ?? '-'}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{spec || '-'}</td>
-                        <td className="px-4 py-3 text-right text-xs font-mono">{p.purchasePrice ? `${p.currency} ${Number(p.purchasePrice).toFixed(2)}` : '-'}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 hidden lg:table-cell"><Badge variant="secondary" className="text-xs whitespace-nowrap">{p.category ?? '-'}</Badge></td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[120px]">{p.supplierName ?? '-'}</span></td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{spec || '-'}</td>
+                        <td className="px-3 py-3 text-right text-xs font-mono whitespace-nowrap hidden xl:table-cell">{p.purchasePrice ? `${p.currency} ${Number(p.purchasePrice).toFixed(2)}` : '-'}</td>
+                        <td className="px-3 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openModal(p)}><Pencil className="w-3.5 h-3.5" /></Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>

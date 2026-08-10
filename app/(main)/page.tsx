@@ -116,7 +116,7 @@ export default function HomePage() {
           <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
             { label: '진행 중 발주', value: stats.activePOs, icon: Boxes, href: '/purchase-orders', color: 'text-blue-600' },
             { label: '선적 예정', value: stats.upcomingShipments, icon: Ship, href: '/shipments', color: 'text-green-600' },

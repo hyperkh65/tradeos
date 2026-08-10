@@ -367,21 +367,30 @@ export default function QuotesPage() {
         ) : (
           <>
             <div className="hidden md:block rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[500px]">
                 <thead className="bg-muted/50">
-                  <tr>{['견적번호', '유형', '거래처', '품목', '통화', '유효기한', '상태', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">견적번호</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">유형</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">거래처</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">품목</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">통화</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">유효기한</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">상태</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(q => (
                     <tr key={q.id} className="hover:bg-muted/30 cursor-pointer transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs">{q.businessId}</td>
-                      <td className="px-4 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', typeStyle[q.type])}>{typeLabel[q.type]}</span></td>
-                      <td className="px-4 py-3 font-medium max-w-[160px] truncate">{q.companyName}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{q.items.map(i => i.productName).join(', ')}</td>
-                      <td className="px-4 py-3 text-xs">{q.currency}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{q.validity ?? '-'}</td>
-                      <td className="px-4 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', statusStyle[q.status])}>{statusLabel[q.status]}</span></td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 font-mono text-xs whitespace-nowrap">{q.businessId}</td>
+                      <td className="px-3 py-3 hidden lg:table-cell"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap', typeStyle[q.type])}>{typeLabel[q.type]}</span></td>
+                      <td className="px-3 py-3 font-medium"><span className="truncate block max-w-[160px]">{q.companyName}</span></td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[180px]">{q.items.map(i => i.productName).join(', ')}</span></td>
+                      <td className="px-3 py-3 text-xs whitespace-nowrap hidden xl:table-cell">{q.currency}</td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{q.validity ?? '-'}</td>
+                      <td className="px-3 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap', statusStyle[q.status])}>{statusLabel[q.status]}</span></td>
+                      <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="견적서 출력" onClick={() => handlePrint(q)}><Printer className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: q })}><Pencil className="w-3.5 h-3.5" /></Button>

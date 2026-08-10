@@ -407,24 +407,33 @@ export default function PurchaseOrdersPage() {
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
-            <div className="hidden md:block rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="hidden md:block rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[500px]">
                 <thead className="bg-muted/50">
-                  <tr>{['발주번호', '공급업체', '제품', '통화/금액', '선금/잔금', 'ETD', '상태', '관리'].map(h => <th key={h} className={cn('px-4 py-2.5 text-xs font-medium text-muted-foreground', h === '관리' ? 'text-right' : 'text-left')}>{h}</th>)}</tr>
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">발주번호</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">공급업체</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">제품</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">금액</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">선금/잔금</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">ETD</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">상태</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground">관리</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map(po => (
                     <tr key={po.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-medium">{po.businessId}</td>
-                      <td className="px-4 py-3 text-sm font-medium max-w-[140px] truncate">{po.supplierName}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</td>
-                      <td className="px-4 py-3 text-sm font-semibold">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
+                      <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[180px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span></td>
+                      <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
                         {po.depositAmount && <><span className="text-orange-600">{Number(po.depositAmount).toLocaleString()}</span> / {Number(po.balanceAmount).toLocaleString()}</>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{po.etd ?? '-'}</td>
-                      <td className="px-4 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{po.etd ?? '-'}</td>
+                      <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
+                      <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="발주서 출력" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
