@@ -30,6 +30,8 @@ jobs:
           NOTION_DB_PURCHASE_ORDERS: ${{ secrets.TRADEOS_NOTION_DB_PURCHASE_ORDERS }}
           NOTION_DB_INSPECTIONS: ${{ secrets.TRADEOS_NOTION_DB_INSPECTIONS }}
           NOTION_DB_SHIPMENTS: ${{ secrets.TRADEOS_NOTION_DB_SHIPMENTS }}
+          NOTION_DB_QUOTES: ${{ secrets.TRADEOS_NOTION_DB_QUOTES }}
+          NOTION_DB_IMPORTS: ${{ secrets.TRADEOS_NOTION_DB_IMPORTS }}
           NOTION_DB_CLAIMS: ${{ secrets.TRADEOS_NOTION_DB_CLAIMS }}
           NOTION_DB_EXPENSES: ${{ secrets.TRADEOS_NOTION_DB_EXPENSES }}
           NAS_WEBDAV_URL: ${{ secrets.TRADEOS_NAS_WEBDAV_URL }}
@@ -88,7 +90,23 @@ jobs:
             rm -f /volume1/web/tradeos/nas-server.js /volume1/web/tradeos/.next/standalone/nas-server.js
             sleep 2
             > /tmp/tradeos.log
-            PORT=3103 AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" DEMO_MODE="true" SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" UPLOAD_DIR="/volume1/web/tradeos/data/uploads" $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
+            PORT=3103 \
+            AUTH_SECRET="${{ secrets.TRADEOS_AUTH_SECRET }}" \
+            DEMO_MODE="false" \
+            SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" \
+            UPLOAD_DIR="/volume1/web/tradeos/data/uploads" \
+            NOTION_TOKEN="${{ secrets.TRADEOS_NOTION_TOKEN }}" \
+            NOTION_DB_COMPANIES="${{ secrets.TRADEOS_NOTION_DB_COMPANIES }}" \
+            NOTION_DB_PRODUCTS="${{ secrets.TRADEOS_NOTION_DB_PRODUCTS }}" \
+            NOTION_DB_TASKS="${{ secrets.TRADEOS_NOTION_DB_TASKS }}" \
+            NOTION_DB_QUOTES="${{ secrets.TRADEOS_NOTION_DB_QUOTES }}" \
+            NOTION_DB_PURCHASE_ORDERS="${{ secrets.TRADEOS_NOTION_DB_PURCHASE_ORDERS }}" \
+            NOTION_DB_SHIPMENTS="${{ secrets.TRADEOS_NOTION_DB_SHIPMENTS }}" \
+            NOTION_DB_IMPORTS="${{ secrets.TRADEOS_NOTION_DB_IMPORTS }}" \
+            NOTION_DB_EXPENSES="${{ secrets.TRADEOS_NOTION_DB_EXPENSES }}" \
+            NOTION_DB_CLAIMS="${{ secrets.TRADEOS_NOTION_DB_CLAIMS }}" \
+            NOTION_DB_INSPECTIONS="${{ secrets.TRADEOS_NOTION_DB_INSPECTIONS }}" \
+            $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
             sleep 5
             if $NODE -e "require('http').get('http://localhost:3103',(r)=>{console.log('HTTP',r.statusCode);process.exit(0)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
