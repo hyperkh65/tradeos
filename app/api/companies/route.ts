@@ -18,7 +18,7 @@ function dbToCompany(row: Record<string, unknown>) {
   };
 }
 
-const UPSERT_SQL = `INSERT OR REPLACE INTO companies
+const UPSERT_SQL = `INSERT OR IGNORE INTO companies
   (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,notion_id,created_at,updated_at)
   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
@@ -31,8 +31,6 @@ export async function GET() {
       const upsert = db.prepare(UPSERT_SQL);
       db.transaction(() => {
         for (const c of notionData) {
-          const existing = db.prepare('SELECT updated_at FROM companies WHERE id=?').get(c.id) as { updated_at: string } | undefined;
-          if (existing && existing.updated_at > c.updatedAt) continue; // local edit is newer
           upsert.run(c.id, c.businessId, c.name, c.nameEn ?? null, c.type, c.country,
             c.email ?? null, c.phone ?? null, c.website ?? null, c.wechat ?? null,
             c.memo ?? null, c.id, c.createdAt, c.updatedAt);

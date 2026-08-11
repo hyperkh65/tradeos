@@ -99,7 +99,8 @@ function ProductSearchHelper({
   const hints: PriceHint[] = matches.map(p => {
     const recentQuotes = quotes
       .flatMap(q => (q.items || []).filter((it: any) =>
-        it.productName?.includes(p.nameKo?.slice(0, 6)) || it.productName?.includes(p.code)
+        it.productName === p.nameKo || it.productName === p.code ||
+        (p.code && it.productName?.includes(p.code))
       ).map((it: any) => ({ price: it.unitPrice, company: q.companyName, date: (q as any).quoteDate || q.createdAt })))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -240,7 +241,7 @@ function QuoteModal({
     companyId: item?.companyId || '',
     quoteDate: (q?.quoteDate || new Date().toISOString().slice(0, 10)),
     currency: item?.currency || 'USD',
-    validity: item?.validity || '',
+    validity: item?.validity || (() => { const d = new Date(q?.quoteDate || new Date()); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })(),
     paymentTerms: item?.paymentTerms || '',
     incoterm: item?.incoterm || '',
     status: (item?.status || 'draft') as string,
@@ -606,7 +607,7 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
         @media print {
           body * { visibility: hidden !important; }
           #quote-print-area, #quote-print-area * { visibility: visible !important; }
-          #quote-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
+          #quote-print-area { position: fixed !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
           .no-print { display: none !important; }
           @page { size: A4 portrait; margin: 0; }
         }
@@ -620,7 +621,7 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
         .qt-box-content { font-size: 12px; line-height: 1.6; color: #333; }
       `}</style>
 
-      <div className="no-print fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
           <div className="no-print flex items-center justify-between p-4 border-b">
             <span className="font-semibold text-sm text-gray-800">{docTitle} 미리보기</span>

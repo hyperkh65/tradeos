@@ -20,8 +20,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const status = body.status || row.status;
     const businessId = row.business_id as string;
 
-    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=? WHERE id=?`)
-      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, status, body.incoterm ?? null, body.remark ?? null, ts, id);
+    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=?,images_json=?,deposit_ratio=? WHERE id=?`)
+      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, status, body.incoterm ?? null, body.remark ?? null, ts, body.imagesJson ?? row.images_json ?? null, body.depositRatio ?? row.deposit_ratio ?? '30', id);
 
     // Sync to Notion (ERP)
     await updateNotionPurchaseOrder(businessId, {

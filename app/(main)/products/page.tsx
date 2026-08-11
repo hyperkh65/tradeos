@@ -100,28 +100,31 @@ function PriceCell({ price, currency, rates }: { price?: number; currency: strin
 /* ─── Product Detail Drawer ──────────────────────────────────────────────── */
 
 function ProductDrawer({
-  product, rates, pos, onClose, onEdit, onDelete,
+  product, rates, pos, quotes, onClose, onEdit, onDelete,
 }: {
   product: Product; rates: Rates | null;
-  pos: any[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
+  pos: any[]; quotes: any[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const ex = product as any;
   const imgs: string[] = ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : [];
   const [imgIdx, setImgIdx] = useState(0);
   const [tab, setTab] = useState<'info' | 'spec' | 'price'>('info');
 
-  // Related POs (filter by product name or code)
-  const relatedPOs = pos.filter(po =>
-    po.items?.some((it: any) =>
-      it.productName?.includes(product.nameKo.slice(0, 8)) ||
-      it.productName?.includes(product.code)
-    )
-  );
+  const isMatch = (name: string) =>
+    name === product.nameKo || name === product.code ||
+    (product.code && name.includes(product.code));
 
-  const priceHistory = relatedPOs
-    .flatMap((po: any) => po.items?.filter((it: any) =>
-      it.productName?.includes(product.nameKo.slice(0, 8)) || it.productName?.includes(product.code)
-    ).map((it: any) => ({ date: po.orderDate || po.createdAt || '', price: it.unitPrice || 0 })) ?? [])
+  // Purchase price history from POs
+  const priceHistory = pos
+    .flatMap((po: any) => (po.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: po.orderDate || po.createdAt || '', price: it.unitPrice || 0, company: po.supplierName || '' })))
+    .filter((h: any) => h.price > 0)
+    .sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+  // Selling price history from Quotes
+  const sellHistory = quotes
+    .flatMap((q: any) => (q.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: q.quoteDate || q.createdAt || '', price: it.unitPrice || 0, company: q.companyName || '' })))
     .filter((h: any) => h.price > 0)
     .sort((a: any, b: any) => a.date.localeCompare(b.date));
 
@@ -131,6 +134,7 @@ function ProductDrawer({
   const latestP = prices[prices.length - 1] ?? product.purchasePrice ?? 0;
   const prevP = prices[prices.length - 2];
   const trendPct = prevP ? ((latestP - prevP) / prevP) * 100 : null;
+  const sellPrices = sellHistory.map((h: any) => h.price);
 
   const usd = Number(product.purchasePrice || 0);
   const krwPrice = usd && rates ? Math.round(usd * rates.KRW) : null;
@@ -354,60 +358,94 @@ function ProductDrawer({
                   <p className="text-sm text-muted-foreground text-center py-4">가격 정보 없음</p>
                 )}
 
-                {/* Trend sparkline */}
+                {/* Trend sparkline (purchase) */}
                 {prices.length >= 2 && (
                   <div>
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">가격 추세</p>
-                    <div className="flex items-center gap-4 p-3 rounded-xl bg-muted/30">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">구매가 추세</p>
+                    <div className="flex items-center gap-4 p-3 rounded-xl bg-blue-50/50">
                       <Sparkline values={prices} w={100} h={40} />
                       <div className="text-xs space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground w-8">최저</span>
-                          <span className="font-semibold text-green-600">${minP.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground w-8">최고</span>
-                          <span className="font-semibold text-red-600">${maxP.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground w-8">현재</span>
-                          <span className="font-semibold">${latestP.toFixed(2)}</span>
-                        </div>
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">최저</span><span className="font-semibold text-green-600">{product.currency} {minP.toFixed(2)}</span></div>
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">최고</span><span className="font-semibold text-red-600">{product.currency} {maxP.toFixed(2)}</span></div>
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">현재</span><span className="font-semibold">{product.currency} {latestP.toFixed(2)}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Trend sparkline (sell) */}
+                {sellPrices.length >= 2 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">판가 추세</p>
+                    <div className="flex items-center gap-4 p-3 rounded-xl bg-emerald-50/50">
+                      <Sparkline values={sellPrices} w={100} h={40} />
+                      <div className="text-xs space-y-1">
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">최저</span><span className="font-semibold text-green-600">{product.currency} {Math.min(...sellPrices).toFixed(2)}</span></div>
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">최고</span><span className="font-semibold text-red-600">{product.currency} {Math.max(...sellPrices).toFixed(2)}</span></div>
+                        <div className="flex items-center gap-2"><span className="text-muted-foreground w-8">현재</span><span className="font-semibold">{product.currency} {sellPrices[sellPrices.length - 1].toFixed(2)}</span></div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* PO history */}
-                {priceHistory.length > 0 ? (
-                  <div>
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      발주 이력 ({priceHistory.length}건)
-                    </p>
-                    <div className="space-y-1">
-                      {(priceHistory as any[]).slice().reverse().slice(0, 8).map((h: any, i: number) => {
-                        const prev = (priceHistory as any[])[priceHistory.length - 2 - i];
+                {/* Purchase price history */}
+                <div>
+                  <p className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <ArrowRight className="w-3 h-3" /> 구매가 이력 ({priceHistory.length}건)
+                  </p>
+                  {priceHistory.length > 0 ? (
+                    <div className="space-y-0 border rounded-lg overflow-hidden">
+                      {priceHistory.slice().reverse().slice(0, 10).map((h: any, i: number) => {
+                        const idx = priceHistory.length - 1 - i;
+                        const prev = priceHistory[idx - 1];
                         const diff = prev ? h.price - prev.price : 0;
                         return (
-                          <div key={i} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
-                            <span className="text-xs text-muted-foreground w-24 shrink-0">{h.date?.slice(0, 10)}</span>
-                            <span className="text-sm font-semibold">${h.price.toFixed(2)}</span>
+                          <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-border/40 last:border-0 bg-blue-50/30">
+                            <span className="text-xs text-muted-foreground w-22 shrink-0">{h.date?.slice(0, 10)}</span>
+                            <span className="text-xs text-muted-foreground truncate flex-1">{h.company}</span>
+                            <span className="text-sm font-semibold text-blue-700">{product.currency} {h.price.toFixed(2)}</span>
                             {diff !== 0 && (
-                              <span className={cn('text-[10px] ml-auto', diff > 0 ? 'text-red-500' : 'text-green-600')}>
-                                {diff > 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(2)}
+                              <span className={cn('text-[10px]', diff > 0 ? 'text-red-500' : 'text-green-600')}>
+                                {diff > 0 ? '▲' : '▼'}{Math.abs(diff).toFixed(2)}
                               </span>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Layers className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-                    <p className="text-sm text-muted-foreground">발주 이력이 없습니다</p>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-4">발주 이력 없음</p>
+                  )}
+                </div>
+
+                {/* Selling price history */}
+                <div>
+                  <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <ArrowRight className="w-3 h-3" /> 견적(판가) 이력 ({sellHistory.length}건)
+                  </p>
+                  {sellHistory.length > 0 ? (
+                    <div className="space-y-0 border rounded-lg overflow-hidden">
+                      {sellHistory.slice().reverse().slice(0, 10).map((h: any, i: number) => {
+                        const idx = sellHistory.length - 1 - i;
+                        const prev = sellHistory[idx - 1];
+                        const diff = prev ? h.price - prev.price : 0;
+                        return (
+                          <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-border/40 last:border-0 bg-emerald-50/30">
+                            <span className="text-xs text-muted-foreground w-22 shrink-0">{h.date?.slice(0, 10)}</span>
+                            <span className="text-xs text-muted-foreground truncate flex-1">{h.company}</span>
+                            <span className="text-sm font-semibold text-emerald-700">{product.currency} {h.price.toFixed(2)}</span>
+                            {diff !== 0 && (
+                              <span className={cn('text-[10px]', diff > 0 ? 'text-red-500' : 'text-green-600')}>
+                                {diff > 0 ? '▲' : '▼'}{Math.abs(diff).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-4">견적 이력 없음</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -662,6 +700,7 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [pos, setPos] = useState<any[]>([]);
+  const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('전체');
@@ -671,12 +710,14 @@ export default function ProductsPage() {
 
   const load = async () => {
     setLoading(true);
-    const [prodRes, poRes] = await Promise.all([
+    const [prodRes, poRes, quoteRes] = await Promise.all([
       fetch('/api/products').then(r => r.json()),
       fetch('/api/purchase-orders').then(r => r.json()),
+      fetch('/api/quotes').then(r => r.json()),
     ]);
     if (prodRes.data) setProducts(prodRes.data);
     if (poRes.data) setPos(poRes.data);
+    if (quoteRes.data) setQuotes(quoteRes.data);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -876,6 +917,7 @@ export default function ProductsPage() {
           product={drawer}
           rates={rates}
           pos={pos}
+          quotes={quotes}
           onClose={() => setDrawer(null)}
           onEdit={() => { setDrawer(null); openModal(drawer); }}
           onDelete={() => { handleDelete(drawer.id); }}

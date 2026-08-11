@@ -3,7 +3,7 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/notion/mapper';
 import type { PurchaseOrder } from '@/types';
 
-function dbToPO(row: Record<string, unknown>): PurchaseOrder {
+function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string } {
   return {
     id: row.id as string,
     businessId: row.business_id as string,
@@ -25,13 +25,15 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder {
     createdBy: (row.created_by as string) || 'user-1',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    imagesJson: (row.images_json as string) || undefined,
+    depositRatio: (row.deposit_ratio as string) || '30',
   };
 }
 
-function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder, id: string, ts: string, notionId?: string | null) {
+function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }, id: string, ts: string, notionId?: string | null) {
   db.prepare(`INSERT OR REPLACE INTO purchase_orders
-    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, po.businessId, po.supplierId || '', po.supplierName,
       JSON.stringify(po.items), po.currency, po.totalAmount,
@@ -39,6 +41,7 @@ function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder, id: string, ts:
       po.orderDate, po.productionDueDate ?? null, po.inspectionDate ?? null,
       po.etd ?? null, po.status || 'confirmed', po.incoterm ?? null, po.remark ?? null,
       po.createdBy || 'ynk-erp', notionId ?? null, po.createdAt || ts, ts,
+      (po as any).imagesJson ?? null, (po as any).depositRatio ?? '30',
     );
 }
 
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
     const items = body.items || [];
     const total = items.reduce((s: number, i: { amount: number }) => s + (i.amount || 0), 0);
 
-    const po: PurchaseOrder = {
+    const po: PurchaseOrder & { imagesJson?: string; depositRatio?: string } = {
       id, businessId: bizId,
       supplierId: body.supplierId || '',
       supplierName: body.supplierName || '',
@@ -100,6 +103,8 @@ export async function POST(req: NextRequest) {
       remark: body.remark,
       createdBy: 'user-1',
       createdAt: ts, updatedAt: ts,
+      imagesJson: body.imagesJson ?? null,
+      depositRatio: body.depositRatio ?? '30',
     };
 
     // Save to Notion (ERP)

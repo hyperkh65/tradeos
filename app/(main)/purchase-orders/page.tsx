@@ -3,15 +3,21 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer } from 'lucide-react';
+import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Info, Upload, ImageOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { PurchaseOrder } from '@/types';
 
 const statusLabel: Record<string, string> = { draft: '초안', confirmed: '확정', production: '생산', inspection: '검품', shipped: '선적', completed: '완료', cancelled: '취소' };
 const statusColor: Record<string, string> = { draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-blue-100 text-blue-700', production: 'bg-yellow-100 text-yellow-700', inspection: 'bg-purple-100 text-purple-700', shipped: 'bg-cyan-100 text-cyan-700', completed: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-600' };
 
-const emptyItem = () => ({ id: Date.now().toString(), productName: '', specification: '', voltage: '', watts: '', cct: '', qty: 1, unitPrice: 0, amount: 0 });
+const emptyItem = () => ({
+  id: Date.now().toString(),
+  productName: '', specification: '',
+  voltage: '', watts: '', cct: '',
+  luminousEff: '', lumenOutput: '',
+  unit: 'PCS', qty: 1, unitPrice: 0, amount: 0, remarks: '',
+});
 
 interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
@@ -20,29 +26,207 @@ interface CompanySettings {
   logoUrl: string; stampUrl: string;
 }
 
-function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClose: () => void; onSave: () => void }) {
+interface PriceHint {
+  code: string; nameKo: string;
+  purchasePrice?: number; currency: string;
+  recentPOPrice?: number; recentPOCompany?: string;
+  voltage?: string; watts?: string; cct?: string;
+  specification?: string;
+  luminousEff?: string; lumenOutput?: string;
+}
+
+/* ─── Product Search Helper (발주가 기준) ───────────────────────────────────── */
+
+function ProductSearchHelper({
+  value, products, pos, onSelect,
+}: {
+  value: string; products: any[]; pos: any[]; onSelect: (h: PriceHint) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const matches = value.length >= 1 ? products.filter(p =>
+    p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
+  ).slice(0, 8) : [];
+
+  const hints: PriceHint[] = matches.map(p => {
+    const recentPOs = pos
+      .flatMap((po: any) => (po.items || []).filter((it: any) =>
+        it.productName === p.nameKo || it.productName === p.code ||
+        (p.code && it.productName?.includes(p.code))
+      ).map((it: any) => ({ price: it.unitPrice, company: po.supplierName, date: po.orderDate || po.createdAt })))
+      .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
+
+    const ex = p as any;
+    return {
+      code: p.code,
+      nameKo: p.nameKo,
+      purchasePrice: p.purchasePrice,
+      currency: p.currency || 'USD',
+      recentPOPrice: recentPOs[0]?.price,
+      recentPOCompany: recentPOs[0]?.company,
+      voltage: ex.voltage, watts: ex.watts, cct: ex.cct,
+      luminousEff: ex.luminousEff, lumenOutput: ex.lumenOutput,
+      specification: [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || ex.detail || '',
+    };
+  });
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  if (hints.length === 0) return null;
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button type="button" onClick={() => setShow(v => !v)}
+        className="text-primary hover:text-primary/80 ml-1 align-middle" title="제품 검색">
+        <Info className="w-3.5 h-3.5 inline" />
+      </button>
+      {show && (
+        <div className="absolute left-0 top-5 z-50 bg-background border border-border rounded-xl shadow-xl w-80 max-h-72 overflow-y-auto">
+          <div className="p-2 border-b bg-muted/30">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
+          </div>
+          {hints.map(h => (
+            <button key={h.code} type="button" onClick={() => { onSelect(h); setShow(false); }}
+              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold">{h.nameKo}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
+                  {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  {h.purchasePrice && (
+                    <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
+                  )}
+                  {h.recentPOPrice && (
+                    <p className="text-[10px] text-orange-600">최근발주 {h.currency} {h.recentPOPrice.toFixed(2)}</p>
+                  )}
+                  {h.recentPOCompany && (
+                    <p className="text-[9px] text-muted-foreground">{h.recentPOCompany}</p>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── PO Image Upload ────────────────────────────────────────────────────── */
+
+function POImageUpload({ images, poId, onChange }: { images: string[]; poId: string; onChange: (v: string[]) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const upload = useCallback(async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/purchase-orders/${poId}/upload`, { method: 'POST', body: fd });
+      const j = await res.json();
+      if (j.url) onChange([...images, j.url]);
+      else alert(j.error || '업로드 실패');
+    } finally { setUploading(false); }
+  }, [images, poId, onChange]);
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">첨부 사진 (최대 10장)</p>
+      <div className="flex flex-wrap gap-2">
+        {images.map((url, i) => (
+          <div key={i} className="relative group w-20 h-20">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="" className="w-20 h-20 object-cover rounded-lg border" />
+            <button type="button"
+              onClick={() => onChange(images.filter((_, j) => j !== i))}
+              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              ×
+            </button>
+          </div>
+        ))}
+        {images.length < 10 && (
+          <button type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 hover:border-primary transition-colors text-muted-foreground hover:text-primary">
+            {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+            <span className="text-[9px]">사진 추가</span>
+          </button>
+        )}
+        <input ref={inputRef} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── PO Modal ───────────────────────────────────────────────────────────── */
+
+function POModal({
+  item, companies, products, pos, onClose, onSave,
+}: {
+  item?: PurchaseOrder | null; companies: any[]; products: any[]; pos: any[];
+  onClose: () => void; onSave: () => void;
+}) {
+  const initImages = (): string[] => {
+    try { return JSON.parse((item as any)?.imagesJson || '[]'); } catch { return []; }
+  };
+
   const [form, setForm] = useState({
     supplierName: item?.supplierName || '',
+    supplierId: item?.supplierId || '',
     currency: item?.currency || 'USD',
     orderDate: item?.orderDate || new Date().toISOString().slice(0, 10),
     etd: item?.etd || '',
-    paymentTerms: item?.paymentTerms || '30% T/T',
+    paymentTerms: item?.paymentTerms || '30% T/T in advance, 70% before shipment',
     incoterm: item?.incoterm || 'FOB',
     status: (item?.status || 'draft') as string,
     depositRatio: ((item as any)?.depositRatio || '30') as string,
-    items: item?.items?.length ? item.items.map((i, idx) => ({
+    remark: item?.remark || '',
+    items: item?.items?.length ? item.items.map((i: any, idx: number) => ({
       id: String(idx),
-      productName: i.productName,
-      specification: (i as any).specification || '',
-      voltage: (i as any).voltage || '',
-      watts: (i as any).watts || '',
-      cct: (i as any).cct || '',
-      qty: i.qty,
-      unitPrice: i.unitPrice,
-      amount: i.qty * i.unitPrice,
+      productName: i.productName || '',
+      specification: i.specification || '',
+      voltage: i.voltage || '',
+      watts: i.watts || '',
+      cct: i.cct || '',
+      luminousEff: i.luminousEff || '',
+      lumenOutput: i.lumenOutput || '',
+      unit: i.unit || 'PCS',
+      qty: i.qty || i.quantity || 1,
+      unitPrice: i.unitPrice || 0,
+      amount: i.amount || (i.qty || 1) * (i.unitPrice || 0),
+      remarks: i.remarks || '',
     })) : [emptyItem()],
   });
+  const [images, setImages] = useState<string[]>(initImages);
+  const [savedId, setSavedId] = useState<string>((item as any)?.id || '');
   const [saving, setSaving] = useState(false);
+  const [companySearch, setCompanySearch] = useState(item?.supplierName || '');
+  const [showCompanyList, setShowCompanyList] = useState(false);
+  const companyRef = useRef<HTMLDivElement>(null);
+
+  const supplierCompanies = companies.filter(c =>
+    c.type === '공급업체' || c.type === 'supplier' || c.type === '제조사' || c.type === '협력사'
+  );
+  const filteredCompanies = supplierCompanies.filter(c =>
+    c.name?.includes(companySearch) || c.nameEn?.includes(companySearch)
+  ).slice(0, 8);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (companyRef.current && !companyRef.current.contains(e.target as Node)) setShowCompanyList(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const updateItem = (idx: number, field: string, val: string | number) => {
     const items = [...form.items];
@@ -53,36 +237,92 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
     setForm(f => ({ ...f, items }));
   };
 
+  const applyProductHint = (idx: number, h: PriceHint) => {
+    const items = [...form.items];
+    items[idx] = {
+      ...items[idx],
+      productName: h.nameKo || items[idx].productName,
+      specification: h.specification || items[idx].specification,
+      voltage: h.voltage || items[idx].voltage,
+      watts: h.watts || items[idx].watts,
+      cct: h.cct || items[idx].cct,
+      luminousEff: h.luminousEff || items[idx].luminousEff,
+      lumenOutput: h.lumenOutput || items[idx].lumenOutput,
+      unitPrice: h.purchasePrice || h.recentPOPrice || items[idx].unitPrice,
+    };
+    items[idx].amount = items[idx].qty * items[idx].unitPrice;
+    setForm(f => ({ ...f, items }));
+  };
+
   const totalAmount = form.items.reduce((s, i) => s + i.amount, 0);
   const depositAmount = Math.round(totalAmount * Number(form.depositRatio) / 100);
+  const balanceAmount = totalAmount - depositAmount;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.supplierName) return;
     setSaving(true);
     try {
-      const body = { ...form, items: form.items.map(i => ({ ...i, productName: i.productName, qty: i.qty, unitPrice: i.unitPrice, amount: i.amount })), totalAmount, depositAmount, balanceAmount: totalAmount - depositAmount };
+      const body = {
+        ...form,
+        items: form.items.map(i => ({ ...i })),
+        totalAmount, depositAmount, balanceAmount,
+        imagesJson: JSON.stringify(images),
+      };
+      let id = savedId;
       if (item) {
         await fetch(`/api/purchase-orders/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        id = item.id;
       } else {
-        await fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const j = await res.json();
+        id = j.data?.id || id;
+        if (!savedId) setSavedId(id);
       }
       onSave();
     } finally { setSaving(false); }
   };
 
+  const uploadPoId = savedId || item?.id || 'new-po';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background z-10">
           <h2 className="font-semibold">{item ? '발주 수정' : '새 발주'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Row 1: Supplier + Currency + Incoterm + Status */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-2 md:col-span-1">
+            <div className="col-span-2 md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체 *</label>
-              <Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Ningbo Alpha Lighting" required />
+              <div ref={companyRef} className="relative">
+                <Input
+                  value={companySearch}
+                  onChange={e => { setCompanySearch(e.target.value); setForm(f => ({ ...f, supplierName: e.target.value, supplierId: '' })); setShowCompanyList(true); }}
+                  onFocus={() => setShowCompanyList(true)}
+                  placeholder="공급업체 검색..."
+                  required
+                />
+                {showCompanyList && filteredCompanies.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 bg-background border border-border rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
+                    {filteredCompanies.map(c => (
+                      <button key={c.id} type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/30 last:border-0"
+                        onClick={() => {
+                          setCompanySearch(c.name);
+                          setForm(f => ({ ...f, supplierName: c.name, supplierId: c.id }));
+                          setShowCompanyList(false);
+                        }}>
+                        <span className="font-medium">{c.name}</span>
+                        {c.nameEn && <span className="text-muted-foreground text-xs ml-2">{c.nameEn}</span>}
+                        {c.country && <span className="text-muted-foreground text-xs ml-2">({c.country})</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
@@ -96,14 +336,10 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
                 <option>FOB</option><option>CIF</option><option>EXW</option><option>DAP</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+          {/* Row 2: Dates + Payment + Deposit + Status */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">발주일</label>
               <Input type="date" value={form.orderDate} onChange={e => setForm(f => ({ ...f, orderDate: e.target.value }))} />
@@ -118,36 +354,68 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">선금비율 (%)</label>
-              <Input type="number" value={form.depositRatio} onChange={e => setForm(f => ({ ...f, depositRatio: e.target.value }))} placeholder="30" />
+              <Input type="number" value={form.depositRatio} onChange={e => setForm(f => ({ ...f, depositRatio: e.target.value }))} placeholder="30" min="0" max="100" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </div>
           </div>
 
+          {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[700px]">
+            <table className="w-full text-xs min-w-[900px]">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium">품목</th>
-                  <th className="px-3 py-2 text-left font-medium">규격</th>
-                  <th className="px-3 py-2 text-left font-medium w-16">전압</th>
-                  <th className="px-3 py-2 text-left font-medium w-14">와트</th>
-                  <th className="px-3 py-2 text-left font-medium w-14">CCT</th>
-                  <th className="px-3 py-2 text-right font-medium w-14">수량</th>
-                  <th className="px-3 py-2 text-right font-medium w-20">단가</th>
-                  <th className="px-3 py-2 text-right font-medium w-24">금액</th>
-                  <th className="px-3 py-2 w-8"></th>
+                  <th className="px-2 py-2 text-left font-medium w-[200px]">품목명</th>
+                  <th className="px-2 py-2 text-left font-medium w-[120px]">규격</th>
+                  <th className="px-2 py-2 text-left font-medium w-16">전압</th>
+                  <th className="px-2 py-2 text-left font-medium w-14">와트</th>
+                  <th className="px-2 py-2 text-left font-medium w-14">CCT</th>
+                  <th className="px-2 py-2 text-left font-medium w-16">발광효율</th>
+                  <th className="px-2 py-2 text-left font-medium w-16">광속</th>
+                  <th className="px-2 py-2 text-left font-medium w-14">단위</th>
+                  <th className="px-2 py-2 text-right font-medium w-14">수량</th>
+                  <th className="px-2 py-2 text-right font-medium w-20">단가</th>
+                  <th className="px-2 py-2 text-right font-medium w-24">금액</th>
+                  <th className="px-2 py-2 text-left font-medium w-[100px]">비고</th>
+                  <th className="px-2 py-2 w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {form.items.map((it, idx) => (
-                  <tr key={it.id}>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.productName} onChange={e => updateItem(idx, 'productName', e.target.value)} placeholder="품목명" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={(it as any).specification} onChange={e => updateItem(idx, 'specification', e.target.value)} /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={(it as any).voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={(it as any).watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={(it as any).cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
+                  <tr key={it.id} className="hover:bg-muted/20">
+                    <td className="px-2 py-1">
+                      <div className="flex items-center">
+                        <input className="w-full bg-transparent border-none outline-none text-xs"
+                          value={it.productName}
+                          onChange={e => updateItem(idx, 'productName', e.target.value)}
+                          placeholder="품목명" />
+                        <ProductSearchHelper
+                          value={it.productName}
+                          products={products}
+                          pos={pos}
+                          onSelect={h => applyProductHint(idx, h)}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} /></td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.luminousEff} onChange={e => updateItem(idx, 'luminousEff', e.target.value)} placeholder="100lm/W" /></td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.lumenOutput} onChange={e => updateItem(idx, 'lumenOutput', e.target.value)} placeholder="4000lm" /></td>
+                    <td className="px-2 py-1">
+                      <select className="w-full bg-transparent border-none outline-none text-xs" value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
+                        <option>PCS</option><option>SET</option><option>BOX</option><option>KIT</option><option>M</option>
+                      </select>
+                    </td>
                     <td className="px-2 py-1"><input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
-                    <td className="px-2 py-1"><input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
+                    <td className="px-2 py-1"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
                     <td className="px-2 py-1 text-right font-medium">{it.amount.toLocaleString()}</td>
+                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
                     <td className="px-2 py-1"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
                   </tr>
                 ))}
@@ -159,11 +427,21 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
               </button>
               <div className="text-xs space-x-4 text-right">
                 <span className="text-muted-foreground">총액: <strong className="text-foreground">{form.currency} {totalAmount.toLocaleString()}</strong></span>
-                <span className="text-muted-foreground">선금: <strong className="text-orange-600">{depositAmount.toLocaleString()}</strong></span>
-                <span className="text-muted-foreground">잔금: <strong className="text-foreground">{(totalAmount - depositAmount).toLocaleString()}</strong></span>
+                <span className="text-muted-foreground">선금({form.depositRatio}%): <strong className="text-orange-600">{depositAmount.toLocaleString()}</strong></span>
+                <span className="text-muted-foreground">잔금: <strong className="text-blue-600">{balanceAmount.toLocaleString()}</strong></span>
               </div>
             </div>
           </div>
+
+          {/* Remark */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 / 특이사항</label>
+            <textarea rows={2} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+          </div>
+
+          {/* Image upload */}
+          <POImageUpload images={images} poId={uploadPoId} onChange={setImages} />
 
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
@@ -177,12 +455,18 @@ function POModal({ item, onClose, onSave }: { item?: PurchaseOrder | null; onClo
   );
 }
 
-function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: CompanySettings; onClose: () => void }) {
+/* ─── PO Print Modal ─────────────────────────────────────────────────────── */
+
+function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }; company: CompanySettings; onClose: () => void }) {
   const items = (po.items || []) as any[];
-  const totalAmount = Number(po.totalAmount) || items.reduce((s: number, i: any) => s + (i.amount || i.unitPrice * i.qty || 0), 0);
-  const depositAmount = Number(po.depositAmount) || 0;
+  const totalAmount = Number(po.totalAmount) || items.reduce((s: number, i: any) => s + (i.amount || i.unitPrice * (i.qty || i.quantity || 0) || 0), 0);
+  const depositRatio = Number((po as any).depositRatio || 30);
+  const depositAmount = Number(po.depositAmount) || Math.round(totalAmount * depositRatio / 100);
   const balanceAmount = Number(po.balanceAmount) || totalAmount - depositAmount;
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  let attachImages: string[] = [];
+  try { attachImages = JSON.parse((po as any).imagesJson || '[]'); } catch { attachImages = []; }
 
   return (
     <>
@@ -195,7 +479,7 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
         }
         @page { size: A4 portrait; margin: 0; }
       `}</style>
-      <div className="no-print fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
           <div className="flex items-center justify-between p-4 border-b no-print">
             <span className="font-semibold text-sm text-gray-800">발주서 미리보기</span>
@@ -209,17 +493,17 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
 
           <div id="po-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', background: 'white', fontFamily: 'Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.4' }}>
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
               <div style={{ flex: 1 }}>
                 {company.logoUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={company.logoUrl} alt="logo" style={{ maxHeight: '50px', maxWidth: '160px', objectFit: 'contain' }} />
                 ) : (
-                  <div style={{ fontSize: '14pt', fontWeight: 'bold', color: '#1a1a2e' }}>{company.name}</div>
+                  <div style={{ fontSize: '13pt', fontWeight: 'bold', color: '#1a1a2e' }}>{company.name}</div>
                 )}
               </div>
               <div style={{ textAlign: 'center', flex: 1 }}>
-                <div style={{ fontSize: '22pt', fontWeight: 'bold', letterSpacing: '3px', color: '#1a1a2e' }}>PURCHASE ORDER</div>
+                <div style={{ fontSize: '20pt', fontWeight: 'bold', letterSpacing: '3px', color: '#1a1a2e' }}>PURCHASE ORDER</div>
               </div>
               <div style={{ textAlign: 'right', flex: 1 }}>
                 <div style={{ marginBottom: '4px' }}><span style={{ color: '#666', fontSize: '8pt' }}>PO No. </span><strong>{po.businessId}</strong></div>
@@ -229,10 +513,10 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
             </div>
 
             {/* Buyer / Supplier */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '12px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Buyer</div>
-                <div style={{ fontWeight: 'bold', fontSize: '10pt', marginBottom: '4px' }}>{company.name}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '10px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>Buyer</div>
+                <div style={{ fontWeight: 'bold', fontSize: '10pt', marginBottom: '3px' }}>{company.name}</div>
                 {company.ceo && <div style={{ marginBottom: '2px' }}>CEO: {company.ceo}</div>}
                 {company.bizNo && <div style={{ marginBottom: '2px' }}>Reg. No: {company.bizNo}</div>}
                 {company.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
@@ -240,92 +524,99 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
                 {company.fax && <div style={{ marginBottom: '2px' }}>FAX: {company.fax}</div>}
                 {company.email && <div>Email: {company.email}</div>}
               </div>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '12px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Supplier</div>
+              <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '10px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>Supplier</div>
                 <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{po.supplierName}</div>
               </div>
             </div>
 
             {/* Items table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '8.5pt' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', fontSize: '8.5pt' }}>
               <thead>
                 <tr style={{ backgroundColor: '#1a1a2e', color: 'white' }}>
-                  <th style={{ padding: '7px 8px', textAlign: 'center', width: '28px', borderRight: '1px solid #444' }}>No.</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'left', borderRight: '1px solid #444' }}>Description / Model</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'center', width: '60px', borderRight: '1px solid #444' }}>Voltage</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'center', width: '45px', borderRight: '1px solid #444' }}>Watts</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'center', width: '45px', borderRight: '1px solid #444' }}>CCT</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'center', width: '40px', borderRight: '1px solid #444' }}>Unit</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right', width: '45px', borderRight: '1px solid #444' }}>Qty</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right', width: '70px', borderRight: '1px solid #444' }}>Unit Price</th>
-                  <th style={{ padding: '7px 8px', textAlign: 'right', width: '80px' }}>Amount</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'center', width: '24px', borderRight: '1px solid #444' }}>No.</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'left', borderRight: '1px solid #444' }}>Description / Model</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'center', width: '55px', borderRight: '1px solid #444' }}>Tech Detail</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'center', width: '35px', borderRight: '1px solid #444' }}>Unit</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '40px', borderRight: '1px solid #444' }}>Qty</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '68px', borderRight: '1px solid #444' }}>Unit Price</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '78px' }}>Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it: any, idx: number) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #e5e5e5', backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>{idx + 1}</td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <div style={{ fontWeight: '600' }}>{it.productName}</div>
-                      {it.specification && <div style={{ color: '#555', fontSize: '7.5pt' }}>{it.specification}</div>}
-                    </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#444' }}>{it.voltage || '-'}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#444' }}>{it.watts || '-'}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#444' }}>{it.cct || '-'}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#444' }}>pcs</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{po.currency} {(it.unitPrice || 0).toLocaleString()}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>{(it.amount || (it.unitPrice * (it.qty || it.quantity || 0))).toLocaleString()}</td>
-                  </tr>
-                ))}
+                {items.map((it: any, idx: number) => {
+                  const techDetail = [
+                    it.voltage && `${it.voltage}`,
+                    it.watts && `${it.watts}`,
+                    it.cct && `${it.cct}`,
+                    it.luminousEff && `${it.luminousEff}`,
+                    it.lumenOutput && `${it.lumenOutput}`,
+                  ].filter(Boolean).join(' / ');
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid #e5e5e5', backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '6px', textAlign: 'center' }}>{idx + 1}</td>
+                      <td style={{ padding: '6px' }}>
+                        <div style={{ fontWeight: '600' }}>{it.productName}</div>
+                        {it.specification && <div style={{ color: '#555', fontSize: '7.5pt' }}>{it.specification}</div>}
+                        {it.remarks && <div style={{ color: '#777', fontSize: '7pt', fontStyle: 'italic' }}>{it.remarks}</div>}
+                      </td>
+                      <td style={{ padding: '6px', textAlign: 'center', color: '#444', fontSize: '7.5pt' }}>{techDetail || '-'}</td>
+                      <td style={{ padding: '6px', textAlign: 'center', color: '#444' }}>{it.unit || 'PCS'}</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{po.currency} {(it.unitPrice || 0).toLocaleString()}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: '600' }}>{(it.amount || (it.unitPrice * (it.qty || it.quantity || 0))).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '1px solid #ccc', backgroundColor: '#f9f9f9' }}>
-                  <td colSpan={8} style={{ padding: '6px 8px', textAlign: 'right', color: '#555' }}>Sub Total</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{po.currency} {totalAmount.toLocaleString()}</td>
+                  <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#555' }}>Sub Total</td>
+                  <td style={{ padding: '6px', textAlign: 'right' }}>{po.currency} {totalAmount.toLocaleString()}</td>
                 </tr>
                 {depositAmount > 0 && <>
                   <tr style={{ backgroundColor: '#fff8f0' }}>
-                    <td colSpan={8} style={{ padding: '6px 8px', textAlign: 'right', color: '#c05000' }}>Deposit (선금)</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: '#c05000' }}>{po.currency} {depositAmount.toLocaleString()}</td>
+                    <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#c05000' }}>Deposit {depositRatio}% (선금)</td>
+                    <td style={{ padding: '6px', textAlign: 'right', color: '#c05000', fontWeight: '600' }}>{po.currency} {depositAmount.toLocaleString()}</td>
                   </tr>
                   <tr style={{ backgroundColor: '#f0f8ff' }}>
-                    <td colSpan={8} style={{ padding: '6px 8px', textAlign: 'right', color: '#1a50a0' }}>Balance (잔금)</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: '#1a50a0' }}>{po.currency} {balanceAmount.toLocaleString()}</td>
+                    <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#1a50a0' }}>Balance {100 - depositRatio}% (잔금)</td>
+                    <td style={{ padding: '6px', textAlign: 'right', color: '#1a50a0', fontWeight: '600' }}>{po.currency} {balanceAmount.toLocaleString()}</td>
                   </tr>
                 </>}
                 <tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
-                  <td colSpan={8} style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>GRAND TOTAL</td>
+                  <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>GRAND TOTAL</td>
                   <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>{po.currency} {totalAmount.toLocaleString()}</td>
                 </tr>
               </tfoot>
             </table>
 
             {/* Terms & Bank */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase' }}>Terms & Conditions</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '9px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>Terms & Conditions</div>
                 {po.paymentTerms && <div style={{ marginBottom: '3px' }}>Payment: {po.paymentTerms}</div>}
                 {po.incoterm && <div style={{ marginBottom: '3px' }}>Incoterm: {po.incoterm}</div>}
                 {po.orderDate && <div style={{ marginBottom: '3px' }}>Order Date: {po.orderDate}</div>}
                 {po.etd && <div>ETD: {po.etd}</div>}
+                {po.remark && <div style={{ marginTop: '4px', color: '#555', fontSize: '7.5pt' }}>{po.remark}</div>}
               </div>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase' }}>Remittance Information</div>
+              <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '9px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>Remittance Information</div>
                 {company.bankForeign1 ? (
-                  <div style={{ fontFamily: 'monospace', fontSize: '8pt', whiteSpace: 'pre-line' }}>{company.bankForeign1}</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bankForeign1}</div>
                 ) : company.bank ? (
-                  <div style={{ fontSize: '8pt', whiteSpace: 'pre-line' }}>{company.bank}</div>
+                  <div style={{ fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bank}</div>
                 ) : null}
               </div>
             </div>
 
-            {/* Signature */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+            {/* Authorized Signature */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
               <div style={{ textAlign: 'center', minWidth: '160px' }}>
                 <div style={{ fontSize: '8pt', color: '#666', marginBottom: '8px' }}>Authorized Signature</div>
                 {company.stampUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={company.stampUrl} alt="stamp" style={{ height: '70px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
                 ) : (
                   <div style={{ height: '70px', border: '1px dashed #ccc', borderRadius: '4px', marginBottom: '8px' }} />
@@ -333,6 +624,19 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
                 <div style={{ borderTop: '1px solid #333', paddingTop: '4px', fontSize: '9pt', fontWeight: 'bold' }}>{company.name}</div>
               </div>
             </div>
+
+            {/* Attachments */}
+            {attachImages.length > 0 && (
+              <div style={{ marginTop: '20px', pageBreakBefore: 'always' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '9pt', marginBottom: '12px', borderBottom: '1px solid #ddd', paddingBottom: '6px' }}>Attachments / 첨부사진</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {attachImages.map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={url} alt={`attachment-${i + 1}`} style={{ width: '100%', height: '140px', objectFit: 'contain', border: '1px solid #eee', borderRadius: '4px' }} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -340,19 +644,29 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder; company: Co
   );
 }
 
+/* ─── Main Page ──────────────────────────────────────────────────────────── */
+
 export default function PurchaseOrdersPage() {
-  const [pos, setPos] = useState<PurchaseOrder[]>([]);
+  const [pos, setPos] = useState<(PurchaseOrder & { imagesJson?: string; depositRatio?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('전체');
   const [modal, setModal] = useState<{ open: boolean; item?: PurchaseOrder | null }>({ open: false });
   const [printModal, setPrintModal] = useState<{ open: boolean; item?: PurchaseOrder | null }>({ open: false });
   const [company, setCompany] = useState<CompanySettings | null>(null);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
 
   const load = async () => {
     setLoading(true);
-    const res = await fetch('/api/purchase-orders').then(r => r.json());
-    if (res.data) setPos(res.data);
+    const [posRes, companiesRes, productsRes] = await Promise.all([
+      fetch('/api/purchase-orders').then(r => r.json()),
+      fetch('/api/companies').then(r => r.json()),
+      fetch('/api/products').then(r => r.json()),
+    ]);
+    if (posRes.data) setPos(posRes.data);
+    if (companiesRes.data) setCompanies(companiesRes.data);
+    if (productsRes.data) setProducts(productsRes.data);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -426,10 +740,12 @@ export default function PurchaseOrdersPage() {
                     <tr key={po.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
                       <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[180px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span></td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
+                        <span className="truncate block max-w-[200px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span>
+                      </td>
                       <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
-                        {po.depositAmount && <><span className="text-orange-600">{Number(po.depositAmount).toLocaleString()}</span> / {Number(po.balanceAmount).toLocaleString()}</>}
+                        {po.depositAmount ? <><span className="text-orange-600">{Number(po.depositAmount).toLocaleString()}</span> / {Number(po.balanceAmount).toLocaleString()}</> : '-'}
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{po.etd ?? '-'}</td>
                       <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
@@ -475,10 +791,17 @@ export default function PurchaseOrdersPage() {
         )}
       </div>
       {modal.open && (
-        <POModal item={modal.item} onClose={() => setModal({ open: false })} onSave={() => { setModal({ open: false }); load(); }} />
+        <POModal
+          item={modal.item}
+          companies={companies}
+          products={products}
+          pos={pos}
+          onClose={() => setModal({ open: false })}
+          onSave={() => { setModal({ open: false }); load(); }}
+        />
       )}
       {printModal.open && printModal.item && company && (
-        <POPrintModal po={printModal.item} company={company} onClose={() => setPrintModal({ open: false })} />
+        <POPrintModal po={printModal.item as any} company={company} onClose={() => setPrintModal({ open: false })} />
       )}
     </div>
   );
