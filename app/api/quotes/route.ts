@@ -30,14 +30,17 @@ export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, 
     createdByName: (row.created_by_name as string) || undefined,
     imagesJson: (row.images_json as string) || undefined,
     historyJson: (row.history_json as string) || '[]',
+    docType: (row.doc_type as string) || 'QUOTE',
+    specialNotes: (row.special_notes as string) || undefined,
+    generalInfo: (row.general_info as string) || undefined,
   };
 }
 
 const UPSERT = `INSERT OR REPLACE INTO quotes
   (id,business_id,type,company_id,company_name,items_json,currency,incoterm,payment_terms,
    validity,status,remark,created_by,created_by_name,notion_id,created_at,
-   quote_date,total_amount,images_json,history_json)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+   quote_date,total_amount,images_json,history_json,doc_type,special_notes,general_info)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 export async function GET() {
   const db = getDb();
@@ -58,6 +61,7 @@ export async function GET() {
             q.validity ?? null, q.status || 'sent', q.remark ?? null,
             q.createdBy || 'ynk-erp', null, q.id,
             q.createdAt, q.createdAt?.slice(0, 10), totalAmount, null, '[]',
+            'QUOTE', null, null,
           );
         }
       })();
@@ -115,6 +119,7 @@ export async function POST(req: NextRequest) {
       body.validity ?? null, body.status || 'draft', body.remark ?? null,
       'user-1', body.createdByName ?? null, notionId ?? null, ts,
       quoteDate, totalAmount, body.imagesJson ?? null, JSON.stringify([historyEntry]),
+      body.docType ?? 'QUOTE', body.specialNotes ?? null, body.generalInfo ?? null,
     );
 
     return NextResponse.json({ data: { ...dbToQuote({ ...q as any, id, business_id: bizId, created_at: ts, quote_date: quoteDate, total_amount: totalAmount, history_json: JSON.stringify([historyEntry]) }) } }, { status: 201 });

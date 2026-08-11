@@ -459,6 +459,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE quotes ADD COLUMN images_json TEXT`,
     `ALTER TABLE quotes ADD COLUMN created_by_name TEXT`,
     `ALTER TABLE quotes ADD COLUMN history_json TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE quotes ADD COLUMN doc_type TEXT NOT NULL DEFAULT 'QUOTE'`,
+    `ALTER TABLE quotes ADD COLUMN special_notes TEXT`,
+    `ALTER TABLE quotes ADD COLUMN general_info TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

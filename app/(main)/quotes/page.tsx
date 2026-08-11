@@ -37,8 +37,16 @@ function isPrevMonth(dateStr?: string): boolean {
 }
 
 function emptyItem() {
-  return { id: Date.now().toString() + Math.random(), productName: '', specification: '', voltage: '', watts: '', cct: '', quantity: 1, moq: 0, unitPrice: 0, amount: 0, remark: '' };
+  return { id: Date.now().toString() + Math.random(), productName: '', specification: '', voltage: '', watts: '', luminousEff: '', lumenOutput: '', cct: '', unit: 'PCS', quantity: 1, moq: 0, unitPrice: 0, amount: 0, remark: '' };
 }
+
+const getCurrencySymbol = (cur: string) => {
+  if (cur === 'USD') return '$';
+  if (cur === 'KRW') return '₩';
+  if (cur === 'CNY' || cur === 'RMB') return '¥';
+  if (cur === 'EUR') return '€';
+  return '';
+};
 
 /* ─── Admin password modal ───────────────────────────────────────────────── */
 
@@ -227,15 +235,18 @@ function QuoteModal({
 
   const [form, setForm] = useState({
     type: (item?.type || 'customer') as string,
+    docType: (q?.docType || 'QUOTE') as string,
     companyName: item?.companyName || '',
     companyId: item?.companyId || '',
     quoteDate: (q?.quoteDate || new Date().toISOString().slice(0, 10)),
-    currency: item?.currency || 'KRW',
+    currency: item?.currency || 'USD',
     validity: item?.validity || '',
     paymentTerms: item?.paymentTerms || '',
     incoterm: item?.incoterm || '',
     status: (item?.status || 'draft') as string,
     remark: (item?.remark || ''),
+    specialNotes: (q?.specialNotes || ''),
+    generalInfo: (q?.generalInfo || ''),
     items: (item?.items?.length
       ? item.items.map((i: any, idx: number) => ({
           id: String(idx) + Date.now(),
@@ -243,7 +254,10 @@ function QuoteModal({
           specification: i.specification || '',
           voltage: i.voltage || '',
           watts: i.watts || '',
+          luminousEff: i.luminousEff || '',
+          lumenOutput: i.lumenOutput || '',
           cct: i.cct || '',
+          unit: i.unit || 'PCS',
           quantity: i.quantity ?? i.qty ?? 1,
           moq: i.moq ?? 0,
           unitPrice: i.unitPrice ?? 0,
@@ -280,6 +294,7 @@ function QuoteModal({
     setForm(f => {
       const items = [...f.items];
       const price = h.recentQuotePrice ?? h.purchasePrice ?? 0;
+      const ex = h as any;
       const spec = [h.voltage, h.watts, h.cct].filter(Boolean).join(' / ') || h.detail || '';
       items[idx] = {
         ...items[idx],
@@ -287,6 +302,8 @@ function QuoteModal({
         specification: specMode[idx] !== 'manual' ? spec : items[idx].specification,
         voltage: h.voltage || items[idx].voltage,
         watts: h.watts || items[idx].watts,
+        luminousEff: ex.luminousEff || items[idx].luminousEff,
+        lumenOutput: ex.lumenOutput || items[idx].lumenOutput,
         cct: h.cct || items[idx].cct,
         unitPrice: price,
         amount: (items[idx].quantity ?? 1) * price,
@@ -309,6 +326,9 @@ function QuoteModal({
         imagesJson: images.length > 0 ? JSON.stringify(images) : null,
         createdByName: me?.name || 'user-1',
         updatedByName: me?.name || 'user-1',
+        docType: form.docType,
+        specialNotes: form.specialNotes,
+        generalInfo: form.generalInfo,
       };
       if (item) {
         await fetch(`/api/quotes/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -339,10 +359,18 @@ function QuoteModal({
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
 
-          {/* Row 1: type / company / date / currency / status */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Row 1: docType / type / company / date / currency / status */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">유형</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">문서유형</label>
+              <select value={form.docType} onChange={e => setForm(f => ({ ...f, docType: e.target.value }))}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold">
+                <option value="QUOTE">QUOTATION</option>
+                <option value="PROFORMA">PROFORMA</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">견적유형</label>
               <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="customer">판매견적</option>
@@ -408,23 +436,29 @@ function QuoteModal({
 
           {/* Items table */}
           <div className="border rounded-xl overflow-x-auto">
-            <table className="w-full text-xs min-w-[820px]">
+            <table className="w-full text-xs min-w-[1100px]">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-6">#</th>
-                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground">품목</th>
-                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-48">규격</th>
-                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-16">수량</th>
-                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-24">단가</th>
-                  <th className="px-3 py-2 text-right font-semibold text-muted-foreground w-28">금액</th>
-                  <th className="px-3 py-2 text-left font-semibold text-muted-foreground w-32">비고</th>
-                  <th className="px-3 py-2 w-6"></th>
+                  <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-6">#</th>
+                  <th className="px-2 py-2 text-left font-semibold text-muted-foreground min-w-[160px]">품목</th>
+                  <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-32">규격/설명</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-14">Volt</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-14">Watt</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-16">Eff</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-16">Lumen</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-16">CCT</th>
+                  <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-14">Unit</th>
+                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-14">수량</th>
+                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-22">단가</th>
+                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-24">금액</th>
+                  <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-24">비고</th>
+                  <th className="px-2 py-2 w-6"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {form.items.map((it, idx) => (
                   <tr key={(it as any).id} className="hover:bg-muted/20">
-                    <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                    <td className="px-2 py-2 text-muted-foreground">{idx + 1}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
                         <input
@@ -441,31 +475,24 @@ function QuoteModal({
                           onSelect={h => applyProductHint(idx, h)}
                         />
                       </div>
-                      {/* Spec sub-row */}
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <button type="button"
-                          onClick={() => setSpecMode(m => ({ ...m, [idx]: m[idx] === 'manual' ? 'auto' : 'manual' }))}
-                          className="text-[9px] text-muted-foreground/60 hover:text-primary shrink-0">
-                          {specMode[idx] === 'manual' ? '자동' : '직접'}
-                        </button>
-                        {specMode[idx] === 'manual' ? (
-                          <input className="flex-1 bg-transparent border-none outline-none text-[10px] text-muted-foreground"
-                            value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
-                            placeholder="규격 직접 입력..." />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground flex gap-1.5">
-                            {it.voltage && <span className="bg-blue-50 text-blue-600 px-1 rounded">{it.voltage}</span>}
-                            {it.watts && <span className="bg-orange-50 text-orange-600 px-1 rounded">{it.watts}W</span>}
-                            {it.cct && <span className="bg-yellow-50 text-yellow-700 px-1 rounded">{it.cct}</span>}
-                            {!it.voltage && !it.watts && !it.cct && it.specification && <span>{it.specification}</span>}
-                          </span>
-                        )}
-                      </div>
                     </td>
                     <td className="px-2 py-1.5">
                       <input className="w-full bg-transparent border-none outline-none text-xs"
                         value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
-                        placeholder="규격" />
+                        placeholder="규격/설명" />
+                    </td>
+                    {(['voltage', 'watts', 'luminousEff', 'lumenOutput', 'cct'] as const).map(field => (
+                      <td key={field} className="px-1 py-1.5">
+                        <input className="w-full bg-transparent border-none outline-none text-xs text-center"
+                          value={(it as any)[field] || ''} onChange={e => updateItem(idx, field, e.target.value)}
+                          placeholder="-" />
+                      </td>
+                    ))}
+                    <td className="px-1 py-1.5">
+                      <select value={(it as any).unit || 'PCS'} onChange={e => updateItem(idx, 'unit', e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-xs text-center">
+                        {['PCS', 'SET', 'EA', 'UNIT', 'BOX', 'M'].map(u => <option key={u}>{u}</option>)}
+                      </select>
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" min="0"
@@ -477,7 +504,7 @@ function QuoteModal({
                         className="w-full bg-transparent border-none outline-none text-xs text-right"
                         value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} />
                     </td>
-                    <td className="px-3 py-1.5 text-right font-semibold">
+                    <td className="px-2 py-1.5 text-right font-semibold">
                       {(it.amount || 0).toLocaleString('ko-KR', { minimumFractionDigits: form.currency === 'KRW' ? 0 : 2 })}
                     </td>
                     <td className="px-2 py-1.5">
@@ -508,12 +535,18 @@ function QuoteModal({
             </div>
           </div>
 
-          {/* Remark / images */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Remark / Special Notes / images */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 / 특기사항</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 (내부)</label>
               <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-                placeholder="특기사항, 배송조건, 주의사항 등..."
+                placeholder="내부 메모..."
+                className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Terms & Special Notes (출력됨)</label>
+              <textarea value={form.specialNotes} onChange={e => setForm(f => ({ ...f, specialNotes: e.target.value }))}
+                placeholder="결제조건, 은행정보, 특기사항 등 견적서에 출력될 내용..."
                 className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
             </div>
             <QuoteImageUpload images={images} quoteId={quoteId} onChange={setImages} />
@@ -561,8 +594,11 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
   const totalAmount = items.reduce((s: number, i: any) => s + (i.amount || (i.unitPrice ?? 0) * (i.quantity ?? i.qty ?? 0)), 0);
   const quoteDate = q.quoteDate || new Date().toISOString().slice(0, 10);
   const dateStr = new Date(quoteDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const isCustomer = quote.type === 'customer';
+  const docType = q.docType || 'QUOTE';
+  const docTitle = docType === 'PROFORMA' ? 'PROFORMA INVOICE' : 'QUOTATION';
   const quoteImages: string[] = (() => { try { return JSON.parse(q.imagesJson || '[]'); } catch { return []; } })();
+  const specialNotes = q.specialNotes || '';
+  const bankInfo = quote.currency === 'KRW' ? company.bank : (company.bankForeign1 || company.bank);
 
   return (
     <>
@@ -570,15 +606,24 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
         @media print {
           body * { visibility: hidden !important; }
           #quote-print-area, #quote-print-area * { visibility: visible !important; }
-          #quote-print-area { position: fixed; left: 0; top: 0; width: 210mm; padding: 12mm !important; }
+          #quote-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
           .no-print { display: none !important; }
+          @page { size: A4 portrait; margin: 0; }
         }
-        @page { size: A4 portrait; margin: 0; }
+        .qt-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .qt-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 8px 3px; font-size: 10px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        .qt-table td { border-bottom: 1px solid #e5e5e5; padding: 8px 3px; font-size: 10px; color: #333; vertical-align: middle; }
+        .qt-table tr:last-child td { border-bottom: 1px solid #171717; }
+        .qt-box-wrap { display: flex; gap: 20px; margin-bottom: 24px; }
+        .qt-box { flex: 1; border: 1px solid #e5e5e5; padding: 16px; border-radius: 8px; position: relative; }
+        .qt-box-title { position: absolute; top: -9px; left: 12px; background: white; padding: 0 8px; font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .qt-box-content { font-size: 12px; line-height: 1.6; color: #333; }
       `}</style>
+
       <div className="no-print fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
-          <div className="flex items-center justify-between p-4 border-b no-print">
-            <span className="font-semibold text-sm text-gray-800">견적서 미리보기</span>
+          <div className="no-print flex items-center justify-between p-4 border-b">
+            <span className="font-semibold text-sm text-gray-800">{docTitle} 미리보기</span>
             <div className="flex gap-2">
               <Button size="sm" onClick={() => window.print()}>
                 <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF
@@ -587,161 +632,165 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
             </div>
           </div>
 
-          <div id="quote-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '14mm', background: 'white', fontFamily: '"Malgun Gothic", Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.5' }}>
+          <div id="quote-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '10mm', background: 'white', fontFamily: '"Noto Sans KR", "Malgun Gothic", Arial, sans-serif', color: '#171717', boxSizing: 'border-box', position: 'relative' }}>
 
-            {/* Title bar */}
-            <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '3px solid #1a1a2e', paddingBottom: '10px' }}>
-              <div style={{ fontSize: '22pt', fontWeight: 'bold', letterSpacing: '6px', color: '#1a1a2e' }}>
-                {isCustomer ? '견 적 서' : '구매견적서'}
-              </div>
-            </div>
-
-            {/* Header: logo left, ref right */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px' }}>
+              <div style={{ width: '28%' }}>
                 {company.logoUrl ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={company.logoUrl} alt="logo" style={{ maxHeight: '48px', maxWidth: '160px', objectFit: 'contain' }} />
+                  <img src={company.logoUrl} alt="Logo" style={{ height: '42px', objectFit: 'contain', display: 'block' }} />
                 ) : (
-                  <div style={{ fontSize: '14pt', fontWeight: 'bold', color: '#1a1a2e' }}>{company.name}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#171717' }}>{company.name}</div>
                 )}
               </div>
-              <div style={{ textAlign: 'right', fontSize: '8.5pt' }}>
-                <div style={{ marginBottom: '3px' }}><span style={{ color: '#666' }}>견적번호: </span><strong>{quote.businessId}</strong></div>
-                <div style={{ marginBottom: '3px' }}><span style={{ color: '#666' }}>견적일: </span>{dateStr}</div>
-                {quote.validity && <div><span style={{ color: '#666' }}>유효기한: </span>{quote.validity}</div>}
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '4px', margin: '0 0 4px 0', color: '#171717' }}>
+                  {docTitle}
+                </h1>
+                <div style={{ width: '36px', height: '3px', background: '#171717', margin: '12px auto' }}></div>
+              </div>
+              <div style={{ width: '28%', textAlign: 'right' }}>
+                <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase' }}>Reference No.</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#171717', marginBottom: '8px' }}>{quote.businessId}</div>
+                <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase' }}>Date</div>
+                <div style={{ fontSize: '12px', fontWeight: 500, color: '#333' }}>{dateStr}</div>
+                {quote.validity && (
+                  <>
+                    <div style={{ fontSize: '10px', color: '#888', marginTop: '6px', marginBottom: '2px', textTransform: 'uppercase' }}>Valid Until</div>
+                    <div style={{ fontSize: '11px', color: '#333' }}>{quote.validity}</div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* From / To */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ border: '1px solid #ccc', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
-                  {isCustomer ? '공급자 (Seller)' : '구매자 (Buyer)'}
+            {/* From (Seller) / To (Buyer) */}
+            <div className="qt-box-wrap">
+              <div className="qt-box" style={{ background: '#fafafa', border: 'none' }}>
+                <div className="qt-box-title" style={{ background: '#fafafa' }}>From (Seller)</div>
+                <div className="qt-box-content">
+                  <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{company.name}</div>
+                  {company.address && <div style={{ marginBottom: '2px', fontSize: '11px' }}>{company.address}</div>}
+                  {(company.tel || company.fax) && <div style={{ marginBottom: '2px', fontSize: '11px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
+                  {company.email && <div style={{ fontSize: '11px' }}>Email: {company.email}</div>}
                 </div>
-                <div style={{ fontWeight: 'bold', fontSize: '10pt', marginBottom: '3px' }}>{company.name}</div>
-                {company.ceo && <div style={{ marginBottom: '2px', fontSize: '8.5pt' }}>대표자: {company.ceo}</div>}
-                {company.bizNo && <div style={{ marginBottom: '2px', fontSize: '8.5pt' }}>사업자번호: {company.bizNo}</div>}
-                {company.address && <div style={{ marginBottom: '2px', fontSize: '8.5pt' }}>{company.address}</div>}
-                {company.tel && <div style={{ marginBottom: '2px', fontSize: '8.5pt' }}>TEL: {company.tel}</div>}
-                {company.fax && <div style={{ marginBottom: '2px', fontSize: '8.5pt' }}>FAX: {company.fax}</div>}
-                {company.email && <div style={{ fontSize: '8.5pt' }}>E-mail: {company.email}</div>}
               </div>
-              <div style={{ border: '1px solid #ccc', borderRadius: '6px', padding: '10px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
-                  {isCustomer ? '공급받는자 (Buyer)' : '공급자 (Supplier)'}
+              <div className="qt-box">
+                <div className="qt-box-title">To (Buyer)</div>
+                <div className="qt-box-content">
+                  <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{quote.companyName}</div>
                 </div>
-                <div style={{ fontWeight: 'bold', fontSize: '10pt' }}>{quote.companyName}</div>
               </div>
             </div>
 
             {/* Items table */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', fontSize: '8.5pt' }}>
+            <table className="qt-table">
               <thead>
-                <tr style={{ backgroundColor: '#1a1a2e', color: 'white' }}>
-                  <th style={{ padding: '6px 8px', textAlign: 'center', width: '28px', borderRight: '1px solid #333' }}>No</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', borderRight: '1px solid #333' }}>품목 / 규격</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'center', width: '50px', borderRight: '1px solid #333' }}>단위</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right', width: '50px', borderRight: '1px solid #333' }}>수량</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right', width: '80px', borderRight: '1px solid #333' }}>단가</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right', width: '90px', borderRight: '1px solid #333' }}>금액</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', width: '80px' }}>비고</th>
+                <tr>
+                  <th style={{ width: '4%' }}>No</th>
+                  <th style={{ textAlign: 'left', paddingLeft: '8px', width: '24%' }}>Description / Specifications</th>
+                  <th style={{ width: '14%' }}>Tech Detail</th>
+                  <th style={{ width: '6%' }}>Unit</th>
+                  <th style={{ width: '7%' }}>Qty</th>
+                  <th style={{ width: '13%', textAlign: 'right', paddingRight: '6px' }}>Unit Price</th>
+                  <th style={{ width: '15%', textAlign: 'right', paddingRight: '6px' }}>Amount</th>
+                  <th style={{ width: '17%' }}>Remarks</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it: any, idx: number) => {
+                {items.map((it: any, i: number) => {
                   const amt = it.amount || (it.unitPrice ?? 0) * (it.quantity ?? it.qty ?? 0);
+                  const techParts = [
+                    it.voltage && `${it.voltage}V`,
+                    it.watts && `${it.watts}W`,
+                    it.luminousEff && `${it.luminousEff}lm/W`,
+                    it.cct && it.cct,
+                  ].filter(Boolean);
                   return (
-                    <tr key={idx} style={{ borderBottom: '1px solid #e5e5e5', backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                      <td style={{ padding: '5px 8px', textAlign: 'center' }}>{idx + 1}</td>
-                      <td style={{ padding: '5px 8px' }}>
-                        <div style={{ fontWeight: 600 }}>{it.productName}</div>
-                        {it.specification && <div style={{ color: '#555', fontSize: '7.5pt' }}>{it.specification}</div>}
+                    <tr key={i}>
+                      <td style={{ textAlign: 'center', color: '#888' }}>{i + 1}</td>
+                      <td style={{ paddingLeft: '8px' }}>
+                        <div style={{ fontWeight: 600, color: '#171717', fontSize: '11px' }}>{it.productName}</div>
+                        {it.specification && <div style={{ fontSize: '9px', color: '#888', marginTop: '2px' }}>{it.specification}</div>}
                       </td>
-                      <td style={{ padding: '5px 8px', textAlign: 'center', color: '#555' }}>EA</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'right' }}>{(it.quantity ?? it.qty ?? 0).toLocaleString()}</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                        {quote.currency !== 'KRW'
-                          ? `${quote.currency} ${(it.unitPrice ?? 0).toFixed(2)}`
-                          : (it.unitPrice ?? 0).toLocaleString()}
+                      <td style={{ textAlign: 'center', fontSize: '9px', color: '#666', lineHeight: '1.4' }}>
+                        {techParts.length > 0 ? techParts.join(' / ') : '-'}
+                        {it.lumenOutput && <><br />{it.lumenOutput}lm</>}
                       </td>
-                      <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600 }}>
-                        {quote.currency !== 'KRW' ? `${quote.currency} ${amt.toFixed(2)}` : amt.toLocaleString()}
+                      <td style={{ textAlign: 'center' }}>{it.unit || 'PCS'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{(it.quantity ?? it.qty ?? 0).toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', paddingRight: '6px' }}>
+                        {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? (it.unitPrice ?? 0).toFixed(2) : (it.unitPrice ?? 0).toLocaleString()}
                       </td>
-                      <td style={{ padding: '5px 8px', fontSize: '7.5pt', color: '#666' }}>{it.remark || ''}</td>
+                      <td style={{ textAlign: 'right', paddingRight: '6px', fontWeight: 700, color: '#171717' }}>
+                        {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? amt.toFixed(2) : amt.toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: '9px', color: '#888' }}>{it.remark || ''}</td>
                     </tr>
                   );
                 })}
-                {/* Empty rows to fill space */}
                 {items.length < 8 && Array.from({ length: 8 - items.length }).map((_, i) => (
-                  <tr key={`empty-${i}`} style={{ borderBottom: '1px solid #e5e5e5', height: '22px' }}>
-                    <td colSpan={7}></td>
+                  <tr key={`empty-${i}`}>
+                    <td style={{ padding: '14px' }}></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
-                  <td colSpan={5} style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>합 계</td>
-                  <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>
-                    {quote.currency !== 'KRW' ? `${quote.currency} ${totalAmount.toFixed(2)}` : `${totalAmount.toLocaleString()} 원`}
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
             </table>
 
-            {/* Terms */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px', fontSize: '8.5pt' }}>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '8px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>거래 조건</div>
-                {quote.paymentTerms && <div style={{ marginBottom: '2px' }}>결제: {quote.paymentTerms}</div>}
-                {quote.incoterm && <div style={{ marginBottom: '2px' }}>인코텀: {quote.incoterm}</div>}
-                {quote.validity && <div>유효기한: {quote.validity}</div>}
-              </div>
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '8px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>은행 정보</div>
-                {company.bankForeign1 ? (
-                  <div style={{ fontFamily: 'monospace', fontSize: '8pt', whiteSpace: 'pre-line' }}>{company.bankForeign1}</div>
-                ) : company.bank ? (
-                  <div style={{ fontSize: '8pt', whiteSpace: 'pre-line' }}>{company.bank}</div>
-                ) : null}
+            {/* Grand Total */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', marginBottom: '30px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#666' }}>GRAND TOTAL ({quote.currency})</div>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#171717' }}>
+                  {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? totalAmount.toFixed(2) : totalAmount.toLocaleString()}
+                </div>
               </div>
             </div>
 
-            {/* Remark */}
-            {quote.remark && (
-              <div style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '8px', marginBottom: '14px', fontSize: '8.5pt' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '4px', textTransform: 'uppercase' }}>비고 / 특기사항</div>
-                <div style={{ whiteSpace: 'pre-line' }}>{quote.remark}</div>
+            {/* Terms & Bank / Signature */}
+            <div style={{ display: 'flex', gap: '24px', marginTop: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Terms &amp; Conditions</div>
+                <div style={{ fontSize: '11px', color: '#555', lineHeight: '1.6', borderTop: '1px solid #e5e5e5', paddingTop: '8px' }}>
+                  {quote.paymentTerms && <div style={{ marginBottom: '4px' }}>• Payment: {quote.paymentTerms}</div>}
+                  {quote.incoterm && <div style={{ marginBottom: '4px' }}>• Incoterm: {quote.incoterm}</div>}
+                  {quote.validity && <div style={{ marginBottom: '4px' }}>• Valid Until: {quote.validity}</div>}
+                  {specialNotes && <div style={{ marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{specialNotes}</div>}
+                  {bankInfo && (
+                    <div style={{ background: '#f5f5f5', padding: '8px', borderRadius: '4px', marginTop: '8px' }}>
+                      <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '10px' }}>Bank Account</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '10px', whiteSpace: 'pre-line' }}>{bankInfo}</div>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-
-            {/* Product images */}
-            {quoteImages.length > 0 && (
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '8pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase' }}>제품 사진</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {quoteImages.map((url, i) => (
+              <div style={{ width: '220px', display: 'flex', flexDirection: 'column', height: '140px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Authorized Signature</div>
+                <div style={{ flex: 1, borderBottom: '2px solid #171717', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {company.stampUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img key={i} src={url} alt="" style={{ width: '80mm', maxHeight: '60mm', objectFit: 'contain', border: '1px solid #eee', borderRadius: '4px' }} />
+                    <img src={company.stampUrl} alt="Stamp" style={{ width: '200px', opacity: 0.8, transform: 'rotate(-5deg)', position: 'absolute' }} />
+                  )}
+                </div>
+                <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 700, marginTop: '6px', color: '#171717' }}>{company.name}</div>
+              </div>
+            </div>
+
+            {/* Product images (attachment page) */}
+            {quoteImages.length > 0 && (
+              <div style={{ pageBreakBefore: 'always', marginTop: '40px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', borderBottom: '2px solid #171717', paddingBottom: '8px' }}>ATTACHMENTS</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {quoteImages.map((url, i) => (
+                    <div key={i}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: '#888' }}>Attachment {i + 1}</div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} alt="" />
+                    </div>
                   ))}
                 </div>
               </div>
             )}
-
-            {/* Signature */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <div style={{ textAlign: 'center', minWidth: '160px' }}>
-                <div style={{ fontSize: '8pt', color: '#666', marginBottom: '6px' }}>공급자 확인</div>
-                <div style={{ borderBottom: '1px solid #999', marginBottom: '4px', height: '40px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                  {company.stampUrl && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={company.stampUrl} alt="stamp" style={{ maxHeight: '36px', maxWidth: '80px', objectFit: 'contain', opacity: 0.85 }} />
-                  )}
-                </div>
-                <div style={{ fontWeight: 'bold', fontSize: '9pt' }}>{company.name}</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -805,8 +854,10 @@ export default function QuotesPage() {
   };
 
   const handleCopy = async (q: Quote) => {
+    const qx = q as any;
     const body = {
       type: q.type,
+      docType: qx.docType || 'QUOTE',
       companyName: q.companyName,
       companyId: q.companyId,
       currency: q.currency,
@@ -816,6 +867,8 @@ export default function QuotesPage() {
       quoteDate: new Date().toISOString().slice(0, 10),
       items: q.items,
       remark: q.remark,
+      specialNotes: qx.specialNotes,
+      generalInfo: qx.generalInfo,
       createdByName: me?.name || 'user-1',
     };
     await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

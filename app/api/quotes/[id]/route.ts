@@ -27,7 +27,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     db.prepare(`UPDATE quotes SET
       type=?, company_id=?, company_name=?, items_json=?, currency=?, incoterm=?,
       payment_terms=?, validity=?, status=?, remark=?, quote_date=?,
-      total_amount=?, updated_at=?, updated_by=?, images_json=?, history_json=?
+      total_amount=?, updated_at=?, updated_by=?, images_json=?, history_json=?,
+      doc_type=?, special_notes=?, general_info=?
       WHERE id=?`)
       .run(
         body.type ?? row.type, body.companyId ?? row.company_id, companyName,
@@ -36,7 +37,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.remark ?? null, body.quoteDate ?? row.quote_date,
         totalAmount, ts, body.updatedByName ?? null,
         body.imagesJson ?? row.images_json ?? null,
-        JSON.stringify(newHistory), id,
+        JSON.stringify(newHistory),
+        body.docType ?? row.doc_type ?? 'QUOTE',
+        body.specialNotes ?? row.special_notes ?? null,
+        body.generalInfo ?? row.general_info ?? null,
+        id,
       );
 
     updateNotionQuote(businessId, {
