@@ -452,6 +452,13 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE products ADD COLUMN material TEXT`,
     `ALTER TABLE products ADD COLUMN size_spec TEXT`,
     `ALTER TABLE products ADD COLUMN converter TEXT`,
+    `ALTER TABLE quotes ADD COLUMN quote_date TEXT`,
+    `ALTER TABLE quotes ADD COLUMN total_amount REAL DEFAULT 0`,
+    `ALTER TABLE quotes ADD COLUMN updated_at TEXT`,
+    `ALTER TABLE quotes ADD COLUMN updated_by TEXT`,
+    `ALTER TABLE quotes ADD COLUMN images_json TEXT`,
+    `ALTER TABLE quotes ADD COLUMN created_by_name TEXT`,
+    `ALTER TABLE quotes ADD COLUMN history_json TEXT NOT NULL DEFAULT '[]'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
