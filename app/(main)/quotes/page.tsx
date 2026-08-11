@@ -125,7 +125,7 @@ function ProductSearchHelper({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  if (hints.length === 0) return null;
+  if (value.length < 1) return null;
 
   return (
     <div ref={ref} className="relative">
@@ -138,7 +138,9 @@ function ProductSearchHelper({
           <div className="p-2 border-b bg-muted/30">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 결과 ({hints.length})</p>
           </div>
-          {hints.map(h => (
+          {hints.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">등록된 제품 없음</div>
+          ) : hints.map(h => (
             <button key={h.code} type="button" onClick={() => { onSelect(h); setShow(false); }}
               className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
               <div className="flex items-start justify-between gap-2">
@@ -478,9 +480,21 @@ function QuoteModal({
                       </div>
                     </td>
                     <td className="px-2 py-1.5">
-                      <input className="w-full bg-transparent border-none outline-none text-xs"
-                        value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
-                        placeholder="규격/설명" />
+                      <div className="flex items-center gap-0.5">
+                        <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                          value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
+                          placeholder="규격/설명" />
+                        <button type="button" title="제품에서 규격 자동 가져오기"
+                          className="shrink-0 text-[9px] text-muted-foreground hover:text-primary px-0.5"
+                          onClick={() => {
+                            const p = products.find((p: any) =>
+                              p.nameKo === it.productName || p.code === it.productName ||
+                              (p.code && it.productName?.includes(p.code))
+                            ) as any;
+                            if (p) updateItem(idx, 'specification', p.sizeSpec || p.detail || '');
+                            else alert('제품 DB에서 매칭되는 제품을 찾을 수 없습니다.');
+                          }}>↗</button>
+                      </div>
                     </td>
                     {(['voltage', 'watts', 'luminousEff', 'lumenOutput', 'cct'] as const).map(field => (
                       <td key={field} className="px-1 py-1.5">
@@ -626,7 +640,12 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
           <div className="no-print flex items-center justify-between p-4 border-b">
             <span className="font-semibold text-sm text-gray-800">{docTitle} 미리보기</span>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => window.print()}>
+              <Button size="sm" onClick={() => {
+                const orig = document.title;
+                document.title = quote.businessId;
+                window.print();
+                window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+              }}>
                 <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF
               </Button>
               <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>

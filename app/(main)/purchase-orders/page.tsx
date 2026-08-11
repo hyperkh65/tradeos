@@ -77,7 +77,7 @@ function ProductSearchHelper({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  if (hints.length === 0) return null;
+  if (value.length < 1) return null;
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -90,7 +90,9 @@ function ProductSearchHelper({
           <div className="p-2 border-b bg-muted/30">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
           </div>
-          {hints.map(h => (
+          {hints.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">등록된 제품 없음</div>
+          ) : hints.map(h => (
             <button key={h.code} type="button" onClick={() => { onSelect(h); setShow(false); }}
               className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
               <div className="flex items-start justify-between gap-2">
@@ -401,7 +403,23 @@ function POModal({
                         />
                       </div>
                     </td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} /></td>
+                    <td className="px-2 py-1">
+                      <div className="flex items-center gap-0.5">
+                        <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                          value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
+                          placeholder="규격" />
+                        <button type="button" title="제품에서 규격 자동 가져오기"
+                          className="shrink-0 text-[9px] text-muted-foreground hover:text-primary px-0.5"
+                          onClick={() => {
+                            const p = products.find(p =>
+                              p.nameKo === it.productName || p.code === it.productName ||
+                              (p.code && it.productName?.includes(p.code))
+                            ) as any;
+                            if (p) updateItem(idx, 'specification', p.sizeSpec || p.detail || '');
+                            else alert('제품 DB에서 매칭되는 제품을 찾을 수 없습니다.');
+                          }}>↗</button>
+                      </div>
+                    </td>
                     <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
                     <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
                     <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
@@ -457,6 +475,12 @@ function POModal({
 
 /* ─── PO Print Modal ─────────────────────────────────────────────────────── */
 
+const CURRENCY_CODES_RE = /\s*\|\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i;
+const cleanSpec = (s: string) => s.replace(CURRENCY_CODES_RE, '').replace(/^\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i, '').trim();
+
+const fmtNum = (n: number, currency: string) =>
+  currency === 'KRW' ? n.toLocaleString() : n.toFixed(2);
+
 function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }; company: CompanySettings; onClose: () => void }) {
   const items = (po.items || []) as any[];
   const totalAmount = Number(po.totalAmount) || items.reduce((s: number, i: any) => s + (i.amount || i.unitPrice * (i.qty || i.quantity || 0) || 0), 0);
@@ -464,6 +488,12 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
   const depositAmount = Number(po.depositAmount) || Math.round(totalAmount * depositRatio / 100);
   const balanceAmount = Number(po.balanceAmount) || totalAmount - depositAmount;
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const handlePrint = () => {
+    const orig = document.title;
+    document.title = po.businessId;
+    window.print();
+    window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+  };
 
   let attachImages: string[] = [];
   try { attachImages = JSON.parse((po as any).imagesJson || '[]'); } catch { attachImages = []; }
@@ -484,7 +514,7 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
           <div className="flex items-center justify-between p-4 border-b no-print">
             <span className="font-semibold text-sm text-gray-800">발주서 미리보기</span>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => window.print()}>
+              <Button size="sm" onClick={handlePrint}>
                 <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF 저장
               </Button>
               <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
@@ -536,11 +566,11 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
                 <tr style={{ backgroundColor: '#1a1a2e', color: 'white' }}>
                   <th style={{ padding: '7px 6px', textAlign: 'center', width: '24px', borderRight: '1px solid #444' }}>No.</th>
                   <th style={{ padding: '7px 6px', textAlign: 'left', borderRight: '1px solid #444' }}>Description / Model</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'center', width: '55px', borderRight: '1px solid #444' }}>Tech Detail</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'center', width: '110px', borderRight: '1px solid #444' }}>Tech Detail</th>
                   <th style={{ padding: '7px 6px', textAlign: 'center', width: '35px', borderRight: '1px solid #444' }}>Unit</th>
                   <th style={{ padding: '7px 6px', textAlign: 'right', width: '40px', borderRight: '1px solid #444' }}>Qty</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '68px', borderRight: '1px solid #444' }}>Unit Price</th>
-                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '78px' }}>Amount</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '80px', borderRight: '1px solid #444' }}>Unit Price ({po.currency})</th>
+                  <th style={{ padding: '7px 6px', textAlign: 'right', width: '80px' }}>Amount ({po.currency})</th>
                 </tr>
               </thead>
               <tbody>
@@ -557,14 +587,14 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
                       <td style={{ padding: '6px', textAlign: 'center' }}>{idx + 1}</td>
                       <td style={{ padding: '6px' }}>
                         <div style={{ fontWeight: '600' }}>{it.productName}</div>
-                        {it.specification && <div style={{ color: '#555', fontSize: '7.5pt' }}>{it.specification}</div>}
+                        {it.specification && cleanSpec(it.specification) && <div style={{ color: '#555', fontSize: '7.5pt' }}>{cleanSpec(it.specification)}</div>}
                         {it.remarks && <div style={{ color: '#777', fontSize: '7pt', fontStyle: 'italic' }}>{it.remarks}</div>}
                       </td>
-                      <td style={{ padding: '6px', textAlign: 'center', color: '#444', fontSize: '7.5pt' }}>{techDetail || '-'}</td>
+                      <td style={{ padding: '6px', textAlign: 'center', color: '#444', fontSize: '7.5pt', lineHeight: '1.5' }}>{techDetail || '-'}</td>
                       <td style={{ padding: '6px', textAlign: 'center', color: '#444' }}>{it.unit || 'PCS'}</td>
                       <td style={{ padding: '6px', textAlign: 'right' }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
-                      <td style={{ padding: '6px', textAlign: 'right' }}>{po.currency} {(it.unitPrice || 0).toLocaleString()}</td>
-                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: '600' }}>{(it.amount || (it.unitPrice * (it.qty || it.quantity || 0))).toLocaleString()}</td>
+                      <td style={{ padding: '6px', textAlign: 'right' }}>{fmtNum(it.unitPrice || 0, po.currency)}</td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: '600' }}>{fmtNum(it.amount || (it.unitPrice * (it.qty || it.quantity || 0)), po.currency)}</td>
                     </tr>
                   );
                 })}
@@ -572,21 +602,21 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
               <tfoot>
                 <tr style={{ borderTop: '1px solid #ccc', backgroundColor: '#f9f9f9' }}>
                   <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#555' }}>Sub Total</td>
-                  <td style={{ padding: '6px', textAlign: 'right' }}>{po.currency} {totalAmount.toLocaleString()}</td>
+                  <td style={{ padding: '6px', textAlign: 'right' }}>{po.currency} {fmtNum(totalAmount, po.currency)}</td>
                 </tr>
                 {depositAmount > 0 && <>
                   <tr style={{ backgroundColor: '#fff8f0' }}>
                     <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#c05000' }}>Deposit {depositRatio}% (선금)</td>
-                    <td style={{ padding: '6px', textAlign: 'right', color: '#c05000', fontWeight: '600' }}>{po.currency} {depositAmount.toLocaleString()}</td>
+                    <td style={{ padding: '6px', textAlign: 'right', color: '#c05000', fontWeight: '600' }}>{po.currency} {fmtNum(depositAmount, po.currency)}</td>
                   </tr>
                   <tr style={{ backgroundColor: '#f0f8ff' }}>
                     <td colSpan={6} style={{ padding: '6px', textAlign: 'right', color: '#1a50a0' }}>Balance {100 - depositRatio}% (잔금)</td>
-                    <td style={{ padding: '6px', textAlign: 'right', color: '#1a50a0', fontWeight: '600' }}>{po.currency} {balanceAmount.toLocaleString()}</td>
+                    <td style={{ padding: '6px', textAlign: 'right', color: '#1a50a0', fontWeight: '600' }}>{po.currency} {fmtNum(balanceAmount, po.currency)}</td>
                   </tr>
                 </>}
                 <tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
-                  <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>GRAND TOTAL</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>{po.currency} {totalAmount.toLocaleString()}</td>
+                  <td colSpan={6} style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>GRAND TOTAL ({po.currency})</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', fontSize: '10pt' }}>{fmtNum(totalAmount, po.currency)}</td>
                 </tr>
               </tfoot>
             </table>
