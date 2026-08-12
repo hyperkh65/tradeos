@@ -32,9 +32,15 @@ export async function GET() {
         (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,
          ceo,business_no,address,bank,account_no,trade_currency,notion_id,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      const prefixMap: Record<string, string> = { '고객사':'CUS','공급업체':'SUP','포워더':'FWD','관세사':'BRK','기타':'ETC' };
       db.transaction(() => {
         for (const c of notionData) {
-          insert.run(c.id, c.businessId, c.name, c.nameEn ?? null, c.type, c.country,
+          // Generate short code (CUS-XXXX) instead of UUID/business_no
+          const prefix = prefixMap[c.type] ?? 'ETC';
+          const lastRow = db.prepare(`SELECT business_id FROM companies WHERE business_id LIKE '${prefix}-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
+          const last = lastRow ? parseInt(lastRow.business_id.split('-')[1] || '0') : 0;
+          const bizId = `${prefix}-${String(last + 1).padStart(4, '0')}`;
+          insert.run(c.id, bizId, c.name, c.nameEn ?? null, c.type, c.country,
             c.email ?? null, c.phone ?? null, c.website ?? null, c.wechat ?? null,
             c.memo ?? null, c.ceo ?? null, c.businessNo ?? null, c.address ?? null,
             c.bank ?? null, c.accountNo ?? null, c.currency ?? null,
