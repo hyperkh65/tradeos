@@ -66,7 +66,7 @@ export function notionToCompany(page: { id: string; properties: Props; created_t
   const p = page.properties;
   return {
     id: page.id,
-    businessId: getText(p, 'BusinessNo', '코드') || page.id.slice(0, 8),
+    businessId: getText(p, 'BusinessNo', '코드') || page.id,
     name: getText(p, 'ClientName', '이름'),
     nameEn: getText(p, '영문명') || undefined,
     type: (getSelect(p, 'Type', '유형') || '기타') as Company['type'],

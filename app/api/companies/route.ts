@@ -18,9 +18,13 @@ function dbToCompany(row: Record<string, unknown>) {
   };
 }
 
-const UPSERT_SQL = `INSERT OR IGNORE INTO companies
+const UPSERT_SQL = `INSERT INTO companies
   (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,notion_id,created_at,updated_at)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  ON CONFLICT(id) DO UPDATE SET
+    business_id=excluded.business_id, name=excluded.name, name_en=excluded.name_en,
+    type=excluded.type, country=excluded.country, email=excluded.email, phone=excluded.phone,
+    website=excluded.website, wechat=excluded.wechat, memo=excluded.memo, updated_at=excluded.updated_at`;
 
 export async function GET() {
   try {
