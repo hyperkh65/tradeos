@@ -337,10 +337,15 @@ const dt = (v: string | undefined) => ({ date: v ? { start: v } : null });
 export function companyToNotion(c: Partial<Company> & { name: string }) {
   return {
     'ClientName': titleProp(c.name),
-    ...(c.businessId ? { 'BusinessNo': rich(c.businessId) } : {}),
+    ...(c.businessNo ? { 'BusinessNo': rich(c.businessNo) } : {}),
     ...(c.phone ? { 'Tel': rich(c.phone) } : {}),
     ...(c.email ? { 'Email': { email: c.email } } : {}),
-    ...(c.memo ? { 'Address': rich(c.memo) } : {}),
+    ...(c.address ? { 'Address': rich(c.address) } : {}),
+    ...(c.ceo ? { 'CEO': rich(c.ceo) } : {}),
+    ...(c.bank ? { 'Bank': rich(c.bank) } : {}),
+    ...(c.accountNo ? { 'AccountNo': rich(c.accountNo) } : {}),
+    ...(c.currency ? { 'Currency': sel(c.currency) } : {}),
+    ...(c.memo ? { '비고': rich(c.memo) } : {}),
   };
 }
 
