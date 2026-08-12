@@ -349,22 +349,20 @@ export function companyToNotion(c: Partial<Company> & { name: string }) {
   };
 }
 
+// Notion Products DB fields: 이름(title), ProductCode, ProductName, ProductCategory,
+// Supplier, Cost(number), Currency(rich_text), Detail, Maker, Material, Size,
+// InputA, OutputV, OutputA, Converter, Image, FileSpec, FileEMI, FileEfficiency, FileKSKC, FileEtc
 export function productToNotion(p: Partial<Product> & { nameKo: string; code: string } & Record<string, any>) {
   return {
     '이름': titleProp(p.code || p.nameKo),
     'ProductCode': rich(p.code),
     'ProductName': rich(p.nameKo),
-    ...(p.nameEn ? { '영문명': rich(p.nameEn) } : {}),
     ...(p.category ? { 'ProductCategory': rich(p.category) } : {}),
     ...(p.supplierName ? { 'Supplier': rich(p.supplierName) } : {}),
     ...(p.purchasePrice !== undefined ? { 'Cost': num(p.purchasePrice) } : {}),
     ...(p.currency ? { 'Currency': rich(p.currency) } : {}),
-    ...(p.moq !== undefined ? { 'MOQ': num(p.moq) } : {}),
     ...(p.detail ? { 'Detail': rich(p.detail) } : {}),
     ...(p.maker ? { 'Maker': rich(p.maker) } : {}),
-    ...(p.voltage ? { 'Voltage': rich(p.voltage) } : {}),
-    ...(p.watts ? { 'Watts': rich(p.watts) } : {}),
-    ...(p.cct ? { 'CCT': rich(p.cct) } : {}),
     ...(p.inputA ? { 'InputA': rich(p.inputA) } : {}),
     ...(p.outputV ? { 'OutputV': rich(p.outputV) } : {}),
     ...(p.outputA ? { 'OutputA': rich(p.outputA) } : {}),
