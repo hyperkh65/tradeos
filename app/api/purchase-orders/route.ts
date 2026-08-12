@@ -10,7 +10,7 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
     supplierId: (row.supplier_id as string) || '',
     supplierName: row.supplier_name as string,
     items: JSON.parse(row.items_json as string || '[]'),
-    currency: row.currency as string,
+    currency: ((row.currency as string) || 'USD').replace(/^RMB$/i, 'CNY'),
     totalAmount: row.total_amount as number,
     depositAmount: (row.deposit_amount as number) || undefined,
     balanceAmount: (row.balance_amount as number) || undefined,
@@ -31,7 +31,7 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
 }
 
 function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }, id: string, ts: string, notionId?: string | null) {
-  db.prepare(`INSERT OR REPLACE INTO purchase_orders
+  db.prepare(`INSERT OR IGNORE INTO purchase_orders
     (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
@@ -50,22 +50,20 @@ export async function GET() {
   const ts = now();
 
   try {
-    // Try Notion (ERP) first
+    // Sync Notion (ERP) → SQLite (INSERT OR IGNORE keeps local edits)
     const notionPOs = await fetchNotionPurchaseOrders();
     if (notionPOs.length > 0) {
-      // Sync to SQLite
       db.transaction(() => {
         for (const po of notionPOs) {
           poToDb(db, po, po.id, ts, po.id);
         }
       })();
-      return NextResponse.json({ data: notionPOs });
     }
   } catch (e) {
     console.error('[PO] Notion fetch error:', e);
   }
 
-  // Fall back to SQLite
+  // Always return SQLite data (preserves local edits for ETD/status/etc)
   const rows = db.prepare('SELECT * FROM purchase_orders ORDER BY created_at DESC').all() as Record<string, unknown>[];
   return NextResponse.json({ data: rows.map(dbToPO) });
 }

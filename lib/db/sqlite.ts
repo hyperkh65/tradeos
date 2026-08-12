@@ -468,6 +468,8 @@ function runMigrations(db: Database.Database) {
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
   }
+  // Data migrations (idempotent)
+  try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 }
 
 export function newId(): string {

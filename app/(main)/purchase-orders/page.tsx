@@ -894,7 +894,12 @@ export default function PurchaseOrdersPage() {
                       </td>
                       <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
-                        {po.depositAmount ? <><span className="text-orange-600">{Number(po.depositAmount).toLocaleString()}</span> / {Number(po.balanceAmount).toLocaleString()}</> : '-'}
+                        {(() => {
+                          const ratio = Number((po as any).depositRatio || 30);
+                          const dep = po.depositAmount != null ? Number(po.depositAmount) : Math.round(po.totalAmount * ratio / 100);
+                          const bal = po.balanceAmount != null ? Number(po.balanceAmount) : po.totalAmount - dep;
+                          return dep > 0 ? <><span className="text-orange-600">{dep.toLocaleString()}</span> / {bal.toLocaleString()}</> : <span className="text-muted-foreground">-</span>;
+                        })()}
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{po.etd ?? '-'}</td>
                       <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
