@@ -627,6 +627,9 @@ function QuoteModal({
 function QuotePrintModal({ quote, company, companies, products, onClose }: { quote: Quote; company: CompanySettings; companies: any[]; products: any[]; onClose: () => void }) {
   const q = quote as any;
   const items = (quote.items || []) as any[];
+  const fmtN = (n: number) => quote.currency === 'KRW'
+    ? n.toLocaleString('ko-KR')
+    : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const totalAmount = items.reduce((s: number, i: any) => s + (i.amount || (i.unitPrice ?? 0) * (i.quantity ?? i.qty ?? 0)), 0);
   const quoteDate = q.quoteDate || new Date().toISOString().slice(0, 10);
   const dateStr = new Date(quoteDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -635,27 +638,31 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
   const quoteImages: string[] = (() => { try { return JSON.parse(q.imagesJson || '[]'); } catch { return []; } })();
   const specialNotes = q.specialNotes || '';
   const generalInfo = q.generalInfo || '';
-  const bankInfo = quote.currency === 'KRW' ? company.bank : (company.bankForeign1 || company.bank);
+  const bankInfo = quote.currency === 'KRW' ? company.bank : (company.bankForeign1 ? `${company.bankForeign1}${company.bankForeign2 ? '\n' + company.bankForeign2 : ''}` : company.bank);
   const buyerCompany = companies.find((c: any) => c.name === quote.companyName);
+  const emptyRows = Math.max(0, 8 - items.length);
 
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
         @media print {
           body * { visibility: hidden !important; }
           #quote-print-area, #quote-print-area * { visibility: visible !important; }
-          #quote-print-area { position: fixed !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
+          #quote-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
           .no-print { display: none !important; }
           @page { size: A4 portrait; margin: 0; }
         }
-        .qt-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .qt-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 8px 3px; font-size: 10px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
-        .qt-table td { border-bottom: 1px solid #e5e5e5; padding: 8px 3px; font-size: 10px; color: #333; vertical-align: middle; }
-        .qt-table tr:last-child td { border-bottom: 1px solid #171717; }
-        .qt-box-wrap { display: flex; gap: 20px; margin-bottom: 24px; }
-        .qt-box { flex: 1; border: 1px solid #e5e5e5; padding: 16px; border-radius: 8px; position: relative; }
-        .qt-box-title { position: absolute; top: -9px; left: 12px; background: white; padding: 0 8px; font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        .qt-box-content { font-size: 12px; line-height: 1.6; color: #333; }
+        #quote-print-area .quote-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        #quote-print-area .quote-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        #quote-print-area .quote-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+        #quote-print-area .quote-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+        #quote-print-area .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+        #quote-print-area .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+        #quote-print-area .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+        #quote-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #quote-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #quote-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
       `}</style>
 
       <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
@@ -675,73 +682,69 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
             </div>
           </div>
 
-          <div id="quote-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '10mm', background: 'white', fontFamily: '"Noto Sans KR", "Malgun Gothic", Arial, sans-serif', color: '#171717', boxSizing: 'border-box', position: 'relative' }}>
+          <div id="quote-print-area" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', background: 'white', color: '#171717', fontFamily: '"Noto Sans KR", sans-serif', boxSizing: 'border-box', padding: '10mm', position: 'relative' }}>
 
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px' }}>
-              <div style={{ width: '28%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '50px' }}>
+              <div style={{ width: '30%' }}>
                 {company.logoUrl ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={company.logoUrl} alt="Logo" style={{ height: '42px', objectFit: 'contain', display: 'block' }} />
+                  <img src={company.logoUrl} alt="Logo" style={{ height: '45px', objectFit: 'contain', display: 'block' }} />
                 ) : (
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#171717' }}>{company.name}</div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: '#171717' }}>{company.name}</div>
                 )}
               </div>
               <div style={{ textAlign: 'center', flex: 1 }}>
-                <h1 style={{ fontSize: '28px', fontWeight: 900, letterSpacing: '4px', margin: '0 0 4px 0', color: '#171717' }}>
-                  {docTitle}
-                </h1>
-                <div style={{ width: '36px', height: '3px', background: '#171717', margin: '12px auto' }}></div>
+                <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '4px', margin: '0 0 5px 0', color: '#171717' }}>{docTitle}</h1>
+                <div style={{ width: '40px', height: '4px', background: '#171717', margin: '15px auto 0' }} />
               </div>
-              <div style={{ width: '28%', textAlign: 'right' }}>
-                <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase' }}>Reference No.</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#171717', marginBottom: '8px' }}>{quote.businessId}</div>
-                <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase' }}>Date</div>
-                <div style={{ fontSize: '12px', fontWeight: 500, color: '#333' }}>{dateStr}</div>
-                {quote.validity && (
-                  <>
-                    <div style={{ fontSize: '10px', color: '#888', marginTop: '6px', marginBottom: '2px', textTransform: 'uppercase' }}>Valid Until</div>
-                    <div style={{ fontSize: '11px', color: '#333' }}>{quote.validity}</div>
-                  </>
-                )}
+              <div style={{ width: '30%', textAlign: 'right' }}>
+                <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Reference No.</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#171717', marginBottom: '10px' }}>{quote.businessId}</div>
+                <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Date</div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#333' }}>{dateStr}</div>
+                {quote.validity && <>
+                  <div style={{ fontSize: '11px', color: '#888', marginTop: '8px', marginBottom: '4px', textTransform: 'uppercase' }}>Valid Until</div>
+                  <div style={{ fontSize: '13px', color: '#333' }}>{quote.validity}</div>
+                </>}
               </div>
             </div>
 
             {/* From (Seller) / To (Buyer) */}
-            <div className="qt-box-wrap">
-              <div className="qt-box" style={{ background: '#fafafa', border: 'none' }}>
-                <div className="qt-box-title" style={{ background: '#fafafa' }}>From (Seller)</div>
-                <div className="qt-box-content">
-                  <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{company.name}</div>
-                  {company.address && <div style={{ marginBottom: '2px', fontSize: '11px' }}>{company.address}</div>}
-                  {(company.tel || company.fax) && <div style={{ marginBottom: '2px', fontSize: '11px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
-                  {company.email && <div style={{ fontSize: '11px' }}>Email: {company.email}</div>}
+            <div className="box-container">
+              <div className="box-gray">
+                <div className="box-title-gray">From (Seller)</div>
+                <div className="box-content">
+                  <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{company.name}</div>
+                  {company.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
+                  {(company.tel || company.fax) && <div style={{ marginBottom: '2px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
+                  {company.email && <div>Email: {company.email}</div>}
                 </div>
               </div>
-              <div className="qt-box">
-                <div className="qt-box-title">To (Buyer)</div>
-                <div className="qt-box-content">
-                  <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: '#171717' }}>{quote.companyName}</div>
-                  {buyerCompany?.businessNo && <div style={{ marginBottom: '2px', fontSize: '10px', color: '#666' }}>Reg.No: {buyerCompany.businessNo}</div>}
-                  {buyerCompany?.ceo && <div style={{ marginBottom: '2px', fontSize: '10px', color: '#666' }}>CEO: {buyerCompany.ceo}</div>}
-                  {buyerCompany?.address && <div style={{ marginBottom: '2px', fontSize: '11px' }}>{buyerCompany.address}</div>}
-                  {buyerCompany?.phone && <div style={{ marginBottom: '2px', fontSize: '11px' }}>Tel: {buyerCompany.phone}</div>}
-                  {buyerCompany?.email && <div style={{ fontSize: '11px' }}>Email: {buyerCompany.email}</div>}
+              <div className="box">
+                <div className="box-title">To (Buyer)</div>
+                <div className="box-content">
+                  <div style={{ fontSize: '18px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{quote.companyName}</div>
+                  {buyerCompany?.ceo && <div style={{ marginBottom: '2px' }}>Attn: {buyerCompany.ceo}</div>}
+                  {buyerCompany?.address && <div style={{ marginBottom: '2px' }}>{buyerCompany.address}</div>}
+                  {buyerCompany?.businessNo && <div style={{ marginBottom: '2px' }}>Reg.No: {buyerCompany.businessNo}</div>}
+                  {buyerCompany?.phone && <div style={{ marginBottom: '2px' }}>Tel: {buyerCompany.phone}</div>}
+                  {buyerCompany?.email && <div>Email: {buyerCompany.email}</div>}
                 </div>
               </div>
             </div>
 
             {/* Items table */}
-            <table className="qt-table">
+            <table className="quote-table">
               <thead>
                 <tr>
-                  <th style={{ width: '4%' }}>No</th>
-                  <th style={{ textAlign: 'left', paddingLeft: '8px', width: '38%' }}>Description / Specifications</th>
-                  <th style={{ width: '6%' }}>Unit</th>
-                  <th style={{ width: '7%' }}>Qty</th>
-                  <th style={{ width: '14%', textAlign: 'right', paddingRight: '6px' }}>Unit Price</th>
-                  <th style={{ width: '16%', textAlign: 'right', paddingRight: '6px' }}>Amount</th>
-                  <th style={{ width: '15%' }}>Remarks</th>
+                  <th style={{ width: '5%' }}>No</th>
+                  <th style={{ textAlign: 'left', paddingLeft: '10px' }}>Description / Specifications</th>
+                  <th style={{ width: '15%' }}>Tech Detail</th>
+                  <th style={{ width: '8%' }}>Unit</th>
+                  <th style={{ width: '8%' }}>Qty</th>
+                  <th style={{ width: '12%', textAlign: 'right', paddingRight: '8px' }}>Unit Price ({quote.currency})</th>
+                  <th style={{ width: '15%', textAlign: 'right', paddingRight: '8px' }}>Amount ({quote.currency})</th>
                 </tr>
               </thead>
               <tbody>
@@ -752,102 +755,75 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                   const tw = it.watts || prod?.watts || '';
                   const tc = it.cct || prod?.cct || '';
                   const te = it.luminousEff || '';
-                  const tl = it.lumenOutput || '';
-                  const techParts = [
-                    tv && `${tv}V`,
-                    tw && `${tw}W`,
-                    te && `${te}lm/W`,
-                    tc && tc,
-                  ].filter(Boolean);
+                  const tech = [tv && `${tv}`, tw && `${tw}`, te && `${te}lm/W`, tc].filter(Boolean).join('\n');
                   return (
                     <tr key={i}>
                       <td style={{ textAlign: 'center', color: '#888' }}>{i + 1}</td>
-                      <td style={{ paddingLeft: '8px' }}>
-                        <div style={{ fontWeight: 600, color: '#171717', fontSize: '11px' }}>{it.productName}</div>
-                        {it.specification && <div style={{ fontSize: '9px', color: '#555', marginTop: '2px' }}>{it.specification}</div>}
-                        {(techParts.length > 0 || tl) && (
-                          <div style={{ fontSize: '8.5px', color: '#777', marginTop: '2px', fontStyle: 'italic' }}>
-                            {techParts.join(' / ')}{tl ? ` | ${tl}lm` : ''}
-                          </div>
-                        )}
+                      <td style={{ paddingLeft: '10px' }}>
+                        <div style={{ fontWeight: 600, color: '#171717' }}>{it.productName}</div>
+                        {it.specification && <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>{it.specification}</div>}
                       </td>
+                      <td style={{ textAlign: 'center', fontSize: '10px', color: '#666', whiteSpace: 'pre-line', lineHeight: '1.5' }}>{tech || '—'}</td>
                       <td style={{ textAlign: 'center' }}>{it.unit || 'PCS'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>{(it.quantity ?? it.qty ?? 0).toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', paddingRight: '6px' }}>
-                        {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? (it.unitPrice ?? 0).toFixed(2) : (it.unitPrice ?? 0).toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'right', paddingRight: '6px', fontWeight: 700, color: '#171717' }}>
-                        {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? amt.toFixed(2) : amt.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: '9px', color: '#888' }}>{it.remark || ''}</td>
+                      <td style={{ textAlign: 'right', paddingRight: '8px' }}>{fmtN(it.unitPrice ?? 0)}</td>
+                      <td style={{ textAlign: 'right', paddingRight: '8px', fontWeight: 700, color: '#171717' }}>{fmtN(amt)}</td>
                     </tr>
                   );
                 })}
-                {items.length < 8 && Array.from({ length: 8 - items.length }).map((_, i) => (
-                  <tr key={`empty-${i}`}>
-                    <td style={{ padding: '14px' }}></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                  </tr>
+                {Array.from({ length: emptyRows }).map((_, i) => (
+                  <tr key={`e${i}`}><td style={{ padding: '15px' }} /><td /><td /><td /><td /><td /><td /></tr>
                 ))}
               </tbody>
             </table>
 
             {/* Grand Total */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', marginBottom: '30px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#666' }}>GRAND TOTAL ({quote.currency})</div>
-                <div style={{ fontSize: '22px', fontWeight: 900, color: '#171717' }}>
-                  {getCurrencySymbol(quote.currency)}{quote.currency !== 'KRW' ? totalAmount.toFixed(2) : totalAmount.toLocaleString()}
-                </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#666' }}>GRAND TOTAL ({quote.currency})</div>
+                <div style={{ fontSize: '26px', fontWeight: 900, color: '#171717' }}>{fmtN(totalAmount)}</div>
               </div>
             </div>
-
-            {/* 별도표시 사항 */}
-            {generalInfo && (
-              <div style={{ border: '1px solid #e5e5e5', borderRadius: '4px', padding: '10px 14px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>별도 표시 사항</div>
-                <div style={{ fontSize: '10px', color: '#555', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{generalInfo}</div>
-              </div>
-            )}
 
             {/* Terms & Bank / Signature */}
-            <div style={{ display: 'flex', gap: '24px', marginTop: '20px' }}>
+            <div style={{ display: 'flex', gap: '30px', marginTop: '40px' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Terms &amp; Conditions</div>
-                <div style={{ fontSize: '11px', color: '#555', lineHeight: '1.6', borderTop: '1px solid #e5e5e5', paddingTop: '8px' }}>
-                  {quote.paymentTerms && <div style={{ marginBottom: '4px' }}>• Payment: {quote.paymentTerms}</div>}
-                  {quote.incoterm && <div style={{ marginBottom: '4px' }}>• Incoterm: {quote.incoterm}</div>}
-                  {quote.validity && <div style={{ marginBottom: '4px' }}>• Valid Until: {quote.validity}</div>}
-                  {specialNotes && <div style={{ marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{specialNotes}</div>}
-                  {bankInfo && (
-                    <div style={{ background: '#f5f5f5', padding: '8px', borderRadius: '4px', marginTop: '8px' }}>
-                      <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '10px' }}>Bank Account</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: '10px', whiteSpace: 'pre-line' }}>{bankInfo}</div>
-                    </div>
-                  )}
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '10px', textTransform: 'uppercase' }}>Terms &amp; Conditions</div>
+                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.6', borderTop: '1px solid #e5e5e5', paddingTop: '10px', whiteSpace: 'pre-wrap' }}>
+                  {quote.paymentTerms && `Payment: ${quote.paymentTerms}\n`}
+                  {quote.incoterm && `Incoterm: ${quote.incoterm}\n`}
+                  {quote.validity && `Valid Until: ${quote.validity}\n`}
+                  {specialNotes && `${specialNotes}\n`}
+                  {generalInfo && `${generalInfo}`}
                 </div>
+                {bankInfo && (
+                  <div style={{ marginTop: '14px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Bank Account</div>
+                    <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '8px', background: '#f5f5f5', padding: '10px', borderRadius: '4px', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>{bankInfo}</div>
+                  </div>
+                )}
               </div>
-              <div style={{ width: '220px', display: 'flex', flexDirection: 'column', height: '140px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Authorized Signature</div>
-                <div style={{ flex: 1, borderBottom: '2px solid #171717', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '260px', display: 'flex', flexDirection: 'column', minHeight: '160px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '10px', textTransform: 'uppercase' }}>Authorized Signature</div>
+                <div style={{ flex: 1, borderBottom: '2px solid #171717', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '130px' }}>
                   {company.stampUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={company.stampUrl} alt="Stamp" style={{ width: '200px', opacity: 0.8, transform: 'rotate(-5deg)', position: 'absolute' }} />
+                    <img src={company.stampUrl} alt="Stamp" style={{ width: '250px', opacity: 0.8, transform: 'rotate(-5deg)', position: 'absolute' }} />
                   )}
                 </div>
-                <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 700, marginTop: '6px', color: '#171717' }}>{company.name}</div>
+                <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, marginTop: '8px', color: '#171717' }}>{company.name}</div>
               </div>
             </div>
 
-            {/* Product images (attachment page) */}
             {quoteImages.length > 0 && (
-              <div style={{ pageBreakBefore: 'always', marginTop: '40px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', borderBottom: '2px solid #171717', paddingBottom: '8px' }}>ATTACHMENTS</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ pageBreakBefore: 'always', marginTop: '50px', padding: '10px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '20px', borderBottom: '2px solid #171717', paddingBottom: '10px' }}>ATTACHMENTS</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
                   {quoteImages.map((url, i) => (
                     <div key={i}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: '#888' }}>Attachment {i + 1}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '5px', color: '#888' }}>Attachment {i + 1}</div>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} alt="" />
+                      <img src={url} alt="" style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} />
                     </div>
                   ))}
                 </div>
