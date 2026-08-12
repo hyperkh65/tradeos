@@ -3,264 +3,467 @@
 import { AppHeader } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Boxes, Ship, AlertCircle, CheckSquare, FileText, Clock } from 'lucide-react';
+import {
+  Boxes, Ship, AlertCircle, CheckSquare, FileText, Clock,
+  TrendingUp, TrendingDown, Minus, BarChart2, Users, Package,
+  ShoppingCart, Star, ArrowRight,
+} from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
-const priorityColor = {
-  urgent: 'bg-red-100 text-red-700',
-  high: 'bg-orange-100 text-orange-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-gray-100 text-gray-600',
-} as const;
+// ─── helpers ────────────────────────────────────────────────────────────────
 
-const statusColor: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  confirmed: 'bg-blue-100 text-blue-700',
-  production: 'bg-yellow-100 text-yellow-700',
-  inspection: 'bg-purple-100 text-purple-700',
-  shipped: 'bg-green-100 text-green-700',
-  completed: 'bg-green-200 text-green-800',
-  cancelled: 'bg-red-100 text-red-600',
-};
+const krw = (n: number) => n >= 1_0000_0000
+  ? `${(n / 1_0000_0000).toFixed(1)}억`
+  : n >= 1_0000
+  ? `${(n / 1_0000).toFixed(0)}만`
+  : n.toLocaleString();
 
-interface Task {
-  id: string;
-  title: string;
-  priority: 'urgent' | 'high' | 'medium' | 'low';
-  status: string;
-  due_date?: string;
+const fmt = (n: number) => n.toLocaleString();
+
+function DeltaBadge({ curr, prev }: { curr: number; prev: number }) {
+  if (!prev) return null;
+  const pct = ((curr - prev) / prev) * 100;
+  const up = pct >= 0;
+  return (
+    <span className={cn('text-xs flex items-center gap-0.5 font-medium', up ? 'text-green-600' : 'text-red-500')}>
+      {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+      {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
 }
 
-interface PurchaseOrder {
-  id: string;
-  business_id: string;
-  supplier_name: string;
-  status: string;
-  total_amount: number;
-  etd?: string;
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface SaleItem { product: string; qty: number; amount: number; unitPrice?: number; }
+interface Sale {
+  id: string; business_id: string; sale_date: string; customer: string;
+  total_amount: number; net_amount: number; currency: string;
+  items_json?: string; created_at: string;
+}
+interface Product {
+  id: string; code: string; nameKo: string; supplierName?: string;
+  purchasePrice?: number; sellingPrice?: number; currency?: string; created_at?: string;
 }
 
-interface Inspection {
-  id: string;
-  business_id: string;
-  product_name: string;
-  inspection_date: string;
-  result: string;
-  defect_rate?: number;
+// ─── stat computation ────────────────────────────────────────────────────────
+
+function getMonth(date: string) { return date?.slice(0, 7) ?? ''; }
+
+function computeStats(sales: Sale[]) {
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+  // Monthly totals
+  const monthlyAmount: Record<string, number> = {};
+  const monthlyQty: Record<string, number> = {};
+
+  // Customer stats
+  const customerAmount: Record<string, number> = {};
+  const customerQty: Record<string, number> = {};
+
+  // Product stats
+  const productQty: Record<string, number> = {};
+  const productAmount: Record<string, number> = {};
+
+  let totalAmount = 0;
+  let totalQty = 0;
+
+  for (const s of sales) {
+    const m = getMonth(s.sale_date);
+    const amt = s.total_amount ?? 0;
+    monthlyAmount[m] = (monthlyAmount[m] ?? 0) + amt;
+    totalAmount += amt;
+
+    customerAmount[s.customer] = (customerAmount[s.customer] ?? 0) + amt;
+
+    let items: SaleItem[] = [];
+    try { items = JSON.parse(s.items_json ?? '[]'); } catch { items = []; }
+    for (const it of items) {
+      const qty = it.qty ?? 0;
+      monthlyQty[m] = (monthlyQty[m] ?? 0) + qty;
+      customerQty[s.customer] = (customerQty[s.customer] ?? 0) + qty;
+      productQty[it.product] = (productQty[it.product] ?? 0) + qty;
+      productAmount[it.product] = (productAmount[it.product] ?? 0) + (it.amount ?? 0);
+      totalQty += qty;
+    }
+  }
+
+  const thisMonthAmount = monthlyAmount[thisMonth] ?? 0;
+  const lastMonthAmount = monthlyAmount[lastMonth] ?? 0;
+  const thisMonthQty = monthlyQty[thisMonth] ?? 0;
+  const lastMonthQty = monthlyQty[lastMonth] ?? 0;
+
+  // Last 6 months for trend
+  const trendMonths: string[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    trendMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const trend = trendMonths.map(m => ({ month: m.slice(5), amount: monthlyAmount[m] ?? 0, qty: monthlyQty[m] ?? 0 }));
+
+  const topCustomersByAmount = Object.entries(customerAmount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topCustomersByQty = Object.entries(customerQty).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topProductsByQty = Object.entries(productQty).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topProductsByAmount = Object.entries(productAmount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  return {
+    thisMonthAmount, lastMonthAmount, thisMonthQty, lastMonthQty,
+    totalAmount, totalQty,
+    trend, topCustomersByAmount, topCustomersByQty, topProductsByQty, topProductsByAmount,
+    totalSalesCount: sales.length,
+    thisMonthSalesCount: sales.filter(s => getMonth(s.sale_date) === thisMonth).length,
+  };
 }
 
-interface Shipment {
-  id: string;
-  business_id: string;
-  pol?: string;
-  pod?: string;
-  type: string;
-  etd?: string;
-  eta?: string;
+// ─── mini bar chart ──────────────────────────────────────────────────────────
+
+function MiniBar({ data }: { data: { month: string; amount: number }[] }) {
+  const max = Math.max(...data.map(d => d.amount), 1);
+  return (
+    <div className="flex items-end gap-1 h-16">
+      {data.map((d, i) => {
+        const h = Math.round((d.amount / max) * 100);
+        const isLast = i === data.length - 1;
+        return (
+          <div key={d.month} className="flex-1 flex flex-col items-center gap-1">
+            <div className="w-full rounded-t" style={{ height: `${Math.max(h, 2)}%`, backgroundColor: isLast ? 'hsl(var(--primary))' : 'hsl(var(--muted))' }} />
+            <span className="text-[9px] text-muted-foreground">{d.month}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 
   const [userName, setUserName] = useState('');
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [pos, setPos] = useState<PurchaseOrder[]>([]);
-  const [inspections, setInspections] = useState<Inspection[]>([]);
-  const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [stats, setStats] = useState({ activePOs: 0, upcomingShipments: 0, pendingTasks: 0, pendingApprovals: 0, openClaims: 0 });
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [opStats, setOpStats] = useState({ activePOs: 0, upcomingShipments: 0, pendingTasks: 0, pendingApprovals: 0, openClaims: 0, totalCompanies: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setUserName(j.user.name); }).catch(() => {});
 
     Promise.all([
-      fetch('/api/tasks').then(r => r.json()),
+      fetch('/api/sales').then(r => r.json()),
+      fetch('/api/products').then(r => r.json()),
       fetch('/api/purchase-orders').then(r => r.json()),
-      fetch('/api/inspections').then(r => r.json()),
       fetch('/api/shipments').then(r => r.json()),
+      fetch('/api/tasks').then(r => r.json()),
       fetch('/api/approvals').then(r => r.json()),
       fetch('/api/claims').then(r => r.json()),
-    ]).then(([taskData, poData, inspData, shpData, aprData, claimData]) => {
-      const taskList: Task[] = Array.isArray(taskData) ? taskData : (taskData.data ?? []);
-      const poList: PurchaseOrder[] = Array.isArray(poData) ? poData : (poData.data ?? []);
-      const inspList: Inspection[] = Array.isArray(inspData) ? inspData : (inspData.data ?? []);
-      const shpList: Shipment[] = Array.isArray(shpData) ? shpData : (shpData.data ?? []);
+      fetch('/api/companies').then(r => r.json()),
+    ]).then(([saleData, prodData, poData, shpData, taskData, aprData, claimData, compData]) => {
+      const saleList: Sale[] = Array.isArray(saleData) ? saleData : (saleData.data ?? []);
+      const prodList: Product[] = Array.isArray(prodData) ? prodData : (prodData.data ?? []);
+      const poList = Array.isArray(poData) ? poData : (poData.data ?? []);
+      const shpList = Array.isArray(shpData) ? shpData : (shpData.data ?? []);
+      const taskList = Array.isArray(taskData) ? taskData : (taskData.data ?? []);
       const aprList = Array.isArray(aprData) ? aprData : (aprData.data ?? []);
       const claimList = Array.isArray(claimData) ? claimData : (claimData.data ?? []);
-
-      setTasks(taskList);
-      setPos(poList);
-      setInspections(inspList.slice(0, 5));
-      setShipments(shpList.slice(0, 5));
-      setStats({
-        activePOs: poList.filter((p: PurchaseOrder) => !['completed', 'cancelled'].includes(p.status)).length,
-        upcomingShipments: shpList.filter((s: Shipment) => !['delivered', 'cancelled'].includes((s as unknown as Record<string,string>).status ?? '')).length,
-        pendingTasks: taskList.filter((t: Task) => t.status !== '완료').length,
-        pendingApprovals: aprList.filter((a: Record<string,string>) => a.status === '대기' || a.status === '진행중').length,
-        openClaims: claimList.filter((c: Record<string,string>) => !['해결', '종결'].includes(c.status ?? '')).length,
+      const compList = Array.isArray(compData) ? compData : (compData.data ?? []);
+      setSales(saleList);
+      setProducts(prodList);
+      setOpStats({
+        activePOs: poList.filter((p: any) => !['completed', 'cancelled'].includes(p.status)).length,
+        upcomingShipments: shpList.filter((s: any) => !['delivered', 'cancelled'].includes(s.status ?? '')).length,
+        pendingTasks: taskList.filter((t: any) => t.status !== '완료').length,
+        pendingApprovals: aprList.filter((a: any) => ['대기', '진행중'].includes(a.status ?? '')).length,
+        openClaims: claimList.filter((c: any) => !['해결', '종결'].includes(c.status ?? '')).length,
+        totalCompanies: compList.length,
       });
-    }).catch(() => {});
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
-  const todayTasks = tasks.filter(t => t.status !== '완료').slice(0, 5);
-  const activePOs = pos.filter(p => !['completed', 'cancelled'].includes(p.status));
+  const stats = useMemo(() => computeStats(sales), [sales]);
+  const recentSales = [...sales].sort((a, b) => b.sale_date.localeCompare(a.sale_date)).slice(0, 6);
+  const recentProducts = [...products].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader />
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-5">
 
-        <div>
-          <h2 className="text-xl font-bold text-foreground">안녕하세요, {userName ? `${userName}님` : '...'} 👋</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold">안녕하세요, {userName ? `${userName}님` : '...'}</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{today}</p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {[
-            { label: '진행 중 발주', value: stats.activePOs, icon: Boxes, href: '/purchase-orders', color: 'text-blue-600' },
-            { label: '선적 예정', value: stats.upcomingShipments, icon: Ship, href: '/shipments', color: 'text-green-600' },
-            { label: '미완료 업무', value: stats.pendingTasks, icon: CheckSquare, href: '/tasks', color: 'text-purple-600' },
-            { label: '결재 대기', value: stats.pendingApprovals, icon: FileText, href: '/approvals', color: 'text-yellow-600' },
-            { label: '진행 클레임', value: stats.openClaims, icon: AlertCircle, href: '/claims', color: 'text-red-600' },
-          ].map((s) => (
-            <Link key={s.label} href={s.href}>
-              <Card className="hover:shadow-sm transition-shadow cursor-pointer">
-                <CardContent className="p-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground">{s.label}</p>
-                      <p className={cn('text-2xl font-bold mt-0.5', s.color)}>{s.value}</p>
-                    </div>
-                    <s.icon className={cn('w-5 h-5 mt-0.5', s.color)} />
+        {/* ── 매출 핵심 지표 ── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">매출 현황</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              {
+                label: '이번 달 매출',
+                value: `₩${krw(stats.thisMonthAmount)}`,
+                sub: `전월 ₩${krw(stats.lastMonthAmount)}`,
+                delta: <DeltaBadge curr={stats.thisMonthAmount} prev={stats.lastMonthAmount} />,
+                color: 'text-blue-600',
+              },
+              {
+                label: '이번 달 판매수량',
+                value: `${fmt(stats.thisMonthQty)}개`,
+                sub: `전월 ${fmt(stats.lastMonthQty)}개`,
+                delta: <DeltaBadge curr={stats.thisMonthQty} prev={stats.lastMonthQty} />,
+                color: 'text-purple-600',
+              },
+              {
+                label: '누적 총 매출',
+                value: `₩${krw(stats.totalAmount)}`,
+                sub: `총 ${stats.totalSalesCount}건`,
+                delta: null,
+                color: 'text-green-600',
+              },
+              {
+                label: '이번 달 건수',
+                value: `${stats.thisMonthSalesCount}건`,
+                sub: `누적 ${fmt(stats.totalQty)}개 판매`,
+                delta: null,
+                color: 'text-orange-600',
+              },
+            ].map(s => (
+              <Card key={s.label}>
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                  <p className={cn('text-2xl font-bold mt-1', s.color)}>{loading ? '-' : s.value}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <p className="text-xs text-muted-foreground">{s.sub}</p>
+                    {s.delta}
                   </div>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* ── 운영 현황 ── */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">운영 현황</p>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {[
+              { label: '진행 발주', value: opStats.activePOs, href: '/purchase-orders', color: 'text-blue-600' },
+              { label: '선적 예정', value: opStats.upcomingShipments, href: '/shipments', color: 'text-green-600' },
+              { label: '미완료 업무', value: opStats.pendingTasks, href: '/tasks', color: 'text-purple-600' },
+              { label: '결재 대기', value: opStats.pendingApprovals, href: '/approvals', color: 'text-yellow-600' },
+              { label: '진행 클레임', value: opStats.openClaims, href: '/claims', color: 'text-red-500' },
+              { label: '등록 거래처', value: opStats.totalCompanies, href: '/companies', color: 'text-gray-600' },
+            ].map(s => (
+              <Link key={s.label} href={s.href}>
+                <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                    <p className={cn('text-xl font-bold mt-0.5', s.color)}>{loading ? '-' : s.value}</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 매출 트렌드 + 최근 매출 ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
-            <CardHeader className="pb-3 pt-4 px-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">오늘 확인할 업무</CardTitle>
-                <Link href="/tasks" className="text-xs text-primary hover:underline">전체보기</Link>
-              </div>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-primary" /> 월별 매출 추이 (최근 6개월)
+              </CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-2">
-              {todayTasks.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">완료된 업무가 없거나 데이터가 없습니다.</p>
-              )}
-              {todayTasks.map((task) => (
-                <div key={task.id} className="flex items-start gap-2.5 py-2 border-b border-border last:border-0">
-                  <span className={cn('shrink-0 mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded', priorityColor[task.priority] ?? 'bg-gray-100 text-gray-600')}>
-                    {task.priority === 'urgent' ? '긴급' : task.priority === 'high' ? '높음' : task.priority === 'medium' ? '보통' : '낮음'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                    {task.due_date && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3 h-3" /> {task.due_date}
-                      </p>
-                    )}
+            <CardContent className="px-4 pb-4">
+              {!loading && <MiniBar data={stats.trend} />}
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {stats.trend.slice(-3).map(d => (
+                  <div key={d.month} className="text-center">
+                    <p className="text-[10px] text-muted-foreground">{d.month}월</p>
+                    <p className="text-xs font-semibold">₩{krw(d.amount)}</p>
+                    <p className="text-[10px] text-muted-foreground">{fmt(d.qty)}개</p>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">{task.status}</Badge>
-                </div>
-              ))}
+                ))}
+              </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-3 pt-4 px-4">
+            <CardHeader className="pb-2 pt-4 px-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">진행 중 발주</CardTitle>
-                <Link href="/purchase-orders" className="text-xs text-primary hover:underline">전체보기</Link>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" /> 최근 매출
+                </CardTitle>
+                <Link href="/sales" className="text-xs text-primary hover:underline flex items-center gap-0.5">전체 <ArrowRight className="w-3 h-3" /></Link>
               </div>
             </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-1.5">
+              {recentSales.map(s => (
+                <div key={s.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{s.customer}</p>
+                    <p className="text-[11px] text-muted-foreground">{s.sale_date}</p>
+                  </div>
+                  <p className="text-sm font-semibold shrink-0 ml-2">₩{krw(s.total_amount)}</p>
+                </div>
+              ))}
+              {!loading && recentSales.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">매출 데이터가 없습니다.</p>}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── 누적 1위 업체 (금액 / 수량) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Star className="w-4 h-4 text-yellow-500" /> 누적매출 1위 업체 TOP 5
+              </CardTitle>
+            </CardHeader>
             <CardContent className="px-4 pb-4 space-y-2">
-              {activePOs.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">진행 중인 발주가 없습니다.</p>
-              )}
-              {activePOs.slice(0, 5).map((po) => (
-                <div key={po.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono font-medium text-foreground">{po.business_id}</span>
-                      <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', statusColor[po.status] ?? 'bg-gray-100 text-gray-600')}>
-                        {po.status === 'production' ? '생산' : po.status === 'inspection' ? '검품' : po.status === 'shipped' ? '선적' : po.status === 'confirmed' ? '확정' : po.status}
-                      </span>
+              {stats.topCustomersByAmount.map(([name, amt], i) => {
+                const max = stats.topCustomersByAmount[0]?.[1] ?? 1;
+                return (
+                  <div key={name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={cn('text-[10px] font-bold w-4 shrink-0', i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-orange-400' : 'text-muted-foreground')}>{i + 1}</span>
+                        <span className="text-sm truncate">{name}</span>
+                      </div>
+                      <span className="text-sm font-semibold shrink-0 ml-2">₩{krw(amt)}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{po.supplier_name}</p>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${(amt / max) * 100}%` }} />
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-semibold">${(po.total_amount ?? 0).toLocaleString()}</p>
-                    {po.etd && <p className="text-xs text-muted-foreground">ETD {po.etd}</p>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              {!loading && stats.topCustomersByAmount.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">데이터 없음</p>}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-3 pt-4 px-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">최근 검품</CardTitle>
-                <Link href="/inspections" className="text-xs text-primary hover:underline">전체보기</Link>
-              </div>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-500" /> 판매수량 1위 업체 TOP 5
+              </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-2">
-              {inspections.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">검품 내역이 없습니다.</p>
-              )}
-              {inspections.map((qc) => (
-                <div key={qc.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                  <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
-                    qc.result === 'PASS' ? 'bg-green-100 text-green-700' :
-                    qc.result === 'CONDITIONAL_PASS' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  )}>
-                    {qc.result === 'PASS' ? 'OK' : qc.result === 'CONDITIONAL_PASS' ? '조건' : 'NG'}
+              {stats.topCustomersByQty.map(([name, qty], i) => {
+                const max = stats.topCustomersByQty[0]?.[1] ?? 1;
+                return (
+                  <div key={name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={cn('text-[10px] font-bold w-4 shrink-0', i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-orange-400' : 'text-muted-foreground')}>{i + 1}</span>
+                        <span className="text-sm truncate">{name}</span>
+                      </div>
+                      <span className="text-sm font-semibold shrink-0 ml-2">{fmt(qty)}개</span>
+                    </div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(qty / max) * 100}%` }} />
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{qc.product_name}</p>
-                    <p className="text-xs text-muted-foreground">{qc.business_id} · {qc.inspection_date}</p>
+                );
+              })}
+              {!loading && stats.topCustomersByQty.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">데이터 없음</p>}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── 판매 상위 제품 ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <ShoppingCart className="w-4 h-4 text-green-500" /> 판매수량 TOP 5 제품
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2">
+              {stats.topProductsByQty.map(([name, qty], i) => {
+                const max = stats.topProductsByQty[0]?.[1] ?? 1;
+                return (
+                  <div key={name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-bold text-muted-foreground w-4 shrink-0">{i + 1}</span>
+                        <span className="text-xs truncate">{name}</span>
+                      </div>
+                      <span className="text-xs font-semibold shrink-0 ml-2">{fmt(qty)}개</span>
+                    </div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${(qty / max) * 100}%` }} />
+                    </div>
                   </div>
-                  {qc.defect_rate != null && (
-                    <span className="text-xs text-muted-foreground shrink-0">불량 {qc.defect_rate}%</span>
+                );
+              })}
+              {!loading && stats.topProductsByQty.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">데이터 없음</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-purple-500" /> 매출금액 TOP 5 제품
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2">
+              {stats.topProductsByAmount.map(([name, amt], i) => {
+                const max = stats.topProductsByAmount[0]?.[1] ?? 1;
+                return (
+                  <div key={name}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-bold text-muted-foreground w-4 shrink-0">{i + 1}</span>
+                        <span className="text-xs truncate">{name}</span>
+                      </div>
+                      <span className="text-xs font-semibold shrink-0 ml-2">₩{krw(amt)}</span>
+                    </div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-500 rounded-full" style={{ width: `${(amt / max) * 100}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {!loading && stats.topProductsByAmount.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">데이터 없음</p>}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── 최근 등록 제품 ── */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Package className="w-4 h-4 text-primary" /> 최근 등록 제품
+              </CardTitle>
+              <Link href="/products" className="text-xs text-primary hover:underline flex items-center gap-0.5">전체 <ArrowRight className="w-3 h-3" /></Link>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              {recentProducts.map(p => (
+                <div key={p.id} className="border border-border rounded-lg p-3">
+                  <p className="text-xs font-mono text-muted-foreground">{p.code}</p>
+                  <p className="text-sm font-medium mt-0.5 truncate" title={p.nameKo}>{p.nameKo}</p>
+                  {p.supplierName && <p className="text-[11px] text-muted-foreground mt-1 truncate">{p.supplierName}</p>}
+                  {p.purchasePrice && (
+                    <p className="text-xs font-semibold text-blue-600 mt-1">${p.purchasePrice.toLocaleString()}</p>
                   )}
                 </div>
               ))}
-            </CardContent>
-          </Card>
+              {!loading && recentProducts.length === 0 && <p className="text-xs text-muted-foreground col-span-5 text-center py-4">등록된 제품이 없습니다.</p>}
+            </div>
+          </CardContent>
+        </Card>
 
-          <Card>
-            <CardHeader className="pb-3 pt-4 px-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">선적 현황</CardTitle>
-                <Link href="/shipments" className="text-xs text-primary hover:underline">전체보기</Link>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-2">
-              {shipments.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">예정된 선적이 없습니다.</p>
-              )}
-              {shipments.map((shp) => (
-                <div key={shp.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                  <Ship className="w-5 h-5 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{shp.business_id}</p>
-                    <p className="text-xs text-muted-foreground">{shp.pol} → {shp.pod} · {shp.type}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    {shp.etd && <p className="text-xs">ETD {shp.etd}</p>}
-                    {shp.eta && <p className="text-xs text-muted-foreground">ETA {shp.eta}</p>}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );
