@@ -3,7 +3,7 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/notion/mapper';
 import type { PurchaseOrder } from '@/types';
 
-function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string } {
+function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string; revisionsJson?: string } {
   return {
     id: row.id as string,
     businessId: row.business_id as string,
