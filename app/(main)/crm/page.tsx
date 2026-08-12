@@ -3,10 +3,9 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, Maximize2 } from 'lucide-react';
+import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, Maximize2, PackageMinus } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { cn } from '@/lib/utils';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
@@ -17,7 +16,12 @@ function isPrevMonth(d?: string) {
   return t.getFullYear() < n.getFullYear() || (t.getFullYear() === n.getFullYear() && t.getMonth() < n.getMonth());
 }
 
-interface SalesItem { id: string; product: string; specification: string; qty: number; unitPrice: number; amount: number; remark: string; }
+interface SalesItem {
+  id: string; product: string; specification: string;
+  qty: number; unitPrice: number; amount: number; remark: string;
+  supplierName?: string; poId?: string; poBusinessId?: string;
+  inventoryDeducted?: boolean;
+}
 interface SalesRecord {
   id: string; businessId: string; saleDate: string; customer: string;
   saleType: string; salesperson?: string; poNo?: string;
@@ -32,7 +36,11 @@ interface Company {
 }
 interface CompanySettings { name: string; ceo: string; bizNo: string; bizType: string; bizItem: string; address: string; tel: string; fax: string; email: string; bank: string; bankForeign1: string; bankForeign2: string; logoUrl: string; stampUrl: string; }
 
-const emptyItem = (): SalesItem => ({ id: Date.now().toString() + Math.random(), product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '' });
+const emptyItem = (): SalesItem => ({
+  id: Date.now().toString() + Math.random(),
+  product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '',
+  supplierName: '', poId: '', poBusinessId: '', inventoryDeducted: false,
+});
 
 function AdminPasswordModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   const [pw, setPw] = useState(''); const [err, setErr] = useState(false);
@@ -72,80 +80,52 @@ function SpecModal({ value, onSave, onClose }: { value: string; onSave: (v: stri
 }
 
 function SaleProductSearch({ value, products, allSales, onSelect }: {
-  value: string;
-  products: any[];
-  allSales: SalesRecord[];
+  value: string; products: any[]; allSales: SalesRecord[];
   onSelect: (name: string, unitPrice: number, specification: string) => void;
 }) {
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 280 });
   const anchorRef = useRef<HTMLDivElement>(null);
-
   const lower = value.toLowerCase();
   const matched = value.length >= 1
-    ? products.filter(p =>
-        (p.nameKo || '').toLowerCase().includes(lower) ||
-        (p.code || '').toLowerCase().includes(lower)
-      ).slice(0, 12)
+    ? products.filter(p => (p.nameKo || '').toLowerCase().includes(lower) || (p.code || '').toLowerCase().includes(lower)).slice(0, 12)
     : [];
-
   const getRecentPrice = (name: string) => {
-    const prices = allSales
-      .flatMap(s => s.items.filter(i => i.product === name).map(i => ({ price: i.unitPrice, date: s.saleDate })))
-      .filter(p => p.price > 0)
-      .sort((a, b) => b.date.localeCompare(a.date));
+    const prices = allSales.flatMap(s => s.items.filter(i => i.product === name).map(i => ({ price: i.unitPrice, date: s.saleDate }))).filter(p => p.price > 0).sort((a, b) => b.date.localeCompare(a.date));
     return prices[0]?.price ?? null;
   };
-
   useEffect(() => {
     if (matched.length > 0 && anchorRef.current) {
       const r = anchorRef.current.getBoundingClientRect();
       setPos({ top: r.bottom + 2, left: r.left, width: Math.max(280, r.width) });
       setShow(true);
-    } else {
-      setShow(false);
-    }
+    } else setShow(false);
   }, [value, matched.length]);
-
   return (
     <div ref={anchorRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {show && typeof document !== 'undefined' && createPortal(
-        <div
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
-          className="bg-background border border-border rounded-xl shadow-2xl max-h-60 overflow-y-auto"
-        >
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          className="bg-background border border-border rounded-xl shadow-2xl max-h-60 overflow-y-auto">
           {matched.map(p => {
             const recent = getRecentPrice(p.nameKo);
             return (
-              <button
-                key={p.id}
-                type="button"
-                onMouseDown={e => e.preventDefault()}
+              <button key={p.id} type="button" onMouseDown={e => e.preventDefault()}
                 onClick={() => { onSelect(p.nameKo, recent ?? p.sellingPrice ?? 0, p.sizeSpec || ''); setShow(false); }}
-                className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs flex items-center justify-between gap-2"
-              >
+                className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{p.nameKo}</span>
-                {recent != null && (
-                  <span className="text-blue-500 shrink-0">최근 {recent.toLocaleString()}</span>
-                )}
+                {recent != null && <span className="text-blue-500 shrink-0">최근 {recent.toLocaleString()}</span>}
               </button>
             );
           })}
-        </div>,
-        document.body
+        </div>, document.body
       )}
     </div>
   );
 }
 
 function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales, onClose, onSave }: {
-  sale?: SalesRecord | null;
-  companies: Company[];
-  products: any[];
-  purchaseOrders: any[];
-  sales: SalesRecord[];
-  onClose: () => void;
-  onSave: () => void;
+  sale?: SalesRecord | null; companies: Company[]; products: any[];
+  purchaseOrders: any[]; sales: SalesRecord[]; onClose: () => void; onSave: () => void;
 }) {
   const [form, setForm] = useState({
     saleDate: sale?.saleDate || new Date().toISOString().slice(0, 10),
@@ -156,37 +136,38 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
     currency: sale?.currency || 'KRW',
     exchangeRate: String(sale?.exchangeRate ?? 1),
     misc: sale?.misc || '',
-    supplierId: sale?.supplierId || '',
-    supplierName: sale?.supplierName || '',
-    poId: sale?.poId || '',
-    poBusinessId: sale?.poBusinessId || '',
     items: sale?.items?.length
-      ? sale.items.map((i, idx) => ({ ...i, id: String(idx), remark: (i as any).remark || '' }))
+      ? sale.items.map((i, idx) => ({
+          ...i, id: String(idx), remark: (i as any).remark || '',
+          supplierName: (i as any).supplierName || sale.supplierName || '',
+          poId: (i as any).poId || sale.poId || '',
+          poBusinessId: (i as any).poBusinessId || sale.poBusinessId || '',
+          inventoryDeducted: (i as any).inventoryDeducted ?? false,
+        }))
       : [emptyItem()],
   });
+
+  // Batch-apply state (not saved directly — only for applying to all items)
+  const [batchSupplier, setBatchSupplier] = useState(sale?.supplierName || '');
+  const [batchPo, setBatchPo] = useState(sale?.poBusinessId || '');
+
   const [saving, setSaving] = useState(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
-  const [poPreview, setPoPreview] = useState<any | null>(() =>
-    sale?.poId ? (purchaseOrders.find(p => p.id === sale.poId) || null) : null
-  );
 
-  const filteredPOs = form.supplierName
-    ? purchaseOrders.filter(p => p.supplierName === form.supplierName)
-    : purchaseOrders;
-
-  const handleSupplierChange = (name: string) => {
-    const found = companies.find(c => c.name === name);
-    setForm(f => ({ ...f, supplierName: name, supplierId: found?.id || '', poId: '', poBusinessId: '' }));
-    setPoPreview(null);
+  const applyBatchToAll = () => {
+    const po = purchaseOrders.find(p => p.businessId === batchPo);
+    setForm(f => ({
+      ...f,
+      items: f.items.map(item => ({
+        ...item,
+        supplierName: batchSupplier,
+        poId: po?.id || '',
+        poBusinessId: batchPo,
+      })),
+    }));
   };
 
-  const handlePoSelect = (poBusinessId: string) => {
-    const po = filteredPOs.find(p => p.businessId === poBusinessId);
-    setForm(f => ({ ...f, poBusinessId, poId: po?.id || '' }));
-    setPoPreview(po || null);
-  };
-
-  const updateItem = (idx: number, field: string, val: string | number) => {
+  const updateItem = (idx: number, field: string, val: string | number | boolean) => {
     const items = [...form.items];
     (items[idx] as any)[field] = val;
     if (field === 'qty' || field === 'unitPrice') items[idx].amount = items[idx].qty * items[idx].unitPrice;
@@ -207,10 +188,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
 
   const getRecentPrice = (productName: string) => {
     if (!productName) return null;
-    const prices = allSales
-      .flatMap(s => s.items.filter(i => i.product === productName).map(i => ({ price: i.unitPrice, date: s.saleDate })))
-      .filter(p => p.price > 0)
-      .sort((a, b) => b.date.localeCompare(a.date));
+    const prices = allSales.flatMap(s => s.items.filter(i => i.product === productName).map(i => ({ price: i.unitPrice, date: s.saleDate }))).filter(p => p.price > 0).sort((a, b) => b.date.localeCompare(a.date));
     return prices[0]?.price ?? null;
   };
 
@@ -218,6 +196,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
   const netAmount = form.items.reduce((s, i) => s + i.amount, 0);
   const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
   const vat = Math.round(netKRW * 0.1);
+  const deductedItems = form.items.filter(i => i.inventoryDeducted).length;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,7 +212,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="font-semibold">{sale ? '매출 수정' : '매출 등록'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
@@ -262,61 +241,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             </div>
           </div>
 
-          {/* Row 2: 공급사, 내부발주번호 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                공급사 <span className="text-[10px] text-muted-foreground/60">(발주처 — 출력 미표시)</span>
-              </label>
-              <Input
-                value={form.supplierName}
-                onChange={e => handleSupplierChange(e.target.value)}
-                list="supplier-list"
-                placeholder="공급사 선택..."
-              />
-              <datalist id="supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                내부 발주번호 <span className="text-[10px] text-muted-foreground/60">(잔여량 계산용 — 출력 미표시)</span>
-              </label>
-              <select
-                value={form.poBusinessId}
-                onChange={e => handlePoSelect(e.target.value)}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">-- 발주번호 선택 --</option>
-                {filteredPOs.map(po => (
-                  <option key={po.id} value={po.businessId}>
-                    {po.businessId} | {po.supplierName} | {po.orderDate} | {po.currency} {Number(po.totalAmount).toLocaleString()} | {po.status}
-                  </option>
-                ))}
-              </select>
-              {poPreview && (
-                <div className="mt-1.5 p-2.5 rounded-md bg-blue-50 border border-blue-200 text-xs">
-                  <div className="flex flex-wrap items-center gap-2 font-semibold text-blue-800 mb-1.5">
-                    <span>{poPreview.businessId}</span>
-                    <span className="text-blue-300">|</span>
-                    <span>{poPreview.supplierName}</span>
-                    <span className="text-blue-300">|</span>
-                    <span>{poPreview.orderDate}</span>
-                    <span className="ml-auto px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">{poPreview.status}</span>
-                  </div>
-                  <div className="text-blue-600 space-y-0.5">
-                    {((poPreview.items || []) as any[]).slice(0, 3).map((item: any, i: number) => (
-                      <div key={i}>• {item.productName || item.product || '-'}{item.specification ? ` (${item.specification})` : ''} — {Number(item.qty).toLocaleString()}개</div>
-                    ))}
-                    {(poPreview.items as any[] || []).length > 3 && <div className="text-blue-400">외 {(poPreview.items as any[]).length - 3}개 품목...</div>}
-                  </div>
-                  <div className="mt-1.5 pt-1.5 border-t border-blue-200 font-semibold text-blue-800">
-                    합계: {poPreview.currency} {Number(poPreview.totalAmount).toLocaleString()}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Row 3: 고객PO번호, 통화, 환율, 기타 */}
+          {/* Row 2: 고객PO번호, 통화, 환율, 기타 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">고객 PO번호</label>
@@ -341,27 +266,63 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             </div>
           </div>
 
-          {/* Items */}
+          {/* 일괄 적용 (공급사 + 발주번호 → 모든 아이템에 적용) */}
+          <div className="flex items-end gap-2 p-3 bg-muted/30 rounded-lg border border-dashed">
+            <div className="text-xs font-medium text-muted-foreground shrink-0 pb-1">일괄 적용</div>
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground mb-1 block">공급사</label>
+              <Input value={batchSupplier} onChange={e => setBatchSupplier(e.target.value)} list="batch-supplier-list" placeholder="공급사 선택..." className="h-8 text-xs" />
+              <datalist id="batch-supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground mb-1 block">내부 발주번호</label>
+              <select value={batchPo} onChange={e => setBatchPo(e.target.value)} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="">-- 선택 --</option>
+                {purchaseOrders.map(po => (
+                  <option key={po.id} value={po.businessId}>
+                    {po.businessId} | {po.supplierName} | {po.orderDate}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={applyBatchToAll}>
+              모두 적용
+            </Button>
+          </div>
+
+          {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className="w-full text-xs min-w-[1100px]">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-2 py-2 text-left font-medium w-[200px]">품목명</th>
-                  <th className="px-2 py-2 text-left font-medium w-[130px]">규격</th>
-                  <th className="px-2 py-2 text-right font-medium w-16">수량</th>
-                  <th className="px-2 py-2 text-right font-medium w-36">
+                  <th className="px-2 py-2 text-left font-medium w-[180px]">품목명</th>
+                  <th className="px-2 py-2 text-left font-medium w-[110px]">규격</th>
+                  <th className="px-2 py-2 text-right font-medium w-14">수량</th>
+                  <th className="px-2 py-2 text-right font-medium w-32">
                     단가 <span className="text-[9px] text-blue-500 font-normal">(최근↓ 클릭적용)</span>
                   </th>
-                  <th className="px-2 py-2 text-right font-medium w-28">금액</th>
-                  <th className="px-2 py-2 text-left font-medium w-[110px]">비고</th>
-                  <th className="px-2 py-2 w-7"></th>
+                  <th className="px-2 py-2 text-right font-medium w-24">금액</th>
+                  <th className="px-2 py-2 text-left font-medium w-[90px]">비고</th>
+                  <th className="px-2 py-2 text-left font-medium w-[140px]">
+                    공급사 <span className="text-[9px] font-normal text-muted-foreground">(아이템별)</span>
+                  </th>
+                  <th className="px-2 py-2 text-left font-medium w-[170px]">
+                    발주번호 <span className="text-[9px] font-normal text-muted-foreground">(아이템별)</span>
+                  </th>
+                  <th className="px-2 py-2 text-center font-medium w-14">
+                    <span className="flex flex-col items-center leading-tight">
+                      <PackageMinus className="w-3 h-3 mb-0.5" />
+                      재고처리
+                    </span>
+                  </th>
+                  <th className="px-2 py-2 w-6"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {form.items.map((item, idx) => {
                   const recentPrice = getRecentPrice(item.product);
                   return (
-                    <tr key={item.id} className="hover:bg-muted/20">
+                    <tr key={item.id} className={`hover:bg-muted/20 ${item.inventoryDeducted ? 'bg-orange-50/40 dark:bg-orange-950/10' : ''}`}>
                       <td className="px-2 py-1">
                         <div className="relative">
                           <input className="w-full bg-transparent border-none outline-none text-xs"
@@ -369,29 +330,21 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                             onChange={e => updateItem(idx, 'product', e.target.value)}
                             onBlur={e => autoFillProduct(idx, e.target.value)}
                             placeholder="품목명" />
-                          <SaleProductSearch
-                            value={item.product}
-                            products={products}
-                            allSales={allSales}
+                          <SaleProductSearch value={item.product} products={products} allSales={allSales}
                             onSelect={(name, price, spec) => {
                               const items = [...form.items];
                               items[idx].product = name;
                               if (!items[idx].specification && spec) items[idx].specification = spec;
-                              if (items[idx].unitPrice === 0 && price > 0) {
-                                items[idx].unitPrice = price;
-                                items[idx].amount = items[idx].qty * price;
-                              }
+                              if (items[idx].unitPrice === 0 && price > 0) { items[idx].unitPrice = price; items[idx].amount = items[idx].qty * price; }
                               setForm(f => ({ ...f, items }));
-                            }}
-                          />
+                            }} />
                         </div>
                       </td>
                       <td className="px-2 py-1">
                         <div className="flex items-center gap-0.5">
                           <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
                             value={item.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} placeholder="규격" />
-                          <button type="button"
-                            onClick={() => setSpecModal({ open: true, idx, value: item.specification })}
+                          <button type="button" onClick={() => setSpecModal({ open: true, idx, value: item.specification })}
                             className="shrink-0 text-muted-foreground hover:text-primary">
                             <Maximize2 className="w-3 h-3" />
                           </button>
@@ -406,8 +359,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                           value={item.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} />
                         {recentPrice != null && (
                           <div className="text-right">
-                            <button type="button"
-                              className="text-[9px] text-blue-500 hover:underline cursor-pointer"
+                            <button type="button" className="text-[9px] text-blue-500 hover:underline"
                               onClick={() => updateItem(idx, 'unitPrice', recentPrice)}>
                               최근: {recentPrice.toLocaleString()}
                             </button>
@@ -419,9 +371,41 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                         <input className="w-full bg-transparent border-none outline-none text-xs"
                           value={item.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} placeholder="비고" />
                       </td>
+                      {/* 공급사 (per-item) */}
                       <td className="px-1 py-1">
-                        <button type="button"
-                          onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
+                        <input className="w-full bg-transparent border-none outline-none text-xs border-b border-dashed border-muted-foreground/30"
+                          value={item.supplierName || ''} onChange={e => updateItem(idx, 'supplierName', e.target.value)}
+                          list={`supplier-list-${idx}`} placeholder="공급사..." />
+                        <datalist id={`supplier-list-${idx}`}>{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
+                      </td>
+                      {/* 발주번호 (per-item, 전체 목록) */}
+                      <td className="px-1 py-1">
+                        <select value={item.poBusinessId || ''}
+                          onChange={e => {
+                            const po = purchaseOrders.find(p => p.businessId === e.target.value);
+                            updateItem(idx, 'poBusinessId', e.target.value);
+                            updateItem(idx, 'poId', po?.id || '');
+                          }}
+                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          <option value="">-- 선택 --</option>
+                          {purchaseOrders.map(po => (
+                            <option key={po.id} value={po.businessId}>
+                              {po.businessId} | {po.supplierName}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      {/* 재고처리 체크박스 */}
+                      <td className="px-2 py-1 text-center">
+                        <label className="flex flex-col items-center gap-0.5 cursor-pointer">
+                          <input type="checkbox" checked={!!item.inventoryDeducted}
+                            onChange={e => updateItem(idx, 'inventoryDeducted', e.target.checked)}
+                            className="w-4 h-4 accent-orange-500 cursor-pointer" />
+                          {item.inventoryDeducted && <span className="text-[9px] text-orange-600 font-medium">출고</span>}
+                        </label>
+                      </td>
+                      <td className="px-1 py-1">
+                        <button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
                           className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
                       </td>
                     </tr>
@@ -429,11 +413,16 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                 })}
               </tbody>
             </table>
-            <div className="p-2 border-t">
+            <div className="p-2 border-t flex items-center justify-between">
               <button type="button" onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
                 className="text-xs text-primary hover:underline flex items-center gap-1">
                 <Plus className="w-3 h-3" /> 품목 추가
               </button>
+              {deductedItems > 0 && (
+                <span className="text-xs text-orange-600 flex items-center gap-1">
+                  <PackageMinus className="w-3 h-3" /> {deductedItems}개 품목 재고 출고 처리
+                </span>
+              )}
             </div>
           </div>
 
@@ -473,10 +462,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
 /* ─── 거래명세표 인쇄 모달 ───────────────────────────────────────────────── */
 
 function SalePrintModal({ sale, company, companies, onClose }: {
-  sale: SalesRecord;
-  company: CompanySettings;
-  companies: Company[];
-  onClose: () => void;
+  sale: SalesRecord; company: CompanySettings; companies: Company[]; onClose: () => void;
 }) {
   const items = sale.items || [];
   const rate = Number(sale.exchangeRate) || 1;
@@ -484,20 +470,15 @@ function SalePrintModal({ sale, company, companies, onClose }: {
   const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
   const vat = sale.vat ?? Math.round(netKRW * 0.1);
   const total = sale.totalAmount ?? netKRW + vat;
-
   const customerCo = companies.find(c => c.name === sale.customer);
-
   const handlePrint = () => {
     const orig = document.title;
-    const filename = `${sale.businessId}_${sale.customer}_${sale.saleDate}`.replace(/\s/g, '_');
-    document.title = filename;
+    document.title = `${sale.businessId}_${sale.customer}_${sale.saleDate}`.replace(/\s/g, '_');
     window.print();
     window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
   };
-
   const td: React.CSSProperties = { padding: '5px 6px', border: '1px solid #ddd' };
   const th: React.CSSProperties = { padding: '6px', backgroundColor: '#1a1a2e', color: 'white', border: '1px solid #333', fontWeight: 'bold' };
-
   return (
     <>
       <style>{`
@@ -518,15 +499,10 @@ function SalePrintModal({ sale, company, companies, onClose }: {
               <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
             </div>
           </div>
-
           <div id="sale-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '10mm', background: 'white', fontFamily: '"Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.5', boxSizing: 'border-box' }}>
-
-            {/* 제목 */}
             <div style={{ textAlign: 'center', marginBottom: '14px', borderBottom: '2px solid #1a1a2e', paddingBottom: '10px' }}>
               <div style={{ fontSize: '20pt', fontWeight: 'bold', letterSpacing: '10px', color: '#1a1a2e' }}>거 래 명 세 표</div>
             </div>
-
-            {/* 문서정보 */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '8.5pt' }}>
               <div style={{ display: 'flex', gap: '20px' }}>
                 <div><span style={{ color: '#666' }}>문서번호: </span><strong>{sale.businessId}</strong></div>
@@ -535,57 +511,44 @@ function SalePrintModal({ sale, company, companies, onClose }: {
               </div>
               {sale.poNo && <div><span style={{ color: '#666' }}>PO번호: </span><strong>{sale.poNo}</strong></div>}
             </div>
-
-            {/* 공급자 / 공급받는자 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
               <div style={{ border: '1.5px solid #333' }}>
                 <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8pt', background: '#f5f5f8', padding: '5px', borderBottom: '1px solid #ccc', letterSpacing: '3px' }}>공 급 자</div>
                 <div style={{ padding: '8px', fontSize: '8pt' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '9.5pt' }}>{company.name}</td></tr>
-                      {company.bizNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{company.bizNo}</td></tr>}
-                      {company.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{company.ceo}</td></tr>}
-                      {company.bizType && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>업태</td><td>{company.bizType}</td></tr>}
-                      {company.bizItem && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>종목</td><td>{company.bizItem}</td></tr>}
-                      {company.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{company.address}</td></tr>}
-                      {company.tel && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{company.tel}</td></tr>}
-                      {company.fax && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>팩스</td><td>{company.fax}</td></tr>}
-                    </tbody>
-                  </table>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
+                    <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '9.5pt' }}>{company.name}</td></tr>
+                    {company.bizNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{company.bizNo}</td></tr>}
+                    {company.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{company.ceo}</td></tr>}
+                    {company.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{company.address}</td></tr>}
+                    {company.tel && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{company.tel}</td></tr>}
+                  </tbody></table>
                 </div>
               </div>
               <div style={{ border: '1.5px solid #333' }}>
                 <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8pt', background: '#f5f5f8', padding: '5px', borderBottom: '1px solid #ccc', letterSpacing: '2px' }}>공 급 받 는 자</div>
                 <div style={{ padding: '8px', fontSize: '8pt' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '11pt' }}>{sale.customer}</td></tr>
-                      {customerCo?.businessNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{customerCo.businessNo}</td></tr>}
-                      {customerCo?.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{customerCo.ceo}</td></tr>}
-                      {customerCo?.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{customerCo.address}</td></tr>}
-                      {customerCo?.phone && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{customerCo.phone}</td></tr>}
-                      {sale.salesperson && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>담당자</td><td>{sale.salesperson}</td></tr>}
-                    </tbody>
-                  </table>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
+                    <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '11pt' }}>{sale.customer}</td></tr>
+                    {customerCo?.businessNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{customerCo.businessNo}</td></tr>}
+                    {customerCo?.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{customerCo.ceo}</td></tr>}
+                    {customerCo?.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{customerCo.address}</td></tr>}
+                    {customerCo?.phone && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{customerCo.phone}</td></tr>}
+                    {sale.salesperson && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>담당자</td><td>{sale.salesperson}</td></tr>}
+                  </tbody></table>
                 </div>
               </div>
             </div>
-
-            {/* 품목 테이블 */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', fontSize: '8.5pt' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: 'center', width: '28px' }}>No</th>
-                  <th style={{ ...th, textAlign: 'left' }}>품 목 명</th>
-                  <th style={{ ...th, textAlign: 'left', width: '100px' }}>규 격</th>
-                  <th style={{ ...th, textAlign: 'right', width: '45px' }}>수량</th>
-                  <th style={{ ...th, textAlign: 'right', width: '80px' }}>단 가</th>
-                  <th style={{ ...th, textAlign: 'right', width: '85px' }}>공급가액</th>
-                  <th style={{ ...th, textAlign: 'right', width: '70px' }}>세 액</th>
-                  <th style={{ ...th, textAlign: 'left', width: '80px' }}>비 고</th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th style={{ ...th, textAlign: 'center', width: '28px' }}>No</th>
+                <th style={{ ...th, textAlign: 'left' }}>품 목 명</th>
+                <th style={{ ...th, textAlign: 'left', width: '100px' }}>규 격</th>
+                <th style={{ ...th, textAlign: 'right', width: '45px' }}>수량</th>
+                <th style={{ ...th, textAlign: 'right', width: '80px' }}>단 가</th>
+                <th style={{ ...th, textAlign: 'right', width: '85px' }}>공급가액</th>
+                <th style={{ ...th, textAlign: 'right', width: '70px' }}>세 액</th>
+                <th style={{ ...th, textAlign: 'left', width: '80px' }}>비 고</th>
+              </tr></thead>
               <tbody>
                 {items.map((item, i) => {
                   const itemVat = Math.round(item.amount * 0.1);
@@ -603,34 +566,22 @@ function SalePrintModal({ sale, company, companies, onClose }: {
                   );
                 })}
                 {items.length < 6 && Array.from({ length: 6 - items.length }).map((_, i) => (
-                  <tr key={`e${i}`}>
-                    {[...Array(8)].map((_, j) => <td key={j} style={{ ...td, height: '22px' }}></td>)}
-                  </tr>
+                  <tr key={`e${i}`}>{[...Array(8)].map((_, j) => <td key={j} style={{ ...td, height: '22px' }}></td>)}</tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
-                  <td colSpan={5} style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>합 계</td>
-                  <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{netAmount.toLocaleString()}</td>
-                  <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{vat.toLocaleString()}</td>
-                  <td style={td}></td>
-                </tr>
-              </tfoot>
+              <tfoot><tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
+                <td colSpan={5} style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>합 계</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{netAmount.toLocaleString()}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{vat.toLocaleString()}</td>
+                <td style={td}></td>
+              </tr></tfoot>
             </table>
-
-            {/* 합계 박스 */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
               <div style={{ border: '2px solid #1a1a2e', padding: '10px 18px', minWidth: '280px', fontSize: '9pt' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                   <span style={{ color: '#555' }}>공급가액</span>
-                  <strong>{netAmount.toLocaleString()}원{rate !== 1 ? <span style={{ color: '#888', fontSize: '8pt' }}> (× {rate})</span> : ''}</strong>
+                  <strong>{netAmount.toLocaleString()}원</strong>
                 </div>
-                {rate !== 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                    <span style={{ color: '#555' }}>KRW 공급가액</span>
-                    <strong>{netKRW.toLocaleString()}원</strong>
-                  </div>
-                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span style={{ color: '#555' }}>부가세 (10%)</span>
                   <strong>{vat.toLocaleString()}원</strong>
@@ -641,20 +592,16 @@ function SalePrintModal({ sale, company, companies, onClose }: {
                 </div>
               </div>
             </div>
-
-            {/* 기타 사항 */}
             {sale.misc && (
               <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '8px 12px', marginBottom: '14px' }}>
-                <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '4px', fontSize: '7.5pt', textTransform: 'uppercase', letterSpacing: '1px' }}>기타 사항</div>
+                <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '4px', fontSize: '7.5pt' }}>기타 사항</div>
                 <div style={{ whiteSpace: 'pre-wrap', fontSize: '8.5pt' }}>{sale.misc}</div>
               </div>
             )}
-
-            {/* 계좌 + 서명 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', marginTop: '16px', alignItems: 'end' }}>
               {company.bank ? (
                 <div style={{ border: '1px solid #ddd', padding: '8px 12px', fontSize: '8pt' }}>
-                  <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '5px', fontSize: '7.5pt', letterSpacing: '1px', textTransform: 'uppercase' }}>입금 계좌</div>
+                  <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '5px', fontSize: '7.5pt' }}>입금 계좌</div>
                   <div style={{ whiteSpace: 'pre-line' }}>{company.bank}</div>
                 </div>
               ) : <div />}
@@ -667,7 +614,6 @@ function SalePrintModal({ sale, company, companies, onClose }: {
                 <div style={{ borderTop: '1px solid #333', paddingTop: '4px', fontSize: '9pt', fontWeight: 'bold' }}>{company.name}</div>
               </div>
             </div>
-
           </div>
         </div>
       </div>
@@ -692,16 +638,10 @@ export default function CRMPage() {
   const safeFetch = async (url: string, fallback: object) => {
     try {
       const r = await fetch(url);
-      // session expired → middleware redirects to login (returns HTML)
-      if (r.redirected || r.url.includes('/login')) {
-        window.location.href = '/login';
-        return fallback;
-      }
+      if (r.redirected || r.url.includes('/login')) { window.location.href = '/login'; return fallback; }
       if (!r.ok) return fallback;
       return await r.json();
-    } catch {
-      return fallback;
-    }
+    } catch { return fallback; }
   };
 
   const load = async () => {
@@ -716,25 +656,15 @@ export default function CRMPage() {
       ]);
       setSales(Array.isArray(sRes.data) ? sRes.data : []);
       setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
-        id: c.id,
-        businessId: c.businessId,
-        name: c.name,
-        type: c.type,
-        country: c.country || '',
-        ceo: c.ceo || undefined,
-        businessNo: c.businessNo || undefined,
-        address: c.address || undefined,
-        phone: c.phone || undefined,
-        email: c.email || undefined,
+        id: c.id, businessId: c.businessId, name: c.name, type: c.type, country: c.country || '',
+        ceo: c.ceo || undefined, businessNo: c.businessNo || undefined,
+        address: c.address || undefined, phone: c.phone || undefined, email: c.email || undefined,
       })));
       setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       if (csRes.data) setCompany(csRes.data);
       setPurchaseOrders(Array.isArray(poRes.data) ? poRes.data : []);
-    } catch (e) {
-      console.error('[CRM] load error:', e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error('[CRM] load error:', e); }
+    finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
 
@@ -760,7 +690,7 @@ export default function CRMPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <AppHeader title="매출 관리" icon={<ShoppingCart className="w-5 h-5" />} />
+      <AppHeader title="매출 관리" />
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
         <div className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap">
           <div className="relative flex-1 max-w-sm">
@@ -780,40 +710,47 @@ export default function CRMPage() {
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="rounded-lg border border-border overflow-x-auto">
+          <div className="rounded-xl border border-border overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-muted/50">
+              <thead className="bg-muted/40 border-b border-border">
                 <tr>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground">거래명세표번호</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground">일자</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground">거래처</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">유형</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground hidden lg:table-cell">담당자</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">공급가액</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground hidden lg:table-cell">부가세</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">합계</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">관리</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">거래명세표번호</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">일자</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">거래처</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">유형</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">담당자</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">재고출고</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">공급가액</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">부가세</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">합계</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">매출 데이터가 없습니다.</td></tr>
+                  <tr><td colSpan={10} className="text-center py-12 text-muted-foreground text-sm">매출 데이터가 없습니다.</td></tr>
                 ) : filtered.map(s => {
                   const prev = isPrevMonth(s.saleDate);
+                  const deducted = (s.items || []).filter(i => (i as any).inventoryDeducted).length;
                   return (
                     <tr key={s.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
-                          {prev && <Lock className="w-3 h-3 text-orange-400 shrink-0" aria-label="전월 (관리자만 수정)" />}
+                          {prev && <Lock className="w-3 h-3 text-orange-400 shrink-0" />}
                           {s.businessId}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-sm whitespace-nowrap">{s.saleDate}</td>
                       <td className="px-3 py-3 font-medium">{s.customer}</td>
                       <td className="px-3 py-3 hidden md:table-cell">
-                        <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200">{s.saleType}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">{s.saleType}</span>
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">{s.salesperson || '-'}</td>
+                      <td className="px-3 py-3 text-center hidden md:table-cell">
+                        {deducted > 0
+                          ? <span className="text-xs text-orange-600 font-medium flex items-center justify-center gap-0.5"><PackageMinus className="w-3 h-3" />{deducted}품목</span>
+                          : <span className="text-muted-foreground text-xs">-</span>}
+                      </td>
                       <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{s.netAmount.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground hidden lg:table-cell whitespace-nowrap">{s.vat.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right font-bold whitespace-nowrap">{s.totalAmount.toLocaleString()}</td>
@@ -823,7 +760,6 @@ export default function CRMPage() {
                             <Printer className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(s, () => setModal({ open: true, sale: s }))}>
-                            {prev && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => guardEdit(s, () => handleDelete(s.id))}>
@@ -841,29 +777,19 @@ export default function CRMPage() {
       </div>
 
       {modal.open && (
-        <SaleModal
-          sale={modal.sale}
-          companies={companies}
-          products={products}
-          purchaseOrders={purchaseOrders}
-          sales={sales}
+        <SaleModal sale={modal.sale} companies={companies} products={products}
+          purchaseOrders={purchaseOrders} sales={sales}
           onClose={() => setModal({ open: false })}
-          onSave={() => { setModal({ open: false }); load(); }}
-        />
+          onSave={() => { setModal({ open: false }); load(); }} />
       )}
       {printModal.open && printModal.sale && company && (
-        <SalePrintModal
-          sale={printModal.sale}
-          company={company}
-          companies={companies}
-          onClose={() => setPrintModal({ open: false })}
-        />
+        <SalePrintModal sale={printModal.sale} company={company} companies={companies}
+          onClose={() => setPrintModal({ open: false })} />
       )}
       {adminModal.open && (
         <AdminPasswordModal
           onConfirm={() => { setAdminModal({ open: false, action: () => {} }); adminModal.action(); }}
-          onCancel={() => setAdminModal({ open: false, action: () => {} })}
-        />
+          onCancel={() => setAdminModal({ open: false, action: () => {} })} />
       )}
     </div>
   );

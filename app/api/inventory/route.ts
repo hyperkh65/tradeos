@@ -48,6 +48,7 @@ function computeOutQty(db: ReturnType<typeof getDb>): Record<string, number> {
       try {
         const items = JSON.parse(s.items_json || '[]');
         for (const item of items) {
+          if (!item.inventoryDeducted) continue; // 재고처리 체크된 것만
           const name = (item.product || item.productName || item.name || '').trim().toLowerCase();
           if (!name) continue;
           outMap[name] = (outMap[name] || 0) + (item.qty || 0);
