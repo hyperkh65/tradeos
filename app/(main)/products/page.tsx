@@ -11,7 +11,51 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Product } from '@/types';
+import type { Product, Company } from '@/types';
+
+function CompanyAutocomplete({ label, value, onChange, companies }: {
+  label: string; value: string; onChange: (v: string) => void; companies: Company[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState(value);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setQ(value); }, [value]);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = q.trim()
+    ? companies.filter(c => c.name.toLowerCase().includes(q.toLowerCase()) || (c.nameEn ?? '').toLowerCase().includes(q.toLowerCase()))
+    : companies;
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+      <Input
+        value={q}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={label + ' 검색...'}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-background border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {filtered.slice(0, 20).map(c => (
+            <button key={c.id} type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+              onMouseDown={() => { onChange(c.name); setQ(c.name); setOpen(false); }}>
+              <span className="font-medium truncate">{c.name}</span>
+              {c.nameEn && <span className="text-xs text-muted-foreground truncate">{c.nameEn}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const CATEGORIES = ['조명', '가전', '전자', '생활용품', '산업용품', '기타'];
 const MIN_IMAGE_SLOTS = 5;
@@ -600,6 +644,11 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
     converter: ex?.converter || '',
   });
   const [saving, setSaving] = useState(false);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  useEffect(() => {
+    fetch('/api/companies').then(r => r.json()).then(d => { if (d.data) setCompanies(d.data); }).catch(() => {});
+  }, []);
+  const suppliers = companies.filter(c => c.type === '공급업체');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -653,8 +702,8 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
             {f('제품명 (한글) *', 'nameKo', 'LED 패널 40W', { required: true })}
             {f('제품명 (영문)', 'nameEn', 'LED Panel 40W')}
             <div className="grid grid-cols-2 gap-3">
-              {f('공급업체', 'supplierName', 'Ningbo Alpha Lighting')}
-              {f('제조사', 'maker', 'Philips')}
+              <CompanyAutocomplete label="공급업체" value={form.supplierName} onChange={v => setForm(p => ({ ...p, supplierName: v }))} companies={suppliers} />
+              <CompanyAutocomplete label="제조사" value={form.maker} onChange={v => setForm(p => ({ ...p, maker: v }))} companies={suppliers} />
             </div>
           </div>
 
