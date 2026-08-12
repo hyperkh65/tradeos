@@ -15,43 +15,28 @@ jobs:
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
 
-            echo "=== tradeos DB table row counts ==="
+            echo "=== /volume1/web/newerp 내용 ==="
+            ls /volume1/web/newerp/ 2>/dev/null || echo "없음"
+
+            echo ""
+            echo "=== newerp DB 찾기 ==="
+            find /volume1/web/newerp -maxdepth 3 -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" 2>/dev/null | head -10
+
+            echo ""
+            echo "=== newerp package.json ==="
+            cat /volume1/web/newerp/package.json 2>/dev/null | head -20 || echo "없음"
+
+            echo ""
+            echo "=== newerp .env or data dir ==="
+            ls /volume1/web/newerp/data/ 2>/dev/null || echo "data dir 없음"
+            ls /volume1/web/newerp/.env 2>/dev/null | head -5 || echo ".env 없음"
+
+            echo ""
+            echo "=== tradeos DB 현재 sales 카운트 ==="
             $NODE -e "
-              try {
-                const Database = require('/volume1/web/tradeos/.next/standalone/node_modules/better-sqlite3');
-                const db = new Database('/volume1/web/tradeos/data/nexport.db');
-                db.pragma('wal_checkpoint(FULL)');
-                const tables = ['users','companies','products','sales','purchase_orders','quotes'];
-                tables.forEach(t => {
-                  try {
-                    const cnt = db.prepare('SELECT COUNT(*) as c FROM ' + t).get();
-                    console.log(t + ':', cnt.c);
-                  } catch(e) { console.log(t + ': ERROR -', e.message); }
-                });
-                try {
-                  const rows = db.prepare('SELECT business_id, sale_date, customer, total_amount FROM sales ORDER BY sale_date DESC LIMIT 5').all();
-                  console.log('Last 5 sales:', JSON.stringify(rows));
-                } catch(e) { console.log('sales query error:', e.message); }
-                db.close();
-              } catch(e) { console.error('DB ERROR:', e.message); }
+              const Database = require('/volume1/web/tradeos/.next/standalone/node_modules/better-sqlite3');
+              const db = new Database('/volume1/web/tradeos/data/nexport.db');
+              const cnt = db.prepare('SELECT COUNT(*) as c FROM sales').get();
+              console.log('tradeos sales count:', cnt.c);
+              db.close();
             " 2>&1
-
-            echo ""
-            echo "=== Web directories on NAS ==="
-            ls /volume1/web/ 2>/dev/null
-
-            echo ""
-            echo "=== Find other SQLite DBs on NAS ==="
-            find /volume1/web -name "*.db" -o -name "*.sqlite" 2>/dev/null | head -20
-
-            echo ""
-            echo "=== Find other Node/PM2 processes ==="
-            ps aux 2>/dev/null | grep node | grep -v grep | head -10
-
-            echo ""
-            echo "=== Find other package.json (other ERPs) ==="
-            find /volume1/web -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -10
-
-            echo ""
-            echo "=== port 3103 still up? ==="
-            ss -tlnp 2>/dev/null | grep 3103 || netstat -tlnp 2>/dev/null | grep 3103
