@@ -59,8 +59,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const netAmount = items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
   const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
   const vat = Math.round(netKRW * 0.1);
-  db.prepare(`UPDATE sales SET customer=?,sale_date=?,sale_type=?,salesperson=?,po_no=?,items_json=?,net_amount=?,vat=?,total_amount=?,exchange_rate=?,misc=?,supplier_id=?,supplier_name=?,po_id=?,po_business_id=? WHERE id=?`)
-    .run(body.customer, body.saleDate, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, netKRW + vat, rate, body.misc ?? null, body.supplierId ?? null, body.supplierName ?? null, body.poId ?? null, body.poBusinessId ?? null, id);
+  db.prepare(`UPDATE sales SET customer=?,sale_date=?,sale_type=?,salesperson=?,po_no=?,items_json=?,net_amount=?,vat=?,total_amount=?,currency=?,exchange_rate=?,misc=?,supplier_id=?,supplier_name=?,po_id=?,po_business_id=? WHERE id=?`)
+    .run(body.customer, body.saleDate, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, netKRW + vat, body.currency || 'KRW', rate, body.misc ?? null, body.supplierId ?? null, body.supplierName ?? null, body.poId ?? null, body.poBusinessId ?? null, id);
   // Sync to Notion
   const row = db.prepare('SELECT business_id FROM sales WHERE id=?').get(id) as { business_id: string } | undefined;
   if (row?.business_id) syncSaleToNotion(row.business_id, items, body).catch(() => {});

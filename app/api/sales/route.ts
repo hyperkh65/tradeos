@@ -86,25 +86,22 @@ async function fetchFromNotion() {
 export async function GET() {
   const db = getDb();
 
-  try {
-    const notionSales = await fetchFromNotion();
-    if (notionSales.length > 0) {
-      db.transaction(() => {
-        for (const s of notionSales) {
-          // Upsert: update key fields if already exists (keeps local-only fields like exchange_rate, misc)
-          const existing = db.prepare('SELECT id FROM sales WHERE business_id=?').get(s.businessId);
-          if (existing) {
-            db.prepare(`UPDATE sales SET sale_date=?,customer=?,sale_type=?,salesperson=?,po_no=?,items_json=?,net_amount=?,vat=?,total_amount=? WHERE business_id=?`)
-              .run(s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.businessId);
-          } else {
-            db.prepare(`INSERT INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+  // Notion → SQLite: INSERT only (never overwrite local edits)
+  const localCount = (db.prepare('SELECT COUNT(*) as c FROM sales').get() as { c: number }).c;
+  if (localCount === 0) {
+    try {
+      const notionSales = await fetchFromNotion();
+      if (notionSales.length > 0) {
+        db.transaction(() => {
+          for (const s of notionSales) {
+            db.prepare(`INSERT OR IGNORE INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
               .run(s.id, s.businessId, s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.currency, s.createdAt, 1);
           }
-        }
-      })();
+        })();
+      }
+    } catch (e) {
+      console.error('[Sales] Notion fetch error:', e);
     }
-  } catch (e) {
-    console.error('[Sales] Notion fetch error:', e);
   }
 
   const rows = db.prepare('SELECT * FROM sales ORDER BY sale_date DESC').all() as Record<string, unknown>[];

@@ -471,14 +471,19 @@ function SalePrintModal({ sale, company, companies, onClose }: {
   const vat = sale.vat ?? Math.round(netKRW * 0.1);
   const total = sale.totalAmount ?? netKRW + vat;
   const customerCo = companies.find(c => c.name === sale.customer);
+  const MIN_ROWS = 10;
+  const emptyRows = Math.max(0, MIN_ROWS - items.length);
+
   const handlePrint = () => {
     const orig = document.title;
     document.title = `${sale.businessId}_${sale.customer}_${sale.saleDate}`.replace(/\s/g, '_');
     window.print();
     window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
   };
-  const td: React.CSSProperties = { padding: '5px 6px', border: '1px solid #ddd' };
-  const th: React.CSSProperties = { padding: '6px', backgroundColor: '#1a1a2e', color: 'white', border: '1px solid #333', fontWeight: 'bold' };
+
+  const td: React.CSSProperties = { padding: '6px 8px', border: '1px solid #e0e0e0', verticalAlign: 'middle' };
+  const th: React.CSSProperties = { padding: '8px', backgroundColor: '#f5f5f5', color: '#333', border: '1px solid #ddd', fontWeight: '600', fontSize: '8.5pt' };
+
   return (
     <>
       <style>{`
@@ -499,119 +504,130 @@ function SalePrintModal({ sale, company, companies, onClose }: {
               <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
             </div>
           </div>
-          <div id="sale-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '10mm', background: 'white', fontFamily: '"Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.5', boxSizing: 'border-box' }}>
-            <div style={{ textAlign: 'center', marginBottom: '14px', borderBottom: '2px solid #1a1a2e', paddingBottom: '10px' }}>
-              <div style={{ fontSize: '20pt', fontWeight: 'bold', letterSpacing: '10px', color: '#1a1a2e' }}>거 래 명 세 표</div>
+          <div id="sale-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '12mm', background: 'white', fontFamily: '"Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.5', boxSizing: 'border-box' }}>
+            {/* 제목 */}
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ fontSize: '22pt', fontWeight: '800', letterSpacing: '12px', color: '#222' }}>거 래 명 세 표</div>
+              <div style={{ fontSize: '8.5pt', color: '#888', marginTop: '4px', letterSpacing: '1px' }}>TRANSACTION STATEMENT</div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '8.5pt' }}>
+
+            {/* 문서정보 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '8.5pt', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
               <div style={{ display: 'flex', gap: '20px' }}>
-                <div><span style={{ color: '#666' }}>문서번호: </span><strong>{sale.businessId}</strong></div>
-                <div><span style={{ color: '#666' }}>거래일자: </span><strong>{sale.saleDate}</strong></div>
-                <div><span style={{ color: '#666' }}>거래유형: </span><strong>{sale.saleType}</strong></div>
+                <div><span style={{ color: '#888' }}>문서번호 </span><strong>{sale.businessId}</strong></div>
+                <div><span style={{ color: '#888' }}>거래일자 </span><strong>{sale.saleDate}</strong></div>
+                <div><span style={{ color: '#888' }}>거래유형 </span><strong>{sale.saleType}</strong></div>
               </div>
-              {sale.poNo && <div><span style={{ color: '#666' }}>PO번호: </span><strong>{sale.poNo}</strong></div>}
+              {sale.poNo && <div><span style={{ color: '#888' }}>PO# </span><strong>{sale.poNo}</strong></div>}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-              <div style={{ border: '1.5px solid #333' }}>
-                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8pt', background: '#f5f5f8', padding: '5px', borderBottom: '1px solid #ccc', letterSpacing: '3px' }}>공 급 자</div>
-                <div style={{ padding: '8px', fontSize: '8pt' }}>
+
+            {/* 공급자 / 공급받는자 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden' }}>
+                <div style={{ textAlign: 'center', fontWeight: '600', fontSize: '8pt', background: '#f5f5f5', padding: '6px', borderBottom: '1px solid #ddd', letterSpacing: '4px', color: '#444' }}>공 급 자</div>
+                <div style={{ padding: '10px', fontSize: '8pt' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
-                    <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '9.5pt' }}>{company.name}</td></tr>
-                    {company.bizNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{company.bizNo}</td></tr>}
-                    {company.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{company.ceo}</td></tr>}
-                    {company.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{company.address}</td></tr>}
-                    {company.tel && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{company.tel}</td></tr>}
+                    <tr><td style={{ color: '#888', width: '70px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: '700', fontSize: '10pt' }}>{company.name}</td></tr>
+                    {company.bizNo && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>사업자번호</td><td>{company.bizNo}</td></tr>}
+                    {company.ceo && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>대표자</td><td>{company.ceo}</td></tr>}
+                    {company.address && <tr><td style={{ color: '#888', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{company.address}</td></tr>}
+                    {company.tel && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>전화</td><td>{company.tel}</td></tr>}
                   </tbody></table>
                 </div>
               </div>
-              <div style={{ border: '1.5px solid #333' }}>
-                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '8pt', background: '#f5f5f8', padding: '5px', borderBottom: '1px solid #ccc', letterSpacing: '2px' }}>공 급 받 는 자</div>
-                <div style={{ padding: '8px', fontSize: '8pt' }}>
+              <div style={{ border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden' }}>
+                <div style={{ textAlign: 'center', fontWeight: '600', fontSize: '8pt', background: '#f5f5f5', padding: '6px', borderBottom: '1px solid #ddd', letterSpacing: '3px', color: '#444' }}>공 급 받 는 자</div>
+                <div style={{ padding: '10px', fontSize: '8pt' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
-                    <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '11pt' }}>{sale.customer}</td></tr>
-                    {customerCo?.businessNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{customerCo.businessNo}</td></tr>}
-                    {customerCo?.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{customerCo.ceo}</td></tr>}
-                    {customerCo?.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{customerCo.address}</td></tr>}
-                    {customerCo?.phone && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{customerCo.phone}</td></tr>}
-                    {sale.salesperson && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>담당자</td><td>{sale.salesperson}</td></tr>}
+                    <tr><td style={{ color: '#888', width: '70px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: '700', fontSize: '12pt' }}>{sale.customer}</td></tr>
+                    {customerCo?.businessNo && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>사업자번호</td><td>{customerCo.businessNo}</td></tr>}
+                    {customerCo?.ceo && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>대표자</td><td>{customerCo.ceo}</td></tr>}
+                    {customerCo?.address && <tr><td style={{ color: '#888', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{customerCo.address}</td></tr>}
+                    {customerCo?.phone && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>전화</td><td>{customerCo.phone}</td></tr>}
+                    {sale.salesperson && <tr><td style={{ color: '#888', paddingBottom: '3px' }}>담당자</td><td>{sale.salesperson}</td></tr>}
                   </tbody></table>
                 </div>
               </div>
             </div>
+
+            {/* 품목 테이블 */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', fontSize: '8.5pt' }}>
               <thead><tr>
-                <th style={{ ...th, textAlign: 'center', width: '28px' }}>No</th>
-                <th style={{ ...th, textAlign: 'left' }}>품 목 명</th>
-                <th style={{ ...th, textAlign: 'left', width: '100px' }}>규 격</th>
-                <th style={{ ...th, textAlign: 'right', width: '45px' }}>수량</th>
-                <th style={{ ...th, textAlign: 'right', width: '80px' }}>단 가</th>
-                <th style={{ ...th, textAlign: 'right', width: '85px' }}>공급가액</th>
-                <th style={{ ...th, textAlign: 'right', width: '70px' }}>세 액</th>
-                <th style={{ ...th, textAlign: 'left', width: '80px' }}>비 고</th>
+                <th style={{ ...th, textAlign: 'center', width: '32px' }}>No</th>
+                <th style={{ ...th, textAlign: 'left' }}>품목 및 규격</th>
+                <th style={{ ...th, textAlign: 'right', width: '50px' }}>수량</th>
+                <th style={{ ...th, textAlign: 'right', width: '90px' }}>단가</th>
+                <th style={{ ...th, textAlign: 'right', width: '95px' }}>공급가액</th>
+                <th style={{ ...th, textAlign: 'left', width: '90px' }}>비고</th>
               </tr></thead>
               <tbody>
-                {items.map((item, i) => {
-                  const itemVat = Math.round(item.amount * 0.1);
-                  return (
-                    <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                      <td style={{ ...td, textAlign: 'center' }}>{i + 1}</td>
-                      <td style={{ ...td, fontWeight: '600' }}>{item.product}</td>
-                      <td style={{ ...td, color: '#555', fontSize: '7.5pt' }}>{item.specification}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{item.qty.toLocaleString()}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{item.unitPrice.toLocaleString()}</td>
-                      <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>{item.amount.toLocaleString()}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{itemVat.toLocaleString()}</td>
-                      <td style={{ ...td, fontSize: '7.5pt' }}>{(item as any).remark || ''}</td>
-                    </tr>
-                  );
-                })}
-                {items.length < 6 && Array.from({ length: 6 - items.length }).map((_, i) => (
-                  <tr key={`e${i}`}>{[...Array(8)].map((_, j) => <td key={j} style={{ ...td, height: '22px' }}></td>)}</tr>
+                {items.map((item, i) => (
+                  <tr key={i}>
+                    <td style={{ ...td, textAlign: 'center', color: '#888' }}>{i + 1}</td>
+                    <td style={td}>
+                      <div style={{ fontWeight: '600' }}>{item.product}</div>
+                      {item.specification && <div style={{ fontSize: '7.5pt', color: '#666', marginTop: '1px' }}>{item.specification}</div>}
+                    </td>
+                    <td style={{ ...td, textAlign: 'right' }}>{item.qty.toLocaleString()}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{item.unitPrice.toLocaleString()}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>{item.amount.toLocaleString()}</td>
+                    <td style={{ ...td, color: '#555', fontSize: '7.5pt' }}>{(item as any).remark || ''}</td>
+                  </tr>
+                ))}
+                {Array.from({ length: emptyRows }).map((_, i) => (
+                  <tr key={`e${i}`}>
+                    <td style={{ ...td, height: '24px', color: '#bbb', textAlign: 'center' }}>{items.length + i + 1}</td>
+                    {[...Array(5)].map((_, j) => <td key={j} style={{ ...td, height: '24px' }}></td>)}
+                  </tr>
                 ))}
               </tbody>
-              <tfoot><tr style={{ borderTop: '2px solid #1a1a2e', backgroundColor: '#f0f0f5' }}>
-                <td colSpan={5} style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>합 계</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{netAmount.toLocaleString()}</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>{vat.toLocaleString()}</td>
+              <tfoot><tr style={{ backgroundColor: '#f5f5f5', borderTop: '2px solid #ccc' }}>
+                <td colSpan={4} style={{ ...td, textAlign: 'right', fontWeight: '700' }}>합 계</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: '700' }}>{netAmount.toLocaleString()}</td>
                 <td style={td}></td>
               </tr></tfoot>
             </table>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
-              <div style={{ border: '2px solid #1a1a2e', padding: '10px 18px', minWidth: '280px', fontSize: '9pt' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                  <span style={{ color: '#555' }}>공급가액</span>
+
+            {/* 합계 박스 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+              <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', minWidth: '300px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '9pt' }}>
+                  <span style={{ color: '#666' }}>공급가액</span>
                   <strong>{netAmount.toLocaleString()}원</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ color: '#555' }}>부가세 (10%)</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '9pt' }}>
+                  <span style={{ color: '#666' }}>부가세 (10%)</span>
                   <strong>{vat.toLocaleString()}원</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #1a1a2e', paddingTop: '7px', fontSize: '12pt' }}>
-                  <strong>합 계 금 액</strong>
-                  <strong style={{ color: '#1a1a2e' }}>{total.toLocaleString()}원</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #ddd', paddingTop: '12px', fontSize: '18px', fontWeight: 800 }}>
+                  <span>합계금액</span>
+                  <span>{total.toLocaleString()}원</span>
                 </div>
               </div>
             </div>
+
+            {/* 기타사항 */}
             {sale.misc && (
-              <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '8px 12px', marginBottom: '14px' }}>
-                <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '4px', fontSize: '7.5pt' }}>기타 사항</div>
+              <div style={{ border: '1px solid #eee', borderRadius: '6px', padding: '10px 14px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: '600', color: '#888', marginBottom: '4px', fontSize: '7.5pt' }}>기타 사항</div>
                 <div style={{ whiteSpace: 'pre-wrap', fontSize: '8.5pt' }}>{sale.misc}</div>
               </div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', marginTop: '16px', alignItems: 'end' }}>
+
+            {/* 입금계좌 + 도장 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '20px' }}>
               {company.bank ? (
-                <div style={{ border: '1px solid #ddd', padding: '8px 12px', fontSize: '8pt' }}>
-                  <div style={{ fontWeight: 'bold', color: '#666', marginBottom: '5px', fontSize: '7.5pt' }}>입금 계좌</div>
+                <div style={{ border: '1px solid #eee', borderRadius: '6px', padding: '10px 14px', fontSize: '8pt', flex: 1, marginRight: '20px' }}>
+                  <div style={{ fontWeight: '600', color: '#888', marginBottom: '6px', fontSize: '7.5pt' }}>입금 계좌</div>
                   <div style={{ whiteSpace: 'pre-line' }}>{company.bank}</div>
                 </div>
-              ) : <div />}
-              <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                <div style={{ fontSize: '8pt', color: '#666', marginBottom: '6px' }}>확인자 서명</div>
+              ) : <div style={{ flex: 1 }} />}
+              <div style={{ textAlign: 'center', position: 'relative', minWidth: '160px' }}>
+                <div style={{ fontSize: '8pt', color: '#888', marginBottom: '8px' }}>{company.name} (인)</div>
                 {company.stampUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={company.stampUrl} alt="stamp" style={{ height: '65px', objectFit: 'contain', display: 'block', margin: '0 auto 6px' }} />
-                  : <div style={{ height: '65px', border: '1px dashed #ccc', borderRadius: '4px', marginBottom: '6px' }} />}
-                <div style={{ borderTop: '1px solid #333', paddingTop: '4px', fontSize: '9pt', fontWeight: 'bold' }}>{company.name}</div>
+                  ? <img src={company.stampUrl} alt="stamp" style={{ width: '100px', opacity: 0.8, transform: 'rotate(-5deg)', display: 'block', margin: '0 auto' }} />
+                  : <div style={{ width: '100px', height: '100px', border: '2px dashed #ccc', borderRadius: '50%', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '7.5pt', color: '#aaa' }}>도장</div>}
               </div>
             </div>
           </div>
@@ -624,12 +640,15 @@ function SalePrintModal({ sale, company, companies, onClose }: {
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function CRMPage() {
+  const curYear = new Date().getFullYear();
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState(`${curYear}-01-01`);
+  const [filterEndDate, setFilterEndDate] = useState(`${curYear}-12-31`);
   const [modal, setModal] = useState<{ open: boolean; sale?: SalesRecord | null }>({ open: false });
   const [printModal, setPrintModal] = useState<{ open: boolean; sale?: SalesRecord | null }>({ open: false });
   const [company, setCompany] = useState<CompanySettings | null>(null);
@@ -679,11 +698,12 @@ export default function CRMPage() {
     load();
   };
 
-  const filtered = sales.filter(s =>
-    s.customer.toLowerCase().includes(search.toLowerCase()) ||
-    s.businessId.toLowerCase().includes(search.toLowerCase()) ||
-    (s.salesperson ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = sales.filter(s => {
+    const dateOk = (!filterStartDate || s.saleDate >= filterStartDate) && (!filterEndDate || s.saleDate <= filterEndDate);
+    const q = search.toLowerCase();
+    const searchOk = !q || s.customer.toLowerCase().includes(q) || s.businessId.toLowerCase().includes(q) || (s.salesperson ?? '').toLowerCase().includes(q);
+    return dateOk && searchOk;
+  });
 
   const totalNet = filtered.reduce((s, r) => s + r.netAmount, 0);
   const totalVat = filtered.reduce((s, r) => s + r.vat, 0);
@@ -692,19 +712,28 @@ export default function CRMPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="매출 관리" />
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
-        <div className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="거래처, 코드, 담당자 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex flex-col gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="거래처, 코드, 담당자 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="h-9 w-36 text-xs" />
+              <span className="text-muted-foreground text-xs">~</span>
+              <Input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="h-9 w-36 text-xs" />
+              <Button variant="outline" size="sm" className="h-9 text-xs px-2" onClick={() => { setFilterStartDate(`${curYear}-01-01`); setFilterEndDate(`${curYear}-12-31`); }}>올해</Button>
+              <Button variant="ghost" size="sm" className="h-9 text-xs px-2 text-muted-foreground" onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}>전체</Button>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-1.5">
+              <span>공급가: <strong className="text-foreground">{totalNet.toLocaleString()}원</strong></span>
+              <span>부가세: <strong className="text-foreground">{totalVat.toLocaleString()}원</strong></span>
+              <span>합계: <strong className="text-foreground">{(totalNet + totalVat).toLocaleString()}원</strong></span>
+            </div>
+            <Button size="sm" className="h-9 gap-1 shrink-0" onClick={() => setModal({ open: true, sale: null })}>
+              <Plus className="w-4 h-4" /><span className="hidden sm:inline">매출 등록</span>
+            </Button>
           </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-1.5">
-            <span>공급가: <strong className="text-foreground">{totalNet.toLocaleString()}원</strong></span>
-            <span>부가세: <strong className="text-foreground">{totalVat.toLocaleString()}원</strong></span>
-            <span>합계: <strong className="text-foreground">{(totalNet + totalVat).toLocaleString()}원</strong></span>
-          </div>
-          <Button size="sm" className="h-9 gap-1 shrink-0" onClick={() => setModal({ open: true, sale: null })}>
-            <Plus className="w-4 h-4" /><span className="hidden sm:inline">매출 등록</span>
-          </Button>
         </div>
 
         {loading ? (
@@ -719,7 +748,6 @@ export default function CRMPage() {
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">거래처</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">유형</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">담당자</th>
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">재고출고</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">공급가액</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">부가세</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">합계</th>
@@ -728,10 +756,9 @@ export default function CRMPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-12 text-muted-foreground text-sm">매출 데이터가 없습니다.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground text-sm">매출 데이터가 없습니다.</td></tr>
                 ) : filtered.map(s => {
                   const prev = isPrevMonth(s.saleDate);
-                  const deducted = (s.items || []).filter(i => (i as any).inventoryDeducted).length;
                   return (
                     <tr key={s.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
@@ -746,11 +773,6 @@ export default function CRMPage() {
                         <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">{s.saleType}</span>
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">{s.salesperson || '-'}</td>
-                      <td className="px-3 py-3 text-center hidden md:table-cell">
-                        {deducted > 0
-                          ? <span className="text-xs text-orange-600 font-medium flex items-center justify-center gap-0.5"><PackageMinus className="w-3 h-3" />{deducted}품목</span>
-                          : <span className="text-muted-foreground text-xs">-</span>}
-                      </td>
                       <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{s.netAmount.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground hidden lg:table-cell whitespace-nowrap">{s.vat.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right font-bold whitespace-nowrap">{s.totalAmount.toLocaleString()}</td>
