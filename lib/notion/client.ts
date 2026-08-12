@@ -33,6 +33,7 @@ export const DB = {
   documents:      process.env.NOTION_DB_DOCUMENTS ?? '',
   approvals:      process.env.NOTION_DB_APPROVALS ?? '',
   activityLogs:   process.env.NOTION_DB_ACTIVITY_LOGS ?? '',
+  inventory:      process.env.NOTION_DB_INVENTORY ?? '',
 } as const;
 
 export function isDemoMode(): boolean {
