@@ -64,23 +64,27 @@ const getBool = (props: Props, key: string): boolean => {
 
 export function notionToCompany(page: { id: string; properties: Props; created_time: string; last_edited_time: string }): Company {
   const p = page.properties;
+  const name = getText(p, 'ClientName', '이름');
+  // Korean name → 고객사(한국), English name → 공급업체(중국)
+  const isKorean = /[가-힣]/.test(name);
   return {
     id: page.id,
     businessId: getText(p, 'BusinessNo', '코드') || page.id,
-    name: getText(p, 'ClientName', '이름'),
+    name,
     nameEn: getText(p, '영문명') || undefined,
-    type: (getSelect(p, 'Type', '유형') || '기타') as Company['type'],
-    country: getText(p, '국가') || getSelect(p, '국가') || '한국',
+    type: (isKorean ? '고객사' : '공급업체') as Company['type'],
+    country: isKorean ? '한국' : '중국',
     email: getText(p, 'Email', '이메일') || undefined,
     phone: getText(p, 'Tel', '전화번호') || undefined,
     website: getText(p, 'Website', '웹사이트') || undefined,
     wechat: getText(p, '위챗') || undefined,
-    memo: [
-      getText(p, 'Address'),
-      getText(p, 'CEO') ? `대표: ${getText(p, 'CEO')}` : '',
-      getText(p, 'Industry') ? `업종: ${getText(p, 'Industry')}` : '',
-      getText(p, '비고'),
-    ].filter(Boolean).join(' | ') || undefined,
+    memo: getText(p, '비고') || undefined,
+    ceo: getText(p, 'CEO') || undefined,
+    businessNo: getText(p, 'BusinessNo') || undefined,
+    address: getText(p, 'Address') || undefined,
+    bank: getText(p, 'Bank') || undefined,
+    accountNo: getText(p, 'AccountNo', 'AccountHolder') || undefined,
+    currency: getText(p, 'Currency') || getSelect(p, 'Currency') || undefined,
     createdAt: page.created_time,
     updatedAt: page.last_edited_time,
   };

@@ -29,6 +29,14 @@ export interface Company {
   address?: string;
   wechat?: string;
   memo?: string;
+  ceo?: string;
+  businessNo?: string;
+  bank?: string;
+  accountNo?: string;
+  currency?: string;
+  contactPerson?: string;
+  bizRegFile?: string;
+  bankCopyFile?: string;
   createdAt: string;
   updatedAt: string;
 }

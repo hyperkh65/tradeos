@@ -28,13 +28,16 @@ export async function GET() {
       // INSERT OR REPLACE handles all UNIQUE conflicts (id PK + business_id UNIQUE)
       // by deleting the conflicting row and inserting the new one
       const upsert = db.prepare(`INSERT OR REPLACE INTO companies
-        (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,notion_id,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,
+         ceo,business_no,address,bank,account_no,trade_currency,notion_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       db.transaction(() => {
         for (const c of notionData) {
           upsert.run(c.id, c.businessId, c.name, c.nameEn ?? null, c.type, c.country,
             c.email ?? null, c.phone ?? null, c.website ?? null, c.wechat ?? null,
-            c.memo ?? null, c.id, c.createdAt, c.updatedAt);
+            c.memo ?? null, c.ceo ?? null, c.businessNo ?? null, c.address ?? null,
+            c.bank ?? null, c.accountNo ?? null, c.currency ?? null,
+            c.id, c.createdAt, c.updatedAt);
         }
       })();
     }
