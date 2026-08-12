@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Info, Upload, ImageOff } from 'lucide-react';
+import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { PurchaseOrder } from '@/types';
@@ -18,6 +18,10 @@ const emptyItem = () => ({
   luminousEff: '', lumenOutput: '',
   unit: 'PCS', qty: 1, unitPrice: 0, amount: 0, remarks: '',
 });
+
+const CURRENCY_CODES_RE = /\s*\|\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i;
+const cleanSpec = (s: string) => s.replace(CURRENCY_CODES_RE, '').replace(/^\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i, '').trim();
+const fmtNum = (n: number, currency: string) => currency === 'KRW' ? n.toLocaleString() : n.toFixed(2);
 
 interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
@@ -35,19 +39,112 @@ interface PriceHint {
   luminousEff?: string; lumenOutput?: string;
 }
 
-/* ─── Product Search Helper (발주가 기준) ───────────────────────────────────── */
+/* ─── 제품 hover 이력 팝업 ──────────────────────────────────────────────────── */
 
-function ProductSearchHelper({
-  value, products, pos, onSelect,
+function ProductHistoryPopup({ productName, pos, quotes }: { productName: string; pos: any[]; quotes: any[] }) {
+  const [visible, setVisible] = useState(false);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const isMatch = (name: string) =>
+    name === productName || (productName.length > 4 && name.includes(productName));
+
+  const poHistory = pos
+    .flatMap((po: any) => (po.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: po.orderDate || po.createdAt?.slice(0, 10) || '', supplier: po.supplierName || '', price: it.unitPrice || 0, qty: it.qty || it.quantity || 0, currency: po.currency || 'USD' })))
+    .filter(h => h.price > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5);
+
+  const qtHistory = quotes
+    .flatMap((q: any) => (q.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: (q as any).quoteDate || q.createdAt?.slice(0, 10) || '', company: q.companyName || '', price: it.unitPrice || 0, qty: it.quantity || it.qty || 0, currency: q.currency || 'USD' })))
+    .filter(h => h.price > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 5);
+
+  if (poHistory.length === 0 && qtHistory.length === 0) {
+    return <span>{productName}</span>;
+  }
+
+  const handleMouseEnter = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const top = rect.bottom + 4;
+      const left = Math.min(rect.left, window.innerWidth - 320);
+      setStyle({ position: 'fixed', top, left, zIndex: 9999 });
+    }
+    setVisible(true);
+  };
+
+  return (
+    <span ref={ref} className="relative cursor-default underline decoration-dotted decoration-muted-foreground"
+      onMouseEnter={handleMouseEnter} onMouseLeave={() => setVisible(false)}>
+      {productName}
+      {visible && (
+        <div style={style} className="w-72 bg-background border border-border rounded-xl shadow-2xl text-xs p-0 overflow-hidden">
+          {poHistory.length > 0 && (
+            <div>
+              <div className="px-3 py-2 bg-blue-50 border-b border-border flex items-center gap-1.5">
+                <TrendingDown className="w-3 h-3 text-blue-600" />
+                <span className="font-semibold text-blue-700 text-[10px] uppercase tracking-wide">발주 이력</span>
+              </div>
+              {poHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-muted/30">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
+                    <p className="font-medium truncate max-w-[140px]">{h.supplier}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-blue-700">{h.currency} {h.price.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {qtHistory.length > 0 && (
+            <div>
+              <div className="px-3 py-2 bg-emerald-50 border-b border-border flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3 text-emerald-600" />
+                <span className="font-semibold text-emerald-700 text-[10px] uppercase tracking-wide">견적(판매) 이력</span>
+              </div>
+              {qtHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-muted/30">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
+                    <p className="font-medium truncate max-w-[140px]">{h.company}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-emerald-700">{h.currency} {h.price.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/* ─── 품목명 자동완성 입력 ───────────────────────────────────────────────────── */
+
+function POProductInput({
+  value, onChange, onSelect, products, pos,
 }: {
-  value: string; products: any[]; pos: any[]; onSelect: (h: PriceHint) => void;
+  value: string; onChange: (v: string) => void; onSelect: (h: PriceHint) => void;
+  products: any[]; pos: any[];
 }) {
   const [show, setShow] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
 
   const matches = value.length >= 1 ? products.filter(p =>
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
-  ).slice(0, 8) : [];
+  ).slice(0, 10) : [];
 
   const hints: PriceHint[] = matches.map(p => {
     const recentPOs = pos
@@ -56,7 +153,6 @@ function ProductSearchHelper({
         (p.code && it.productName?.includes(p.code))
       ).map((it: any) => ({ price: it.unitPrice, company: po.supplierName, date: po.orderDate || po.createdAt })))
       .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
-
     const ex = p as any;
     return {
       code: p.code,
@@ -71,47 +167,115 @@ function ProductSearchHelper({
     };
   });
 
+  const openDrop = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropStyle({ position: 'fixed', top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 280), zIndex: 9999 });
+    }
+    setShow(true);
+  };
+
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  if (value.length < 1) return null;
-
   return (
-    <div ref={ref} className="relative inline-block">
-      <button type="button" onClick={() => setShow(v => !v)}
-        className="text-primary hover:text-primary/80 ml-1 align-middle" title="제품 검색">
-        <Info className="w-3.5 h-3.5 inline" />
-      </button>
+    <div ref={ref} className="relative w-full">
+      <input
+        ref={inputRef}
+        className="w-full bg-transparent border-none outline-none text-xs"
+        value={value}
+        onChange={e => { onChange(e.target.value); if (e.target.value.length >= 1) openDrop(); else setShow(false); }}
+        onFocus={() => { if (value.length >= 1) openDrop(); }}
+        placeholder="품목명 검색..."
+      />
       {show && (
-        <div className="absolute left-0 top-5 z-50 bg-background border border-border rounded-xl shadow-xl w-80 max-h-72 overflow-y-auto">
-          <div className="p-2 border-b bg-muted/30">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
+        <div style={dropStyle} className="bg-background border border-border rounded-xl shadow-2xl max-h-64 overflow-y-auto">
+          <div className="px-3 py-1.5 border-b bg-muted/30 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            제품 검색 결과 ({hints.length})
           </div>
           {hints.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">등록된 제품 없음</div>
+            <div className="px-3 py-3 text-center text-[11px] text-muted-foreground">등록된 제품 없음</div>
           ) : hints.map(h => (
-            <button key={h.code} type="button" onClick={() => { onSelect(h); setShow(false); }}
-              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
+            <button key={h.code} type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onSelect(h); setShow(false); }}
+              className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors border-b border-border/20 last:border-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold">{h.nameKo}</p>
                   <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
-                  {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
+                  {h.specification && <p className="text-[10px] text-muted-foreground">{h.specification}</p>}
                 </div>
                 <div className="text-right shrink-0">
-                  {h.purchasePrice && (
-                    <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
-                  )}
-                  {h.recentPOPrice && (
-                    <p className="text-[10px] text-orange-600">최근발주 {h.currency} {h.recentPOPrice.toFixed(2)}</p>
-                  )}
-                  {h.recentPOCompany && (
-                    <p className="text-[9px] text-muted-foreground">{h.recentPOCompany}</p>
-                  )}
+                  {h.purchasePrice && <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>}
+                  {h.recentPOPrice && <p className="text-[10px] text-orange-600">최근발주 {h.recentPOPrice.toFixed(2)}</p>}
+                  {h.recentPOCompany && <p className="text-[9px] text-muted-foreground">{h.recentPOCompany}</p>}
                 </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── 공급업체 검색 입력 ─────────────────────────────────────────────────────── */
+
+function SupplierInput({
+  value, onChange, onSelect, companies,
+}: {
+  value: string; onChange: (v: string) => void; onSelect: (c: any) => void; companies: any[];
+}) {
+  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
+
+  const filtered = companies.filter(c =>
+    !value || c.name?.includes(value) || (c.nameEn ?? '').includes(value)
+  ).slice(0, 10);
+
+  const openDrop = () => {
+    if (inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropStyle({ position: 'fixed', top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 });
+    }
+    setShow(true);
+  };
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        ref={inputRef}
+        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        value={value}
+        onChange={e => { onChange(e.target.value); openDrop(); }}
+        onFocus={openDrop}
+        placeholder="공급업체 검색..."
+        required
+      />
+      {show && filtered.length > 0 && (
+        <div style={dropStyle} className="bg-background border border-border rounded-xl shadow-2xl max-h-52 overflow-y-auto">
+          {filtered.map(c => (
+            <button key={c.id} type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onSelect(c); setShow(false); }}
+              className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted/50 border-b border-border/30 last:border-0">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{c.name}</span>
+                {c.nameEn && <span className="text-muted-foreground text-xs">{c.nameEn}</span>}
+                {c.country && <span className="text-muted-foreground text-xs">({c.country})</span>}
+                {c.type && <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{c.type}</span>}
               </div>
             </button>
           ))}
@@ -128,7 +292,6 @@ function POImageUpload({ images, poId, onChange }: { images: string[]; poId: str
   const inputRef = useRef<HTMLInputElement>(null);
 
   const upload = useCallback(async (file: File) => {
-    if (!file) return;
     setUploading(true);
     try {
       const fd = new FormData();
@@ -156,9 +319,7 @@ function POImageUpload({ images, poId, onChange }: { images: string[]; poId: str
           </div>
         ))}
         {images.length < 10 && (
-          <button type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
             className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 hover:border-primary transition-colors text-muted-foreground hover:text-primary">
             {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
             <span className="text-[9px]">사진 추가</span>
@@ -211,24 +372,8 @@ function POModal({
     })) : [emptyItem()],
   });
   const [images, setImages] = useState<string[]>(initImages);
-  const [savedId, setSavedId] = useState<string>((item as any)?.id || '');
+  const [savedId] = useState<string>((item as any)?.id || '');
   const [saving, setSaving] = useState(false);
-  const [companySearch, setCompanySearch] = useState(item?.supplierName || '');
-  const [showCompanyList, setShowCompanyList] = useState(false);
-  const companyRef = useRef<HTMLDivElement>(null);
-
-  const supplierCompanies = companies.filter(c =>
-    c.type === '공급업체' || c.type === 'supplier' || c.type === '제조사' || c.type === '협력사'
-  );
-  const filteredCompanies = supplierCompanies.filter(c =>
-    c.name?.includes(companySearch) || c.nameEn?.includes(companySearch)
-  ).slice(0, 8);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (companyRef.current && !companyRef.current.contains(e.target as Node)) setShowCompanyList(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const updateItem = (idx: number, field: string, val: string | number) => {
     const items = [...form.items];
@@ -271,60 +416,35 @@ function POModal({
         totalAmount, depositAmount, balanceAmount,
         imagesJson: JSON.stringify(images),
       };
-      let id = savedId;
       if (item) {
         await fetch(`/api/purchase-orders/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        id = item.id;
       } else {
-        const res = await fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const j = await res.json();
-        id = j.data?.id || id;
-        if (!savedId) setSavedId(id);
+        await fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       }
       onSave();
     } finally { setSaving(false); }
   };
 
-  const uploadPoId = savedId || item?.id || 'new-po';
+  const uploadPoId = savedId || item?.id || `po-temp-${Date.now()}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-background z-10">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="font-semibold">{item ? '발주 수정' : '새 발주'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Row 1: Supplier + Currency + Incoterm + Status */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Row 1: Supplier + Currency + Incoterm */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-2 md:col-span-2">
+            <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체 *</label>
-              <div ref={companyRef} className="relative">
-                <Input
-                  value={companySearch}
-                  onChange={e => { setCompanySearch(e.target.value); setForm(f => ({ ...f, supplierName: e.target.value, supplierId: '' })); setShowCompanyList(true); }}
-                  onFocus={() => setShowCompanyList(true)}
-                  placeholder="공급업체 검색..."
-                  required
-                />
-                {showCompanyList && filteredCompanies.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 bg-background border border-border rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
-                    {filteredCompanies.map(c => (
-                      <button key={c.id} type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/30 last:border-0"
-                        onClick={() => {
-                          setCompanySearch(c.name);
-                          setForm(f => ({ ...f, supplierName: c.name, supplierId: c.id }));
-                          setShowCompanyList(false);
-                        }}>
-                        <span className="font-medium">{c.name}</span>
-                        {c.nameEn && <span className="text-muted-foreground text-xs ml-2">{c.nameEn}</span>}
-                        {c.country && <span className="text-muted-foreground text-xs ml-2">({c.country})</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SupplierInput
+                value={form.supplierName}
+                onChange={v => setForm(f => ({ ...f, supplierName: v, supplierId: '' }))}
+                onSelect={c => setForm(f => ({ ...f, supplierName: c.name, supplierId: c.id }))}
+                companies={companies}
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
@@ -371,37 +491,32 @@ function POModal({
             <table className="w-full text-xs min-w-[900px]">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-2 py-2 text-left font-medium w-[200px]">품목명</th>
-                  <th className="px-2 py-2 text-left font-medium w-[120px]">규격</th>
-                  <th className="px-2 py-2 text-left font-medium w-16">전압</th>
+                  <th className="px-2 py-2 text-left font-medium w-[210px]">품목명</th>
+                  <th className="px-2 py-2 text-left font-medium w-[110px]">규격</th>
+                  <th className="px-2 py-2 text-left font-medium w-14">전압</th>
                   <th className="px-2 py-2 text-left font-medium w-14">와트</th>
-                  <th className="px-2 py-2 text-left font-medium w-14">CCT</th>
+                  <th className="px-2 py-2 text-left font-medium w-12">CCT</th>
                   <th className="px-2 py-2 text-left font-medium w-16">발광효율</th>
                   <th className="px-2 py-2 text-left font-medium w-16">광속</th>
-                  <th className="px-2 py-2 text-left font-medium w-14">단위</th>
-                  <th className="px-2 py-2 text-right font-medium w-14">수량</th>
+                  <th className="px-2 py-2 text-left font-medium w-12">단위</th>
+                  <th className="px-2 py-2 text-right font-medium w-12">수량</th>
                   <th className="px-2 py-2 text-right font-medium w-20">단가</th>
                   <th className="px-2 py-2 text-right font-medium w-24">금액</th>
-                  <th className="px-2 py-2 text-left font-medium w-[100px]">비고</th>
-                  <th className="px-2 py-2 w-8"></th>
+                  <th className="px-2 py-2 text-left font-medium w-[90px]">비고</th>
+                  <th className="px-2 py-2 w-7"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {form.items.map((it, idx) => (
                   <tr key={it.id} className="hover:bg-muted/20">
                     <td className="px-2 py-1">
-                      <div className="flex items-center">
-                        <input className="w-full bg-transparent border-none outline-none text-xs"
-                          value={it.productName}
-                          onChange={e => updateItem(idx, 'productName', e.target.value)}
-                          placeholder="품목명" />
-                        <ProductSearchHelper
-                          value={it.productName}
-                          products={products}
-                          pos={pos}
-                          onSelect={h => applyProductHint(idx, h)}
-                        />
-                      </div>
+                      <POProductInput
+                        value={it.productName}
+                        onChange={v => updateItem(idx, 'productName', v)}
+                        onSelect={h => applyProductHint(idx, h)}
+                        products={products}
+                        pos={pos}
+                      />
                     </td>
                     <td className="px-2 py-1">
                       <div className="flex items-center gap-0.5">
@@ -411,7 +526,7 @@ function POModal({
                         <button type="button" title="제품에서 규격 자동 가져오기"
                           className="shrink-0 text-[9px] text-muted-foreground hover:text-primary px-0.5"
                           onClick={() => {
-                            const p = products.find(p =>
+                            const p = products.find((p: any) =>
                               p.nameKo === it.productName || p.code === it.productName ||
                               (p.code && it.productName?.includes(p.code))
                             ) as any;
@@ -420,21 +535,21 @@ function POModal({
                           }}>↗</button>
                       </div>
                     </td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.luminousEff} onChange={e => updateItem(idx, 'luminousEff', e.target.value)} placeholder="100lm/W" /></td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.lumenOutput} onChange={e => updateItem(idx, 'lumenOutput', e.target.value)} placeholder="4000lm" /></td>
-                    <td className="px-2 py-1">
-                      <select className="w-full bg-transparent border-none outline-none text-xs" value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.luminousEff} onChange={e => updateItem(idx, 'luminousEff', e.target.value)} placeholder="100lm/W" /></td>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.lumenOutput} onChange={e => updateItem(idx, 'lumenOutput', e.target.value)} placeholder="4000lm" /></td>
+                    <td className="px-1 py-1">
+                      <select className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
                         <option>PCS</option><option>SET</option><option>BOX</option><option>KIT</option><option>M</option>
                       </select>
                     </td>
-                    <td className="px-2 py-1"><input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
-                    <td className="px-2 py-1"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
+                    <td className="px-1 py-1"><input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
+                    <td className="px-1 py-1"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
                     <td className="px-2 py-1 text-right font-medium">{it.amount.toLocaleString()}</td>
-                    <td className="px-2 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
-                    <td className="px-2 py-1"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
+                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
+                    <td className="px-1 py-1"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -444,7 +559,7 @@ function POModal({
                 <Plus className="w-3 h-3" /> 품목 추가
               </button>
               <div className="text-xs space-x-4 text-right">
-                <span className="text-muted-foreground">총액: <strong className="text-foreground">{form.currency} {totalAmount.toLocaleString()}</strong></span>
+                <span className="text-muted-foreground">총액: <strong>{form.currency} {totalAmount.toLocaleString()}</strong></span>
                 <span className="text-muted-foreground">선금({form.depositRatio}%): <strong className="text-orange-600">{depositAmount.toLocaleString()}</strong></span>
                 <span className="text-muted-foreground">잔금: <strong className="text-blue-600">{balanceAmount.toLocaleString()}</strong></span>
               </div>
@@ -453,12 +568,11 @@ function POModal({
 
           {/* Remark */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 / 특이사항</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">비고</label>
             <textarea rows={2} value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
           </div>
 
-          {/* Image upload */}
           <POImageUpload images={images} poId={uploadPoId} onChange={setImages} />
 
           <div className="flex gap-2 pt-2">
@@ -475,12 +589,6 @@ function POModal({
 
 /* ─── PO Print Modal ─────────────────────────────────────────────────────── */
 
-const CURRENCY_CODES_RE = /\s*\|\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i;
-const cleanSpec = (s: string) => s.replace(CURRENCY_CODES_RE, '').replace(/^\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i, '').trim();
-
-const fmtNum = (n: number, currency: string) =>
-  currency === 'KRW' ? n.toLocaleString() : n.toFixed(2);
-
 function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }; company: CompanySettings; onClose: () => void }) {
   const items = (po.items || []) as any[];
   const totalAmount = Number(po.totalAmount) || items.reduce((s: number, i: any) => s + (i.amount || i.unitPrice * (i.qty || i.quantity || 0) || 0), 0);
@@ -488,15 +596,15 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
   const depositAmount = Number(po.depositAmount) || Math.round(totalAmount * depositRatio / 100);
   const balanceAmount = Number(po.balanceAmount) || totalAmount - depositAmount;
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  let attachImages: string[] = [];
+  try { attachImages = JSON.parse((po as any).imagesJson || '[]'); } catch { attachImages = []; }
+
   const handlePrint = () => {
     const orig = document.title;
     document.title = po.businessId;
     window.print();
     window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
   };
-
-  let attachImages: string[] = [];
-  try { attachImages = JSON.parse((po as any).imagesJson || '[]'); } catch { attachImages = []; }
 
   return (
     <>
@@ -514,23 +622,18 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
           <div className="flex items-center justify-between p-4 border-b no-print">
             <span className="font-semibold text-sm text-gray-800">발주서 미리보기</span>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePrint}>
-                <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF 저장
-              </Button>
+              <Button size="sm" onClick={handlePrint}><Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF 저장</Button>
               <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4" /></Button>
             </div>
           </div>
 
           <div id="po-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', background: 'white', fontFamily: 'Arial, sans-serif', color: '#111', fontSize: '9pt', lineHeight: '1.4' }}>
-            {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
               <div style={{ flex: 1 }}>
-                {company.logoUrl ? (
+                {company.logoUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={company.logoUrl} alt="logo" style={{ maxHeight: '50px', maxWidth: '160px', objectFit: 'contain' }} />
-                ) : (
-                  <div style={{ fontSize: '13pt', fontWeight: 'bold', color: '#1a1a2e' }}>{company.name}</div>
-                )}
+                  ? <img src={company.logoUrl} alt="logo" style={{ maxHeight: '50px', maxWidth: '160px', objectFit: 'contain' }} />
+                  : <div style={{ fontSize: '13pt', fontWeight: 'bold', color: '#1a1a2e' }}>{company.name}</div>}
               </div>
               <div style={{ textAlign: 'center', flex: 1 }}>
                 <div style={{ fontSize: '20pt', fontWeight: 'bold', letterSpacing: '3px', color: '#1a1a2e' }}>PURCHASE ORDER</div>
@@ -542,7 +645,6 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
               </div>
             </div>
 
-            {/* Buyer / Supplier */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
               <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '10px' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>Buyer</div>
@@ -560,7 +662,6 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
               </div>
             </div>
 
-            {/* Items table */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', fontSize: '8.5pt' }}>
               <thead>
                 <tr style={{ backgroundColor: '#1a1a2e', color: 'white' }}>
@@ -581,16 +682,17 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
                     it.cct && `${it.cct}`,
                     it.luminousEff && `${it.luminousEff}`,
                     it.lumenOutput && `${it.lumenOutput}`,
-                  ].filter(Boolean).join(' / ');
+                  ].filter(Boolean).join('\n');
+                  const specDisplay = it.specification ? cleanSpec(it.specification) : '';
                   return (
                     <tr key={idx} style={{ borderBottom: '1px solid #e5e5e5', backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                       <td style={{ padding: '6px', textAlign: 'center' }}>{idx + 1}</td>
                       <td style={{ padding: '6px' }}>
                         <div style={{ fontWeight: '600' }}>{it.productName}</div>
-                        {it.specification && cleanSpec(it.specification) && <div style={{ color: '#555', fontSize: '7.5pt' }}>{cleanSpec(it.specification)}</div>}
+                        {specDisplay && <div style={{ color: '#555', fontSize: '7.5pt' }}>{specDisplay}</div>}
                         {it.remarks && <div style={{ color: '#777', fontSize: '7pt', fontStyle: 'italic' }}>{it.remarks}</div>}
                       </td>
-                      <td style={{ padding: '6px', textAlign: 'center', color: '#444', fontSize: '7.5pt', lineHeight: '1.5' }}>{techDetail || '-'}</td>
+                      <td style={{ padding: '6px', textAlign: 'center', color: '#444', fontSize: '7.5pt', whiteSpace: 'pre-line', lineHeight: '1.5' }}>{techDetail || '-'}</td>
                       <td style={{ padding: '6px', textAlign: 'center', color: '#444' }}>{it.unit || 'PCS'}</td>
                       <td style={{ padding: '6px', textAlign: 'right' }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
                       <td style={{ padding: '6px', textAlign: 'right' }}>{fmtNum(it.unitPrice || 0, po.currency)}</td>
@@ -621,7 +723,6 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
               </tfoot>
             </table>
 
-            {/* Terms & Bank */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
               <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '9px' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>Terms & Conditions</div>
@@ -633,29 +734,25 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
               </div>
               <div style={{ border: '1px solid #ddd', borderRadius: '5px', padding: '9px' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '7.5pt', color: '#666', marginBottom: '5px', textTransform: 'uppercase' }}>Remittance Information</div>
-                {company.bankForeign1 ? (
-                  <div style={{ fontFamily: 'monospace', fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bankForeign1}</div>
-                ) : company.bank ? (
-                  <div style={{ fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bank}</div>
-                ) : null}
+                {company.bankForeign1
+                  ? <div style={{ fontFamily: 'monospace', fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bankForeign1}</div>
+                  : company.bank
+                    ? <div style={{ fontSize: '7.5pt', whiteSpace: 'pre-line' }}>{company.bank}</div>
+                    : null}
               </div>
             </div>
 
-            {/* Authorized Signature */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
               <div style={{ textAlign: 'center', minWidth: '160px' }}>
                 <div style={{ fontSize: '8pt', color: '#666', marginBottom: '8px' }}>Authorized Signature</div>
-                {company.stampUrl ? (
+                {company.stampUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={company.stampUrl} alt="stamp" style={{ height: '70px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
-                ) : (
-                  <div style={{ height: '70px', border: '1px dashed #ccc', borderRadius: '4px', marginBottom: '8px' }} />
-                )}
+                  ? <img src={company.stampUrl} alt="stamp" style={{ height: '70px', objectFit: 'contain', display: 'block', margin: '0 auto 8px' }} />
+                  : <div style={{ height: '70px', border: '1px dashed #ccc', borderRadius: '4px', marginBottom: '8px' }} />}
                 <div style={{ borderTop: '1px solid #333', paddingTop: '4px', fontSize: '9pt', fontWeight: 'bold' }}>{company.name}</div>
               </div>
             </div>
 
-            {/* Attachments */}
             {attachImages.length > 0 && (
               <div style={{ marginTop: '20px', pageBreakBefore: 'always' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '9pt', marginBottom: '12px', borderBottom: '1px solid #ddd', paddingBottom: '6px' }}>Attachments / 첨부사진</div>
@@ -678,6 +775,7 @@ function POPrintModal({ po, company, onClose }: { po: PurchaseOrder & { imagesJs
 
 export default function PurchaseOrdersPage() {
   const [pos, setPos] = useState<(PurchaseOrder & { imagesJson?: string; depositRatio?: string })[]>([]);
+  const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('전체');
@@ -689,14 +787,16 @@ export default function PurchaseOrdersPage() {
 
   const load = async () => {
     setLoading(true);
-    const [posRes, companiesRes, productsRes] = await Promise.all([
+    const [posRes, companiesRes, productsRes, quotesRes] = await Promise.all([
       fetch('/api/purchase-orders').then(r => r.json()),
       fetch('/api/companies').then(r => r.json()),
       fetch('/api/products').then(r => r.json()),
+      fetch('/api/quotes').then(r => r.json()),
     ]);
     if (posRes.data) setPos(posRes.data);
     if (companiesRes.data) setCompanies(companiesRes.data);
     if (productsRes.data) setProducts(productsRes.data);
+    if (quotesRes.data) setQuotes(quotesRes.data);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -757,7 +857,7 @@ export default function PurchaseOrdersPage() {
                   <tr>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">발주번호</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">공급업체</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">제품</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">제품 (마우스 오버 시 이력)</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">금액</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">선금/잔금</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">ETD</th>
@@ -771,7 +871,15 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
                       <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                        <span className="truncate block max-w-[200px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span>
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[240px]">
+                          {po.items.map((i, idx) => (
+                            <span key={idx} className="flex items-center gap-1">
+                              <ProductHistoryPopup productName={i.productName} pos={pos} quotes={quotes} />
+                              <span className="text-muted-foreground">×{i.qty}</span>
+                              {idx < po.items.length - 1 && <span className="text-border">,</span>}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
