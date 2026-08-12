@@ -88,11 +88,17 @@ function POProductInput({
     .flatMap((po: any) => (po.items || []).filter((it: any) => isMatch(it.productName || ''))
       .map((it: any) => ({ date: po.orderDate || po.createdAt?.slice(0, 10) || '', supplier: po.supplierName || '', price: it.unitPrice || 0, qty: it.qty || it.quantity || 0, currency: po.currency || 'USD' })))
     .filter(h => h.price > 0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const qtHistory = quotes
+
+  const allQtHistory = quotes
     .flatMap((q: any) => (q.items || []).filter((it: any) => isMatch(it.productName || ''))
-      .map((it: any) => ({ date: (q as any).quoteDate || q.createdAt?.slice(0, 10) || '', company: q.companyName || '', price: it.unitPrice || 0, qty: it.quantity || it.qty || 0, currency: q.currency || 'USD' })))
-    .filter(h => h.price > 0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  const hasHistory = poHistory.length > 0 || qtHistory.length > 0;
+      .map((it: any) => ({ date: (q as any).quoteDate || q.createdAt?.slice(0, 10) || '', company: q.companyName || '', price: it.unitPrice || 0, qty: it.quantity || it.qty || 0, currency: q.currency || 'USD', status: q.status || '' })))
+    .filter(h => h.price > 0).sort((a, b) => b.date.localeCompare(a.date));
+
+  // 견적이력: draft/sent 상태 (아직 확정 안 된 견적)
+  const quoteHistory = allQtHistory.filter(h => ['draft', 'sent', ''].includes(h.status)).slice(0, 5);
+  // 판매이력: confirmed/completed (확정된 매출)
+  const saleHistory = allQtHistory.filter(h => ['confirmed', 'completed'].includes(h.status)).slice(0, 5);
+  const hasHistory = poHistory.length > 0 || allQtHistory.length > 0;
 
   const openDrop = () => {
     if (inputRef.current) {
@@ -134,41 +140,64 @@ function POProductInput({
       />
       {/* hover 이력 팝업 */}
       {showHist && hasHistory && (
-        <div style={histStyle} className="w-72 bg-background border border-border rounded-xl shadow-2xl text-xs overflow-hidden">
+        <div style={histStyle} className="w-80 bg-background border border-border rounded-xl shadow-2xl text-xs overflow-hidden">
+          {/* 발주 이력 */}
           {poHistory.length > 0 && (
             <div>
-              <div className="px-3 py-2 bg-blue-50 border-b border-border flex items-center gap-1.5">
+              <div className="px-3 py-1.5 bg-blue-50 border-b border-blue-100 flex items-center gap-1.5">
                 <TrendingDown className="w-3 h-3 text-blue-600" />
-                <span className="font-semibold text-blue-700 text-[10px] uppercase tracking-wide">발주 이력</span>
+                <span className="font-bold text-blue-700 text-[10px] uppercase tracking-wide">발주 이력</span>
               </div>
               {poHistory.map((h, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0">
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-blue-50/50">
                   <div className="min-w-0">
                     <p className="text-[10px] text-muted-foreground">{h.date}</p>
-                    <p className="font-medium truncate max-w-[140px]">{h.supplier}</p>
+                    <p className="font-semibold text-xs truncate max-w-[150px] text-blue-900">{h.supplier}</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-blue-700">{h.currency} {h.price.toFixed ? h.price.toFixed(2) : h.price.toLocaleString()}</p>
+                  <div className="text-right shrink-0 ml-2">
+                    <p className="font-bold text-blue-700 text-xs">{h.currency} {typeof h.price === 'number' ? h.price.toFixed(2) : h.price}</p>
                     <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          {qtHistory.length > 0 && (
+          {/* 견적 이력 (draft/sent) */}
+          {quoteHistory.length > 0 && (
             <div>
-              <div className="px-3 py-2 bg-emerald-50 border-b border-border flex items-center gap-1.5">
-                <TrendingUp className="w-3 h-3 text-emerald-600" />
-                <span className="font-semibold text-emerald-700 text-[10px] uppercase tracking-wide">견적(판매) 이력</span>
+              <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3 text-amber-600" />
+                <span className="font-bold text-amber-700 text-[10px] uppercase tracking-wide">견적 이력</span>
               </div>
-              {qtHistory.map((h, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0">
+              {quoteHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-amber-50/50">
                   <div className="min-w-0">
                     <p className="text-[10px] text-muted-foreground">{h.date}</p>
-                    <p className="font-medium truncate max-w-[140px]">{h.company}</p>
+                    <p className="font-semibold text-xs truncate max-w-[150px] text-amber-900">{h.company}</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-emerald-700">{h.currency} {h.price.toFixed ? h.price.toFixed(2) : h.price.toLocaleString()}</p>
+                  <div className="text-right shrink-0 ml-2">
+                    <p className="font-bold text-amber-700 text-xs">{h.currency} {typeof h.price === 'number' ? h.price.toFixed(2) : h.price}</p>
+                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* 판매 이력 (confirmed/completed) */}
+          {saleHistory.length > 0 && (
+            <div>
+              <div className="px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3 text-emerald-600" />
+                <span className="font-bold text-emerald-700 text-[10px] uppercase tracking-wide">판매 이력</span>
+              </div>
+              {saleHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-emerald-50/50">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
+                    <p className="font-semibold text-xs truncate max-w-[150px] text-emerald-900">{h.company}</p>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <p className="font-bold text-emerald-700 text-xs">{h.currency} {typeof h.price === 'number' ? h.price.toFixed(2) : h.price}</p>
                     <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
                   </div>
                 </div>
