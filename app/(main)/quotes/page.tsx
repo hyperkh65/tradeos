@@ -550,19 +550,25 @@ function QuoteModal({
             </div>
           </div>
 
-          {/* Remark / Special Notes / images */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Remark / Special Notes / GeneralInfo / images */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 (내부)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 (내부 — 미출력)</label>
               <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
                 placeholder="내부 메모..."
-                className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+                className="w-full h-20 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Terms & Special Notes (출력됨)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Terms &amp; Special Notes <span className="text-[10px] text-blue-500">(출력됨)</span></label>
               <textarea value={form.specialNotes} onChange={e => setForm(f => ({ ...f, specialNotes: e.target.value }))}
-                placeholder="결제조건, 은행정보, 특기사항 등 견적서에 출력될 내용..."
-                className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+                placeholder="결제조건, 유효기간 등 TERMS 섹션에 출력될 내용..."
+                className="w-full h-20 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">별도 표시 사항 <span className="text-[10px] text-blue-500">(출력됨)</span></label>
+              <textarea value={form.generalInfo} onChange={e => setForm(f => ({ ...f, generalInfo: e.target.value }))}
+                placeholder="품목 테이블 아래에 별도 출력될 사항..."
+                className="w-full h-20 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
             </div>
             <QuoteImageUpload images={images} quoteId={quoteId} onChange={setImages} />
           </div>
@@ -603,7 +609,7 @@ function QuoteModal({
 
 /* ─── Print Modal ────────────────────────────────────────────────────────── */
 
-function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: CompanySettings; onClose: () => void }) {
+function QuotePrintModal({ quote, company, companies, products, onClose }: { quote: Quote; company: CompanySettings; companies: any[]; products: any[]; onClose: () => void }) {
   const q = quote as any;
   const items = (quote.items || []) as any[];
   const totalAmount = items.reduce((s: number, i: any) => s + (i.amount || (i.unitPrice ?? 0) * (i.quantity ?? i.qty ?? 0)), 0);
@@ -613,7 +619,9 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
   const docTitle = docType === 'PROFORMA' ? 'PROFORMA INVOICE' : 'QUOTATION';
   const quoteImages: string[] = (() => { try { return JSON.parse(q.imagesJson || '[]'); } catch { return []; } })();
   const specialNotes = q.specialNotes || '';
+  const generalInfo = q.generalInfo || '';
   const bankInfo = quote.currency === 'KRW' ? company.bank : (company.bankForeign1 || company.bank);
+  const buyerCompany = companies.find((c: any) => c.name === quote.companyName);
 
   return (
     <>
@@ -698,7 +706,12 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
               <div className="qt-box">
                 <div className="qt-box-title">To (Buyer)</div>
                 <div className="qt-box-content">
-                  <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{quote.companyName}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', color: '#171717' }}>{quote.companyName}</div>
+                  {buyerCompany?.businessNo && <div style={{ marginBottom: '2px', fontSize: '10px', color: '#666' }}>Reg.No: {buyerCompany.businessNo}</div>}
+                  {buyerCompany?.ceo && <div style={{ marginBottom: '2px', fontSize: '10px', color: '#666' }}>CEO: {buyerCompany.ceo}</div>}
+                  {buyerCompany?.address && <div style={{ marginBottom: '2px', fontSize: '11px' }}>{buyerCompany.address}</div>}
+                  {buyerCompany?.phone && <div style={{ marginBottom: '2px', fontSize: '11px' }}>Tel: {buyerCompany.phone}</div>}
+                  {buyerCompany?.email && <div style={{ fontSize: '11px' }}>Email: {buyerCompany.email}</div>}
                 </div>
               </div>
             </div>
@@ -720,11 +733,17 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
               <tbody>
                 {items.map((it: any, i: number) => {
                   const amt = it.amount || (it.unitPrice ?? 0) * (it.quantity ?? it.qty ?? 0);
+                  const prod = products.find((p: any) => p.nameKo === it.productName || p.code === it.productName);
+                  const tv = it.voltage || prod?.voltage || '';
+                  const tw = it.watts || prod?.watts || '';
+                  const tc = it.cct || prod?.cct || '';
+                  const te = it.luminousEff || '';
+                  const tl = it.lumenOutput || '';
                   const techParts = [
-                    it.voltage && `${it.voltage}V`,
-                    it.watts && `${it.watts}W`,
-                    it.luminousEff && `${it.luminousEff}lm/W`,
-                    it.cct && it.cct,
+                    tv && `${tv}V`,
+                    tw && `${tw}W`,
+                    te && `${te}lm/W`,
+                    tc && tc,
                   ].filter(Boolean);
                   return (
                     <tr key={i}>
@@ -735,7 +754,7 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
                       </td>
                       <td style={{ textAlign: 'center', fontSize: '9px', color: '#666', lineHeight: '1.4' }}>
                         {techParts.length > 0 ? techParts.join(' / ') : '-'}
-                        {it.lumenOutput && <><br />{it.lumenOutput}lm</>}
+                        {tl && <><br />{tl}lm</>}
                       </td>
                       <td style={{ textAlign: 'center' }}>{it.unit || 'PCS'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>{(it.quantity ?? it.qty ?? 0).toLocaleString()}</td>
@@ -766,6 +785,14 @@ function QuotePrintModal({ quote, company, onClose }: { quote: Quote; company: C
                 </div>
               </div>
             </div>
+
+            {/* 별도표시 사항 */}
+            {generalInfo && (
+              <div style={{ border: '1px solid #e5e5e5', borderRadius: '4px', padding: '10px 14px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>별도 표시 사항</div>
+                <div style={{ fontSize: '10px', color: '#555', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{generalInfo}</div>
+              </div>
+            )}
 
             {/* Terms & Bank / Signature */}
             <div style={{ display: 'flex', gap: '24px', marginTop: '20px' }}>
@@ -1065,7 +1092,7 @@ export default function QuotesPage() {
 
       {/* Print modal */}
       {printModal.open && printModal.item && company && (
-        <QuotePrintModal quote={printModal.item} company={company} onClose={() => setPrintModal({ open: false })} />
+        <QuotePrintModal quote={printModal.item} company={company} companies={companies} products={products} onClose={() => setPrintModal({ open: false })} />
       )}
 
       {/* Admin password modal */}
