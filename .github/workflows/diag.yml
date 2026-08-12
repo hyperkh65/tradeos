@@ -15,21 +15,17 @@ jobs:
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
 
-            echo "=== newerp .env.local ==="
-            cat /volume1/web/newerp/.env.local 2>/dev/null | grep -v "^#" | grep -v "^$" | sed 's/=.*/=***/' || echo "없음"
+            echo "=== newerp docker-compose.yml ==="
+            cat /volume1/web/newerp/docker-compose.yml 2>/dev/null | sed 's/=.*/=***/' || echo "없음"
 
             echo ""
-            echo "=== newerp .env ==="
-            cat /volume1/web/newerp/.env 2>/dev/null | grep -v "^#" | grep -v "^$" | sed 's/=.*/=***/' || echo "없음"
+            echo "=== newerp src 구조 ==="
+            find /volume1/web/newerp/src -type f -name "*.ts" -o -name "*.tsx" 2>/dev/null | head -30
 
             echo ""
-            echo "=== newerp src/ 구조 ==="
-            find /volume1/web/newerp/src -name "*.ts" -o -name "*.tsx" 2>/dev/null | grep -i "sale\|매출" | head -10
+            echo "=== newerp .next/standalone 있는지 ==="
+            ls /volume1/web/newerp/.next/standalone/ 2>/dev/null | head -5 || echo "없음"
 
             echo ""
-            echo "=== newerp이 실행 중인지 확인 ==="
-            ps aux 2>/dev/null | grep "newerp\|ynk-erp" | grep -v grep | head -5
-
-            echo ""
-            echo "=== newerp 포트 확인 ==="
-            ss -tlnp 2>/dev/null | grep -E "3000|3001|3002|3100|3200" || netstat -tlnp 2>/dev/null | grep -E "3000|3001|3002|3100|3200"
+            echo "=== port 3100 실행중인 앱 ==="
+            ls -la /proc/$(ss -tlnp 2>/dev/null | grep ":3100 " | grep -oP '(?<=pid=)\d+' | head -1)/exe 2>/dev/null || echo "pid 못찾음"
