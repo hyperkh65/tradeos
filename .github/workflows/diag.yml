@@ -13,21 +13,9 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== newerp .env.local (키이름만) ==="
-            cat /volume1/web/newerp/.env.local 2>/dev/null | grep -v "^#" | grep -v "^$" | cut -d= -f1 || echo "없음"
+            echo "=== newerp lib/notion.ts 전체 DB 목록 ==="
+            cat /volume1/web/newerp/src/lib/notion.ts 2>/dev/null
 
             echo ""
-            echo "=== newerp .env.local NOTION 관련 ==="
-            cat /volume1/web/newerp/.env.local 2>/dev/null | grep -i "NOTION" | sed 's/=.*/=***/' || echo "없음"
-
-            echo ""
-            echo "=== newerp src에서 NOTION_DB_SALES 찾기 ==="
-            grep -r "NOTION_DB_SALES\|sales\|SALES" /volume1/web/newerp/src 2>/dev/null | grep -i "notion\|env\|DB_" | head -10
-
-            echo ""
-            echo "=== newerp src에서 supabase table 'sales' 찾기 ==="
-            grep -r "sales\|매출" /volume1/web/newerp/src 2>/dev/null | grep -i "from\|table\|select\|insert" | head -10
-
-            echo ""
-            echo "=== newerp .next/server/app 또는 pages 구조 ==="
-            find /volume1/web/newerp/.next -name "route.js" 2>/dev/null | grep -i "sale" | head -5
+            echo "=== newerp .env.local 실제 값 ==="
+            cat /volume1/web/newerp/.env.local 2>/dev/null || echo "없음"
