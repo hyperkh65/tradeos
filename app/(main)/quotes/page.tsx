@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   ClipboardList, Plus, Search, X, Loader2, Pencil, Trash2, Printer,
-  Copy, ChevronDown, Upload, History, Lock, AlertTriangle, Info,
+  Copy, ChevronDown, Upload, History, Lock, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -95,7 +95,6 @@ function ProductSearchHelper({
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
   ).slice(0, 8) : [];
 
-  // Build hints: for each match, find recent quote price
   const hints: PriceHint[] = matches.map(p => {
     const recentQuotes = quotes
       .flatMap(q => (q.items || []).filter((it: any) =>
@@ -103,21 +102,23 @@ function ProductSearchHelper({
         (p.code && it.productName?.includes(p.code))
       ).map((it: any) => ({ price: it.unitPrice, company: q.companyName, date: (q as any).quoteDate || q.createdAt })))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
     const ex = p as any;
     return {
-      code: p.code,
-      nameKo: p.nameKo,
-      purchasePrice: p.purchasePrice,
-      sellingPrice: p.sellingPrice,
+      code: p.code, nameKo: p.nameKo,
+      purchasePrice: p.purchasePrice, sellingPrice: p.sellingPrice,
       currency: p.currency || 'USD',
-      recentQuotePrice: recentQuotes[0]?.price,
-      recentQuoteCompany: recentQuotes[0]?.company,
+      recentQuotePrice: recentQuotes[0]?.price, recentQuoteCompany: recentQuotes[0]?.company,
       voltage: ex.voltage, watts: ex.watts, cct: ex.cct,
       sizeSpec: ex.sizeSpec, material: ex.material, converter: ex.converter, detail: ex.detail,
       specification: [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || ex.detail || '',
     };
   });
+
+  // Auto-show when value changes and matches exist
+  useEffect(() => {
+    setShow(value.length >= 1 && hints.length > 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, hints.length]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
@@ -125,46 +126,38 @@ function ProductSearchHelper({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  if (value.length < 1) return null;
+  if (!show || hints.length === 0) return null;
 
   return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setShow(v => !v)}
-        className="text-primary hover:text-primary/80 ml-1 align-middle" title="가격 도움말">
-        <Info className="w-3.5 h-3.5 inline" />
-      </button>
-      {show && (
-        <div className="absolute left-0 top-5 z-50 bg-background border border-border rounded-xl shadow-xl w-80 max-h-72 overflow-y-auto">
-          <div className="p-2 border-b bg-muted/30">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 결과 ({hints.length})</p>
+    <div ref={ref} className="absolute left-0 top-full mt-0.5 z-[60] bg-background border border-border rounded-xl shadow-xl w-80 max-h-72 overflow-y-auto">
+      <div className="p-2 border-b bg-muted/30">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
+      </div>
+      {hints.map(h => (
+        <button key={h.code} type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => { onSelect(h); setShow(false); }}
+          className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold">{h.nameKo}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
+              {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
+            </div>
+            <div className="text-right shrink-0">
+              {h.purchasePrice && (
+                <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
+              )}
+              {h.recentQuotePrice && (
+                <p className="text-[10px] text-emerald-600">최근견적 {h.currency} {h.recentQuotePrice.toFixed(2)}</p>
+              )}
+              {h.recentQuoteCompany && (
+                <p className="text-[9px] text-muted-foreground">{h.recentQuoteCompany}</p>
+              )}
+            </div>
           </div>
-          {hints.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">등록된 제품 없음</div>
-          ) : hints.map(h => (
-            <button key={h.code} type="button" onClick={() => { onSelect(h); setShow(false); }}
-              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold">{h.nameKo}</p>
-                  <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
-                  {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
-                </div>
-                <div className="text-right shrink-0">
-                  {h.purchasePrice && (
-                    <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
-                  )}
-                  {h.recentQuotePrice && (
-                    <p className="text-[10px] text-emerald-600">최근견적 {h.currency} {h.recentQuotePrice.toFixed(2)}</p>
-                  )}
-                  {h.recentQuoteCompany && (
-                    <p className="text-[9px] text-muted-foreground">{h.recentQuoteCompany}</p>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+        </button>
+      ))}
     </div>
   );
 }
@@ -463,9 +456,9 @@ function QuoteModal({
                   <tr key={(it as any).id} className="hover:bg-muted/20">
                     <td className="px-2 py-2 text-muted-foreground">{idx + 1}</td>
                     <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1">
+                      <div className="relative">
                         <input
-                          className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                          className="w-full bg-transparent border-none outline-none text-xs"
                           value={it.productName}
                           onChange={e => updateItem(idx, 'productName', e.target.value)}
                           placeholder="품목명 입력..."
@@ -721,13 +714,12 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
               <thead>
                 <tr>
                   <th style={{ width: '4%' }}>No</th>
-                  <th style={{ textAlign: 'left', paddingLeft: '8px', width: '24%' }}>Description / Specifications</th>
-                  <th style={{ width: '14%' }}>Tech Detail</th>
+                  <th style={{ textAlign: 'left', paddingLeft: '8px', width: '38%' }}>Description / Specifications</th>
                   <th style={{ width: '6%' }}>Unit</th>
                   <th style={{ width: '7%' }}>Qty</th>
-                  <th style={{ width: '13%', textAlign: 'right', paddingRight: '6px' }}>Unit Price</th>
-                  <th style={{ width: '15%', textAlign: 'right', paddingRight: '6px' }}>Amount</th>
-                  <th style={{ width: '17%' }}>Remarks</th>
+                  <th style={{ width: '14%', textAlign: 'right', paddingRight: '6px' }}>Unit Price</th>
+                  <th style={{ width: '16%', textAlign: 'right', paddingRight: '6px' }}>Amount</th>
+                  <th style={{ width: '15%' }}>Remarks</th>
                 </tr>
               </thead>
               <tbody>
@@ -750,11 +742,12 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                       <td style={{ textAlign: 'center', color: '#888' }}>{i + 1}</td>
                       <td style={{ paddingLeft: '8px' }}>
                         <div style={{ fontWeight: 600, color: '#171717', fontSize: '11px' }}>{it.productName}</div>
-                        {it.specification && <div style={{ fontSize: '9px', color: '#888', marginTop: '2px' }}>{it.specification}</div>}
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: '9px', color: '#666', lineHeight: '1.4' }}>
-                        {techParts.length > 0 ? techParts.join(' / ') : '-'}
-                        {tl && <><br />{tl}lm</>}
+                        {it.specification && <div style={{ fontSize: '9px', color: '#555', marginTop: '2px' }}>{it.specification}</div>}
+                        {(techParts.length > 0 || tl) && (
+                          <div style={{ fontSize: '8.5px', color: '#777', marginTop: '2px', fontStyle: 'italic' }}>
+                            {techParts.join(' / ')}{tl ? ` | ${tl}lm` : ''}
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: 'center' }}>{it.unit || 'PCS'}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>{(it.quantity ?? it.qty ?? 0).toLocaleString()}</td>
@@ -770,7 +763,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                 })}
                 {items.length < 8 && Array.from({ length: 8 - items.length }).map((_, i) => (
                   <tr key={`empty-${i}`}>
-                    <td style={{ padding: '14px' }}></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                    <td style={{ padding: '14px' }}></td><td></td><td></td><td></td><td></td><td></td><td></td>
                   </tr>
                 ))}
               </tbody>

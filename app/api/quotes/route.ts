@@ -82,10 +82,14 @@ export async function POST(req: NextRequest) {
     const id = newId();
     const ts = now();
 
-    const lastRow = db.prepare(`SELECT business_id FROM quotes WHERE business_id LIKE 'QT-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
     const year = new Date().getFullYear();
-    const bizId = body.businessId || `QT-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const allQtRows = db.prepare(`SELECT business_id FROM quotes WHERE business_id LIKE 'QT-${year}-%'`).all() as { business_id: string }[];
+    const maxNum = allQtRows.reduce((max, r) => {
+      const parts = r.business_id.split('-');
+      const n = parseInt(parts[parts.length - 1]) || 0;
+      return (n > 0 && n < 100000) ? Math.max(max, n) : max;
+    }, 0);
+    const bizId = body.businessId || `QT-${year}-${String(maxNum + 1).padStart(4, '0')}`;
 
     const items = (body.items || []).map((it: any) => ({
       ...it,
