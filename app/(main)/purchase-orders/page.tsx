@@ -999,60 +999,78 @@ export default function PurchaseOrdersPage() {
                 <tbody className="divide-y divide-border">
                   {filtered.map(po => {
                     const revisions: any[] = (() => { try { return JSON.parse((po as any).revisionsJson || '[]'); } catch { return []; } })();
-                    return (
-                    <React.Fragment key={po.id}>
-                    <tr className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
-                      <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                        <span className="truncate block max-w-[220px]">
-                          {po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
-                        {(() => {
-                          const ratio = Number((po as any).depositRatio || 30);
-                          const dep = po.depositAmount != null ? Number(po.depositAmount) : Math.round(po.totalAmount * ratio / 100);
-                          const bal = po.balanceAmount != null ? Number(po.balanceAmount) : po.totalAmount - dep;
-                          return dep > 0 ? <><span className="text-orange-600">{dep.toLocaleString()}</span> / {bal.toLocaleString()}</> : <span className="text-muted-foreground">-</span>;
-                        })()}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{po.etd ?? '-'}</td>
-                      <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center justify-end gap-1">
+                    const depDisplay = (p: any) => {
+                      const ratio = Number((p as any).depositRatio || 30);
+                      const dep = p.depositAmount != null ? Number(p.depositAmount) : Math.round(p.totalAmount * ratio / 100);
+                      const bal = p.balanceAmount != null ? Number(p.balanceAmount) : p.totalAmount - dep;
+                      return dep > 0 ? <><span className="text-orange-600">{dep.toLocaleString()}</span> / {bal.toLocaleString()}</> : <span className="text-muted-foreground">-</span>;
+                    };
+
+                    // No revisions: single normal row
+                    if (revisions.length === 0) return (
+                      <tr key={po.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
+                        <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[220px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span></td>
+                        <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{depDisplay(po)}</td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{po.etd ?? '-'}</td>
+                        <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
+                        <td className="px-3 py-3"><div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="발주서 출력" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(po.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                        </div>
-                      </td>
-                    </tr>
-                    {revisions.map((rev: any, ri: number) => (
-                      <tr key={`${po.id}-r${ri}`} className="bg-amber-50/40 dark:bg-amber-950/20 border-l-2 border-amber-300">
-                        <td className="px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-1 pl-4">
-                            <span className="text-amber-500">└</span>
-                            <History className="w-2.5 h-2.5 text-amber-500" />
-                            <span>Rev.{rev.rev}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground">{rev.date?.slice(0, 10)}</td>
-                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground hidden lg:table-cell">-</td>
-                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap">
-                          {rev.snapshot?.currency} {Number(rev.snapshot?.totalAmount || 0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-1.5 hidden xl:table-cell"></td>
-                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap hidden lg:table-cell">{rev.snapshot?.etd ?? '-'}</td>
-                        <td className="px-3 py-1.5">
-                          <span className={cn('text-[10px] px-2 py-0.5 rounded-full', statusColor[rev.snapshot?.status] || 'bg-gray-100 text-gray-500')}>
-                            {statusLabel[rev.snapshot?.status] || rev.snapshot?.status || '-'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5"></td>
+                        </div></td>
                       </tr>
-                    ))}
-                    </React.Fragment>
+                    );
+
+                    // Has revisions:
+                    // revisions[0].snapshot = ORIGINAL (before 1st edit)
+                    // revisions[1..n].snapshot = intermediate states
+                    // current PO = latest state
+                    const original = revisions[0].snapshot;
+                    const intermediates = revisions.slice(1); // states before 2nd, 3rd... edits
+
+                    const subRow = (snap: any, key: string, isLatest: boolean) => (
+                      <tr key={key} className={cn('border-l-2 border-blue-300', isLatest ? 'bg-blue-50/30 hover:bg-blue-50/50 dark:bg-blue-950/10' : 'bg-muted/20 opacity-70')}>
+                        <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                          <span className="text-blue-500 font-bold mr-1">›</span>
+                          <span className={isLatest ? 'font-medium' : 'text-muted-foreground'}>{po.businessId}</span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground"><span className="truncate block max-w-[140px]">{isLatest ? po.supplierName : (snap.supplierName || '-')}</span></td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground hidden lg:table-cell">
+                          {isLatest ? <span className="truncate block max-w-[220px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span> : <span>-</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs font-semibold whitespace-nowrap">{(isLatest ? po.currency : snap.currency)} {Number(isLatest ? po.totalAmount : snap.totalAmount || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-xs hidden xl:table-cell">{isLatest ? depDisplay(po) : <span className="text-muted-foreground">-</span>}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{(isLatest ? po.etd : snap.etd) ?? '-'}</td>
+                        <td className="px-3 py-2"><span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap', statusColor[isLatest ? po.status : snap.status] || 'bg-gray-100 text-gray-500')}>{statusLabel[isLatest ? po.status : snap.status] || (isLatest ? po.status : snap.status) || '-'}</span></td>
+                        <td className="px-3 py-2">{isLatest && <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="발주서 출력" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(po.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        </div>}</td>
+                      </tr>
+                    );
+
+                    return (
+                      <React.Fragment key={po.id}>
+                        {/* Original (first created) — muted parent row, no actions */}
+                        <tr className="hover:bg-muted/20 transition-colors">
+                          <td className="px-3 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{po.businessId}</td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground"><span className="truncate block max-w-[140px]">{original.supplierName || po.supplierName}</span></td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">-</td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">{original.currency} {Number(original.totalAmount || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground hidden xl:table-cell">-</td>
+                          <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden lg:table-cell">{original.etd ?? '-'}</td>
+                          <td className="px-3 py-3"><span className={cn('text-[10px] px-2 py-0.5 rounded-full', statusColor[original.status] || 'bg-gray-100 text-gray-500')}>{statusLabel[original.status] || original.status || '-'}</span></td>
+                          <td className="px-3 py-3"></td>
+                        </tr>
+                        {/* Intermediate revisions (after 1st edit, before last edit) */}
+                        {intermediates.map((rev: any, ri: number) => subRow(rev.snapshot, `${po.id}-mid-${ri}`, false))}
+                        {/* Latest (current) state with action buttons */}
+                        {subRow(null, `${po.id}-cur`, true)}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
