@@ -4,7 +4,8 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 interface InventoryItem {
   id: string; productName: string; productCode: string;
   qty: number; location: string;
-  purchasePrice?: number; currency: string;
+  unitPrice?: number; currency: string; exchangeRate: number;
+  remainValue?: number;
   memo?: string; notionId?: string;
   outQty: number; remainQty: number;
   updatedAt: string; createdAt: string;
@@ -12,18 +13,24 @@ interface InventoryItem {
 
 function dbToItem(row: Record<string, unknown>, outQty = 0): InventoryItem {
   const qty = (row.qty as number) || 0;
+  const unitPrice = row.purchase_price != null ? (row.purchase_price as number) : undefined;
+  const exchangeRate = (row.exchange_rate as number) || 1;
+  const remainQty = qty - outQty;
+  const remainValue = unitPrice != null ? Math.round(remainQty * unitPrice * exchangeRate) : undefined;
   return {
     id: row.id as string,
     productName: row.product_name as string,
     productCode: (row.product_code as string) || '',
     qty,
     location: (row.location as string) || '본사 창고',
-    purchasePrice: row.purchase_price != null ? (row.purchase_price as number) : undefined,
+    unitPrice,
     currency: (row.currency as string) || 'USD',
+    exchangeRate,
+    remainValue,
     memo: (row.memo as string) || undefined,
     notionId: (row.notion_id as string) || undefined,
     outQty,
-    remainQty: qty - outQty,
+    remainQty,
     updatedAt: row.updated_at as string,
     createdAt: row.created_at as string,
   };
@@ -64,11 +71,12 @@ export async function POST(req: NextRequest) {
   const id = newId();
   const ts = now();
 
-  db.prepare(`INSERT INTO inventory (id,product_name,product_code,qty,location,purchase_price,currency,memo,notion_id,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO inventory (id,product_name,product_code,qty,location,purchase_price,currency,exchange_rate,memo,notion_id,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, body.productName, body.productCode || '', body.qty ?? 0,
       body.location || '본사 창고',
-      body.purchasePrice ?? null, body.currency || 'USD',
+      body.unitPrice ?? null, body.currency || 'USD',
+      body.exchangeRate ?? 1,
       body.memo ?? null, null, ts, ts
     );
 
@@ -76,7 +84,7 @@ export async function POST(req: NextRequest) {
   const name = (body.productName || '').trim().toLowerCase();
   return NextResponse.json({
     data: dbToItem(
-      { id, product_name: body.productName, product_code: body.productCode || '', qty: body.qty ?? 0, location: body.location || '본사 창고', purchase_price: body.purchasePrice ?? null, currency: body.currency || 'USD', memo: body.memo ?? null, notion_id: null, updated_at: ts, created_at: ts },
+      { id, product_name: body.productName, product_code: body.productCode || '', qty: body.qty ?? 0, location: body.location || '본사 창고', purchase_price: body.unitPrice ?? null, currency: body.currency || 'USD', exchange_rate: body.exchangeRate ?? 1, memo: body.memo ?? null, notion_id: null, updated_at: ts, created_at: ts },
       outMap[name] || 0
     )
   }, { status: 201 });

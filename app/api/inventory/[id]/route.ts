@@ -6,11 +6,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json();
   const db = getDb();
   const ts = now();
-  db.prepare(`UPDATE inventory SET product_name=?,product_code=?,qty=?,location=?,purchase_price=?,currency=?,memo=?,updated_at=? WHERE id=?`)
+  db.prepare(`UPDATE inventory SET product_name=?,product_code=?,qty=?,location=?,purchase_price=?,currency=?,exchange_rate=?,memo=?,updated_at=? WHERE id=?`)
     .run(
       body.productName, body.productCode || '', body.qty ?? 0,
       body.location || '본사 창고',
-      body.purchasePrice ?? null, body.currency || 'USD',
+      body.unitPrice ?? null, body.currency || 'USD',
+      body.exchangeRate ?? 1,
       body.memo ?? null, ts, id
     );
   return NextResponse.json({ ok: true });

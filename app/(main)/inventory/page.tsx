@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Warehouse, Plus, Search, X, Pencil, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { Warehouse, Plus, Search, X, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
 interface Product {
@@ -13,7 +13,8 @@ interface Product {
 interface InventoryItem {
   id: string; productName: string; productCode: string;
   qty: number; location: string;
-  purchasePrice?: number; currency: string;
+  unitPrice?: number; currency: string; exchangeRate: number;
+  remainValue?: number;
   memo?: string;
   outQty: number; remainQty: number;
   updatedAt: string; createdAt: string;
@@ -22,11 +23,13 @@ interface InventoryItem {
 const LOCATIONS = ['본사 창고', '외부 창고', '중국 창고', '거래처 보관', '기타'];
 const CURRENCIES = ['USD', 'KRW', 'CNY', 'EUR'];
 
-function fmtPrice(price: number, currency: string) {
-  if (currency === 'KRW') return price.toLocaleString('ko-KR') + ' 원';
-  if (currency === 'CNY') return '¥ ' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (currency === 'EUR') return '€ ' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return '$ ' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtKRW(n: number) {
+  return n.toLocaleString('ko-KR') + ' 원';
+}
+
+function fmtUnit(price: number, currency: string) {
+  if (currency === 'KRW') return price.toLocaleString('ko-KR');
+  return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function ProductAutocomplete({
@@ -97,8 +100,9 @@ function ItemModal({
     productCode: item?.productCode || '',
     qty: item?.qty ?? 0,
     location: item?.location || '본사 창고',
-    purchasePrice: item?.purchasePrice ?? ('' as number | ''),
+    unitPrice: item?.unitPrice ?? ('' as number | ''),
     currency: item?.currency || 'USD',
+    exchangeRate: item?.exchangeRate ?? ('' as number | ''),
     memo: item?.memo || '',
   });
   const [saving, setSaving] = useState(false);
@@ -107,13 +111,23 @@ function ItemModal({
     setForm(f => ({ ...f, productName: p.nameKo, productCode: p.code }));
   };
 
+  // 잔존금액 미리보기 계산
+  const previewRemain = (() => {
+    const qty = Number(form.qty) || 0;
+    const up = form.unitPrice === '' ? null : Number(form.unitPrice);
+    const er = form.exchangeRate === '' ? 1 : Number(form.exchangeRate);
+    if (up == null) return null;
+    return Math.round(qty * up * er);
+  })();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.productName) return;
     setSaving(true);
     const payload = {
       ...form,
-      purchasePrice: form.purchasePrice === '' ? null : Number(form.purchasePrice),
+      unitPrice: form.unitPrice === '' ? null : Number(form.unitPrice),
+      exchangeRate: form.exchangeRate === '' ? 1 : Number(form.exchangeRate),
     };
     try {
       if (item) {
@@ -133,7 +147,7 @@ function ItemModal({
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* 제품명 (autocomplete) + 품번 (auto) */}
+          {/* 제품명 + 품번 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">제품명 *</label>
@@ -178,15 +192,15 @@ function ItemModal({
             </div>
           </div>
 
-          {/* 매입금액 + 화폐단위 */}
+          {/* 매입단가 + 화폐단위 */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">매입금액</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">매입단가</label>
               <Input
                 type="number"
                 step="any"
-                value={form.purchasePrice}
-                onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value === '' ? '' : Number(e.target.value) }))}
+                value={form.unitPrice}
+                onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value === '' ? '' : Number(e.target.value) }))}
                 placeholder="0"
                 min={0}
               />
@@ -202,6 +216,32 @@ function ItemModal({
               </select>
             </div>
           </div>
+
+          {/* 입고시점 환율 */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              입고시점 환율
+              {form.currency === 'KRW' && <span className="ml-2 text-muted-foreground">(KRW는 1 고정)</span>}
+            </label>
+            <Input
+              type="number"
+              step="any"
+              value={form.currency === 'KRW' ? 1 : form.exchangeRate}
+              onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value === '' ? '' : Number(e.target.value) }))}
+              placeholder="예: 1380"
+              min={0}
+              disabled={form.currency === 'KRW'}
+              className={form.currency === 'KRW' ? 'bg-muted/40' : ''}
+            />
+          </div>
+
+          {/* 잔존금액 미리보기 */}
+          {previewRemain != null && (
+            <div className="bg-muted/40 rounded-lg px-4 py-3 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">입고기준 잔존금액 (원화)</span>
+              <span className="font-bold text-sm">{fmtKRW(previewRemain)}</span>
+            </div>
+          )}
 
           {/* 메모 */}
           <div>
@@ -259,6 +299,7 @@ export default function InventoryPage() {
 
   const totalQty = filtered.reduce((s, i) => s + i.qty, 0);
   const totalRemain = filtered.reduce((s, i) => s + i.remainQty, 0);
+  const totalRemainValue = filtered.reduce((s, i) => s + (i.remainValue ?? 0), 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -274,8 +315,13 @@ export default function InventoryPage() {
               </button>
             )}
           </div>
-          <div className="text-sm text-muted-foreground whitespace-nowrap">
-            {filtered.length}종 / 입고 {totalQty.toLocaleString()} / 잔여 <span className={totalRemain < 0 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>{totalRemain.toLocaleString()}</span>
+          <div className="flex gap-4 text-sm flex-wrap">
+            <span className="text-muted-foreground">{filtered.length}종</span>
+            <span className="text-muted-foreground">입고 <b>{totalQty.toLocaleString()}</b></span>
+            <span className="text-muted-foreground">잔여 <b className={totalRemain < 0 ? 'text-red-500' : 'text-green-600'}>{totalRemain.toLocaleString()}</b></span>
+            {totalRemainValue > 0 && (
+              <span className="text-muted-foreground">잔존가치 <b className="text-blue-600">{fmtKRW(totalRemainValue)}</b></span>
+            )}
           </div>
           <Button onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4 mr-1" /> 재고 등록
@@ -294,20 +340,22 @@ export default function InventoryPage() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">입고</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">출고</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">잔여</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">매입단가</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">환율</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">잔존금액(₩)</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">위치</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">매입금액</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">메모</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">재고 데이터가 없습니다.</td></tr>
+                  <tr><td colSpan={11} className="text-center py-12 text-muted-foreground">재고 데이터가 없습니다.</td></tr>
                 ) : filtered.map(item => (
                   <tr key={item.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 font-medium">{item.productName}</td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{item.productCode || '-'}</td>
-                    <td className="px-4 py-3 text-right font-medium">{item.qty.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">{item.qty.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right">
                       {item.outQty > 0
                         ? <span className="text-orange-600 font-medium">{item.outQty.toLocaleString()}</span>
@@ -318,15 +366,27 @@ export default function InventoryPage() {
                         {item.remainQty.toLocaleString()}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-right text-xs font-mono">
+                      {item.unitPrice != null
+                        ? <>{fmtUnit(item.unitPrice, item.currency)} <span className="text-muted-foreground">{item.currency}</span></>
+                        : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                      {item.currency !== 'KRW' && item.unitPrice != null
+                        ? item.exchangeRate.toLocaleString()
+                        : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs font-mono">
+                      {item.remainValue != null
+                        ? <span className={item.remainValue <= 0 ? 'text-red-500' : 'text-blue-700 font-semibold'}>
+                            {item.remainValue.toLocaleString()}
+                          </span>
+                        : <span className="text-muted-foreground">-</span>}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-200">{item.location}</span>
                     </td>
-                    <td className="px-4 py-3 text-right text-xs">
-                      {item.purchasePrice != null
-                        ? <span className="font-mono">{fmtPrice(item.purchasePrice, item.currency)}</span>
-                        : <span className="text-muted-foreground">-</span>}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs max-w-32 truncate">{item.memo || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs max-w-28 truncate">{item.memo || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item })}>

@@ -475,6 +475,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE sales ADD COLUMN po_business_id TEXT`,
     `ALTER TABLE inventory ADD COLUMN purchase_price REAL`,
     `ALTER TABLE inventory ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'`,
+    `ALTER TABLE inventory ADD COLUMN exchange_rate REAL NOT NULL DEFAULT 1`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
