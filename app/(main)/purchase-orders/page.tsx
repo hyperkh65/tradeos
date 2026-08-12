@@ -755,6 +755,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   let attachImages: string[] = [];
   try { attachImages = JSON.parse((po as any).imagesJson || '[]'); } catch { attachImages = []; }
+  const emptyRows = Math.max(0, 8 - items.length);
 
   const handlePrint = () => {
     const orig = document.title;
@@ -763,27 +764,29 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
     window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
   };
 
-  const accentColor = '#0f2744';
-  const accentLight = '#e8edf5';
-
-  const infoBox = (label: string, children: React.ReactNode) => (
-    <div style={{ border: `1px solid #d0d8e4`, borderRadius: '6px', padding: '12px 14px', height: '100%' }}>
-      <div style={{ fontWeight: '700', fontSize: '7pt', color: accentColor, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1.2px', borderBottom: `2px solid ${accentColor}`, paddingBottom: '4px' }}>{label}</div>
-      {children}
-    </div>
-  );
-
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
         @media print {
           body * { visibility: hidden !important; }
           #po-print-area, #po-print-area * { visibility: visible !important; }
-          #po-print-area { position: fixed; left: 0; top: 0; width: 210mm; padding: 14mm 15mm !important; box-shadow: none !important; }
+          #po-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
           .no-print { display: none !important; }
+          @page { size: A4 portrait; margin: 0; }
         }
-        @page { size: A4 portrait; margin: 0; }
+        #po-print-area .po-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        #po-print-area .po-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        #po-print-area .po-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+        #po-print-area .po-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+        #po-print-area .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+        #po-print-area .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+        #po-print-area .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+        #po-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #po-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #po-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
       `}</style>
+
       <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
           <div className="flex items-center justify-between p-4 border-b no-print">
@@ -794,158 +797,150 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
             </div>
           </div>
 
-          <div id="po-print-area" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 15mm', background: 'white', fontFamily: "'Arial', 'Helvetica', sans-serif", color: '#1a1a1a', fontSize: '9pt', lineHeight: '1.5' }}>
+          <div id="po-print-area" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', background: 'white', color: '#171717', fontFamily: '"Noto Sans KR", Arial, sans-serif', boxSizing: 'border-box', padding: '10mm', position: 'relative' }}>
 
             {/* ── Header ── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', paddingBottom: '14px', borderBottom: `3px solid ${accentColor}` }}>
-              <div style={{ flex: '0 0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '50px' }}>
+              <div style={{ width: '30%' }}>
                 {company.logoUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={company.logoUrl} alt="logo" style={{ maxHeight: '55px', maxWidth: '180px', objectFit: 'contain' }} />
-                  : <div style={{ fontSize: '14pt', fontWeight: '800', color: accentColor, letterSpacing: '1px' }}>{company.name}</div>}
+                  ? <img src={company.logoUrl} alt="Logo" style={{ height: '45px', objectFit: 'contain', display: 'block' }} />
+                  : <div style={{ fontSize: '16px', fontWeight: 800, color: '#171717' }}>{company.name}</div>}
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '22pt', fontWeight: '800', letterSpacing: '4px', color: accentColor }}>PURCHASE ORDER</div>
-                <div style={{ fontSize: '8.5pt', color: '#666', marginTop: '2px' }}>구매발주서</div>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <h1 style={{ fontSize: '32px', fontWeight: 900, letterSpacing: '4px', margin: '0 0 5px 0', color: '#171717' }}>PURCHASE ORDER</h1>
+                <div style={{ width: '40px', height: '4px', background: '#171717', margin: '15px auto 0' }} />
               </div>
-              <div style={{ textAlign: 'right', fontSize: '8.5pt' }}>
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '3px' }}>
-                  <span style={{ color: '#888', minWidth: '40px' }}>PO No.</span>
-                  <strong style={{ color: accentColor, fontSize: '9.5pt' }}>{po.businessId}</strong>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginBottom: '3px' }}>
-                  <span style={{ color: '#888', minWidth: '40px' }}>Date</span>
-                  <span>{po.orderDate || today}</span>
-                </div>
-                {po.etd && (
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    <span style={{ color: '#888', minWidth: '40px' }}>ETD</span>
-                    <span>{po.etd}</span>
-                  </div>
-                )}
+              <div style={{ width: '30%', textAlign: 'right' }}>
+                <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>P.O Number</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#171717', marginBottom: '10px' }}>{po.businessId}</div>
+                <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Issue Date</div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#333' }}>{po.orderDate || today}</div>
+                {po.etd && <>
+                  <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', marginTop: '8px', textTransform: 'uppercase' }}>ETD</div>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#333' }}>{po.etd}</div>
+                </>}
               </div>
             </div>
 
-            {/* ── Buyer / Supplier ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', fontSize: '8.5pt' }}>
-              {infoBox('Buyer (매입자)', <>
-                <div style={{ fontWeight: '700', fontSize: '10.5pt', color: accentColor, marginBottom: '5px' }}>{company.name}</div>
-                {company.ceo && <div style={{ marginBottom: '2px', color: '#444' }}>대표: {company.ceo}</div>}
-                {company.bizNo && <div style={{ marginBottom: '2px', color: '#444' }}>사업자: {company.bizNo}</div>}
-                {company.address && <div style={{ marginBottom: '2px', color: '#444' }}>{company.address}</div>}
-                {company.tel && <div style={{ marginBottom: '2px', color: '#444' }}>TEL: {company.tel}</div>}
-                {company.fax && <div style={{ marginBottom: '2px', color: '#444' }}>FAX: {company.fax}</div>}
-                {company.email && <div style={{ color: '#444' }}>Email: {company.email}</div>}
-              </>)}
-              {infoBox('Supplier (공급자)', <>
-                <div style={{ fontWeight: '700', fontSize: '10.5pt', color: accentColor, marginBottom: '5px' }}>{po.supplierName}</div>
-                {supplierCompany?.ceo && <div style={{ marginBottom: '2px', color: '#444' }}>담당: {supplierCompany.ceo}</div>}
-                {supplierCompany?.address && <div style={{ marginBottom: '2px', color: '#444' }}>{supplierCompany.address}</div>}
-                {supplierCompany?.phone && <div style={{ marginBottom: '2px', color: '#444' }}>TEL: {supplierCompany.phone}</div>}
-                {supplierCompany?.email && <div style={{ marginBottom: '2px', color: '#444' }}>Email: {supplierCompany.email}</div>}
-                {supplierCompany?.wechat && <div style={{ marginBottom: '2px', color: '#444' }}>WeChat: {supplierCompany.wechat}</div>}
-                {supplierCompany?.bankNo && <div style={{ color: '#444' }}>Bank: {supplierCompany.bankNo}</div>}
-              </>)}
+            {/* ── Supplier / Ship To ── */}
+            <div className="box-container">
+              <div className="box">
+                <div className="box-title">Supplier (Vendor)</div>
+                <div className="box-content">
+                  <div style={{ fontSize: '18px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{po.supplierName}</div>
+                  {supplierCompany?.ceo && <div style={{ marginBottom: '2px' }}>Attn: {supplierCompany.ceo}</div>}
+                  {supplierCompany?.address && <div style={{ marginBottom: '2px' }}>{supplierCompany.address}</div>}
+                  {supplierCompany?.phone && <div style={{ marginBottom: '2px' }}>Tel: {supplierCompany.phone}</div>}
+                  {supplierCompany?.email && <div style={{ marginBottom: '2px' }}>Email: {supplierCompany.email}</div>}
+                  {supplierCompany?.wechat && <div>WeChat: {supplierCompany.wechat}</div>}
+                </div>
+              </div>
+              <div className="box-gray">
+                <div className="box-title-gray">Ship To (Buyer)</div>
+                <div className="box-content">
+                  <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{company.name}</div>
+                  {company.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
+                  {(company.tel || company.fax) && <div style={{ marginBottom: '2px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
+                  {company.email && <div style={{ marginBottom: '2px' }}>Email: {company.email}</div>}
+                  <div>Attn: Purchase Department</div>
+                </div>
+              </div>
             </div>
 
-            {/* ── Items Table ── */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '0', fontSize: '8.5pt' }}>
+            {/* ── Table ── */}
+            <table className="po-table">
               <thead>
-                <tr style={{ backgroundColor: accentColor, color: 'white' }}>
-                  <th style={{ padding: '9px 7px', textAlign: 'center', width: '28px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>No.</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'left', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Description / Model</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'center', width: '105px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Tech Detail</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'center', width: '36px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Unit</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'right', width: '48px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Qty</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'right', width: '85px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>Unit Price<br/>({po.currency})</th>
-                  <th style={{ padding: '9px 7px', textAlign: 'right', width: '85px' }}>Amount<br/>({po.currency})</th>
+                <tr>
+                  <th style={{ width: '5%' }}>No</th>
+                  <th style={{ textAlign: 'left', paddingLeft: '10px' }}>Description / Specifications</th>
+                  <th style={{ width: '14%' }}>Tech Data</th>
+                  <th style={{ width: '7%' }}>Unit</th>
+                  <th style={{ width: '8%' }}>Qty</th>
+                  <th style={{ width: '12%', textAlign: 'right', paddingRight: '8px' }}>Unit Price ({po.currency})</th>
+                  <th style={{ width: '14%', textAlign: 'right', paddingRight: '8px' }}>Amount ({po.currency})</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it: any, idx: number) => {
-                  const techDetail = [
-                    it.voltage, it.watts, it.cct, it.luminousEff, it.lumenOutput,
-                  ].filter(Boolean).join('\n');
-                  const specDisplay = it.specification ? cleanSpec(it.specification) : '';
+                {items.map((it: any, i: number) => {
+                  const tech = [it.voltage, it.watts, it.cct, it.luminousEff, it.lumenOutput].filter(Boolean).join(' / ');
+                  const spec = it.specification ? cleanSpec(it.specification) : '';
                   const rowAmt = it.amount || (it.unitPrice * (it.qty || it.quantity || 0)) || 0;
                   return (
-                    <tr key={idx} style={{ borderBottom: '1px solid #e0e6ee', backgroundColor: idx % 2 === 0 ? '#fff' : '#f7f9fc' }}>
-                      <td style={{ padding: '8px 7px', textAlign: 'center', color: '#666' }}>{idx + 1}</td>
-                      <td style={{ padding: '8px 7px' }}>
-                        <div style={{ fontWeight: '700', fontSize: '9pt', marginBottom: specDisplay ? '3px' : 0 }}>{it.productName}</div>
-                        {specDisplay && <div style={{ color: '#555', fontSize: '7.5pt', lineHeight: '1.4' }}>{specDisplay}</div>}
-                        {it.remarks && <div style={{ color: '#888', fontSize: '7pt', fontStyle: 'italic', marginTop: '2px' }}>{it.remarks}</div>}
+                    <tr key={i}>
+                      <td style={{ textAlign: 'center', color: '#888' }}>{i + 1}</td>
+                      <td style={{ paddingLeft: '10px' }}>
+                        <div style={{ fontWeight: 600, color: '#171717' }}>{it.productName}</div>
+                        {spec && <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>{spec}</div>}
                       </td>
-                      <td style={{ padding: '8px 7px', textAlign: 'center', color: '#444', fontSize: '7.5pt', whiteSpace: 'pre-line', lineHeight: '1.5' }}>{techDetail || '—'}</td>
-                      <td style={{ padding: '8px 7px', textAlign: 'center', color: '#444' }}>{it.unit || 'PCS'}</td>
-                      <td style={{ padding: '8px 7px', textAlign: 'right', fontWeight: '600' }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 7px', textAlign: 'right' }}>{fmtNum(it.unitPrice || 0, po.currency)}</td>
-                      <td style={{ padding: '8px 7px', textAlign: 'right', fontWeight: '700' }}>{fmtNum(rowAmt, po.currency)}</td>
+                      <td style={{ textAlign: 'center', fontSize: '10px', color: '#666' }}>{tech || '—'}</td>
+                      <td style={{ textAlign: 'center' }}>{it.unit || 'PCS'}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{(it.qty || it.quantity || 0).toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', paddingRight: '8px' }}>{fmtNum(it.unitPrice || 0, po.currency)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#171717', paddingRight: '8px' }}>{fmtNum(rowAmt, po.currency)}</td>
                     </tr>
                   );
                 })}
+                {Array.from({ length: emptyRows }).map((_, i) => (
+                  <tr key={`e${i}`}><td style={{ padding: '14px' }} /><td /><td /><td /><td /><td /><td /></tr>
+                ))}
               </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '1px solid #c8d4e4', backgroundColor: '#f0f4fa' }}>
-                  <td colSpan={6} style={{ padding: '7px 7px', textAlign: 'right', color: '#555', fontWeight: '600' }}>Sub Total</td>
-                  <td style={{ padding: '7px 7px', textAlign: 'right', fontWeight: '700' }}>{fmtNum(totalAmount, po.currency)}</td>
-                </tr>
-                {depositAmount > 0 && <>
-                  <tr style={{ backgroundColor: '#fffaf4', borderTop: '1px solid #f0d8b8' }}>
-                    <td colSpan={6} style={{ padding: '7px 7px', textAlign: 'right', color: '#b04000', fontWeight: '600' }}>Deposit {depositRatio}% (선금)</td>
-                    <td style={{ padding: '7px 7px', textAlign: 'right', color: '#b04000', fontWeight: '700' }}>{po.currency} {fmtNum(depositAmount, po.currency)}</td>
-                  </tr>
-                  <tr style={{ backgroundColor: '#f4f8ff', borderTop: '1px solid #b8cff0' }}>
-                    <td colSpan={6} style={{ padding: '7px 7px', textAlign: 'right', color: '#0040a0', fontWeight: '600' }}>Balance {100 - depositRatio}% (잔금)</td>
-                    <td style={{ padding: '7px 7px', textAlign: 'right', color: '#0040a0', fontWeight: '700' }}>{po.currency} {fmtNum(balanceAmount, po.currency)}</td>
-                  </tr>
-                </>}
-                <tr style={{ backgroundColor: accentColor }}>
-                  <td colSpan={6} style={{ padding: '11px 7px', textAlign: 'right', fontWeight: '800', fontSize: '10.5pt', color: 'white', letterSpacing: '0.5px' }}>GRAND TOTAL ({po.currency})</td>
-                  <td style={{ padding: '11px 7px', textAlign: 'right', fontWeight: '800', fontSize: '12pt', color: '#ffd700', letterSpacing: '0.5px' }}>{fmtNum(totalAmount, po.currency)}</td>
-                </tr>
-              </tfoot>
             </table>
 
-            {/* ── Terms + Bank ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '14px', marginBottom: '18px', fontSize: '8.5pt' }}>
-              {infoBox('Terms & Conditions', <>
-                {po.paymentTerms && <div style={{ marginBottom: '3px' }}><span style={{ color: '#888' }}>Payment: </span>{po.paymentTerms}</div>}
-                {po.incoterm && <div style={{ marginBottom: '3px' }}><span style={{ color: '#888' }}>Incoterm: </span>{po.incoterm}</div>}
-                {po.orderDate && <div style={{ marginBottom: '3px' }}><span style={{ color: '#888' }}>Order Date: </span>{po.orderDate}</div>}
-                {po.etd && <div style={{ marginBottom: '3px' }}><span style={{ color: '#888' }}>ETD: </span>{po.etd}</div>}
-                {po.remark && <div style={{ marginTop: '5px', padding: '5px', background: '#f5f5f5', borderRadius: '3px', color: '#555', fontSize: '7.5pt' }}>{po.remark}</div>}
-              </>)}
-              {infoBox('Remittance Information', <>
-                {company.bankForeign1
-                  ? <div style={{ fontFamily: 'monospace', fontSize: '8pt', whiteSpace: 'pre-line', color: '#222', lineHeight: '1.7' }}>{company.bankForeign1}</div>
-                  : company.bank
-                    ? <div style={{ fontSize: '8pt', whiteSpace: 'pre-line', lineHeight: '1.7' }}>{company.bank}</div>
-                    : <div style={{ color: '#aaa', fontSize: '7.5pt' }}>은행 정보 없음 (설정 &gt; 회사정보)</div>}
-              </>)}
+            {/* ── Totals ── */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '40px', alignItems: 'flex-start' }}>
+              {depositAmount > 0 && (
+                <div style={{ textAlign: 'right', fontSize: '12px', color: '#555', lineHeight: '2' }}>
+                  <div>Sub Total: <strong>{po.currency} {fmtNum(totalAmount, po.currency)}</strong></div>
+                  <div style={{ color: '#c05000' }}>Deposit {depositRatio}% (선금): <strong>{po.currency} {fmtNum(depositAmount, po.currency)}</strong></div>
+                  <div style={{ color: '#1a50a0' }}>Balance {100 - depositRatio}% (잔금): <strong>{po.currency} {fmtNum(balanceAmount, po.currency)}</strong></div>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#666' }}>GRAND TOTAL ({po.currency})</div>
+                <div style={{ fontSize: '26px', fontWeight: 900, color: '#171717' }}>{fmtNum(totalAmount, po.currency)}</div>
+              </div>
             </div>
 
-            {/* ── Signature ── */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ textAlign: 'center', minWidth: '180px' }}>
-                <div style={{ fontSize: '8pt', color: '#888', marginBottom: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>Authorized Signature</div>
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+            {/* ── Terms + Signature ── */}
+            <div style={{ display: 'flex', gap: '30px', marginTop: '40px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Terms & Conditions</div>
+                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '10px', whiteSpace: 'pre-wrap' }}>
+                  {po.paymentTerms && `Payment: ${po.paymentTerms}\n`}
+                  {po.incoterm && `Incoterm: ${po.incoterm}\n`}
+                  {po.orderDate && `Order Date: ${po.orderDate}\n`}
+                  {po.etd && `ETD: ${po.etd}\n`}
+                  {po.remark || ''}
+                </div>
+                {(company.bankForeign1 || company.bank) && (
+                  <div style={{ marginTop: '16px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase' }}>Remittance Information</div>
+                    <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '10px', whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
+                      {company.bankForeign1 || company.bank}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{ width: '260px', display: 'flex', flexDirection: 'column', minHeight: '160px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '10px', textTransform: 'uppercase' }}>Authorized Signature</div>
+                <div style={{ flex: 1, borderBottom: '2px solid #171717', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px' }}>
                   {company.stampUrl
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={company.stampUrl} alt="stamp" style={{ height: '130px', width: '130px', objectFit: 'contain', display: 'block', margin: '0 auto 10px' }} />
-                    : <div style={{ height: '130px', width: '130px', border: '2px dashed #ccc', borderRadius: '50%', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: '8pt' }}>직인</div>}
+                    ? <img src={company.stampUrl} alt="Stamp" style={{ width: '220px', opacity: 0.85, transform: 'rotate(-5deg)', position: 'absolute' }} />
+                    : <div style={{ width: '140px', height: '140px', border: '1px dashed #ccc', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: '11px' }}>직인</div>}
                 </div>
-                <div style={{ borderTop: '2px solid ' + accentColor, paddingTop: '6px', fontSize: '9.5pt', fontWeight: '800', color: accentColor }}>{company.name}</div>
+                <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, marginTop: '8px', color: '#171717' }}>{company.name}</div>
               </div>
             </div>
 
             {attachImages.length > 0 && (
-              <div style={{ marginTop: '24px', pageBreakBefore: 'always' }}>
-                <div style={{ fontWeight: '700', fontSize: '9pt', marginBottom: '12px', borderBottom: `2px solid ${accentColor}`, paddingBottom: '5px', color: accentColor }}>Attachments / 첨부사진</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+              <div style={{ pageBreakBefore: 'always', marginTop: '50px', padding: '10px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '20px', borderBottom: '2px solid #171717', paddingBottom: '10px' }}>ATTACHMENTS</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
                   {attachImages.map((url, i) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i} src={url} alt={`attachment-${i + 1}`} style={{ width: '100%', height: '150px', objectFit: 'contain', border: '1px solid #e0e0e0', borderRadius: '6px' }} />
+                    <img key={i} src={url} alt={`attachment-${i + 1}`} style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} />
                   ))}
                 </div>
               </div>
