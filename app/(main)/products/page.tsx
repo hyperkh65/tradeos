@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import {
   Package, Plus, Search, X, Loader2, Pencil, Trash2, ImageIcon, Upload,
   ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, Zap, Sun, Thermometer,
-  ArrowRight, Box, Layers, RefreshCw,
+  ArrowRight, Box, Layers, RefreshCw, Lock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -15,6 +15,23 @@ import type { Product } from '@/types';
 
 const CATEGORIES = ['조명', '가전', '전자', '생활용품', '산업용품', '기타'];
 const MIN_IMAGE_SLOTS = 5;
+const ADMIN_PASSWORD = '1209';
+function isPrevMonth(d?: string) { if (!d) return false; const t = new Date(d), n = new Date(); return t.getFullYear() < n.getFullYear() || (t.getFullYear() === n.getFullYear() && t.getMonth() < n.getMonth()); }
+function AdminPasswordModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const [pw, setPw] = useState(''); const [err, setErr] = useState(false);
+  const check = () => { if (pw === ADMIN_PASSWORD) onConfirm(); else setErr(true); };
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
+      <div className="bg-background rounded-xl shadow-2xl p-6 w-80">
+        <div className="flex items-center gap-2 mb-3"><Lock className="w-5 h-5 text-orange-500" /><h3 className="font-semibold">전월 제품 수정</h3></div>
+        <p className="text-sm text-muted-foreground mb-4">전월 등록 제품은 관리자만 수정할 수 있습니다.<br />관리자 비밀번호를 입력하세요.</p>
+        <Input type="password" placeholder="비밀번호" value={pw} onChange={e => { setPw(e.target.value); setErr(false); }} onKeyDown={e => e.key === 'Enter' && check()} className={err ? 'border-red-400' : ''} autoFocus />
+        {err && <p className="text-xs text-red-500 mt-1">비밀번호가 올바르지 않습니다.</p>}
+        <div className="flex gap-2 mt-4"><Button variant="outline" className="flex-1" onClick={onCancel}>취소</Button><Button className="flex-1" onClick={check}>확인</Button></div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── Exchange rates ─────────────────────────────────────────────────────── */
 
@@ -706,6 +723,7 @@ export default function ProductsPage() {
   const [catFilter, setCatFilter] = useState('전체');
   const [modal, setModal] = useState<{ open: boolean; item?: Product | null; preId: string }>({ open: false, preId: '' });
   const [drawer, setDrawer] = useState<Product | null>(null);
+  const [adminModal, setAdminModal] = useState<{ open: boolean; action: () => void }>({ open: false, action: () => {} });
   const rates = useExchangeRates();
 
   const load = async () => {
@@ -732,6 +750,10 @@ export default function ProductsPage() {
   const openModal = (item?: Product | null) => {
     const preId = Math.random().toString(36).slice(2) + Date.now().toString(36);
     setModal({ open: true, item, preId });
+  };
+  const guardEdit = (item: Product, action: () => void) => {
+    if (isPrevMonth(item.createdAt)) setAdminModal({ open: true, action });
+    else action();
   };
 
   // Categories from loaded products
@@ -834,8 +856,8 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-0.5">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openModal(p)}>
-                              <Pencil className="w-3.5 h-3.5" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(p, () => openModal(p))}>
+                              {isPrevMonth(p.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}>
                               <Trash2 className="w-3.5 h-3.5" />
@@ -877,7 +899,7 @@ export default function ProductsPage() {
                         <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full">{imgs.length}장</div>
                       )}
                       <div className="absolute bottom-1.5 right-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
-                        <button type="button" onClick={() => openModal(p)} className="bg-white/90 rounded-full p-1 shadow"><Pencil className="w-3 h-3 text-gray-700" /></button>
+                        <button type="button" onClick={() => guardEdit(p, () => openModal(p))} className="bg-white/90 rounded-full p-1 shadow"><Pencil className="w-3 h-3 text-gray-700" /></button>
                         <button type="button" onClick={() => handleDelete(p.id)} className="bg-white/90 rounded-full p-1 shadow"><Trash2 className="w-3 h-3 text-red-500" /></button>
                       </div>
                     </div>
@@ -911,6 +933,13 @@ export default function ProductsPage() {
         />
       )}
 
+      {adminModal.open && (
+        <AdminPasswordModal
+          onConfirm={() => { setAdminModal({ open: false, action: () => {} }); adminModal.action(); }}
+          onCancel={() => setAdminModal({ open: false, action: () => {} })}
+        />
+      )}
+
       {/* Detail drawer */}
       {drawer && (
         <ProductDrawer
@@ -919,7 +948,7 @@ export default function ProductsPage() {
           pos={pos}
           quotes={quotes}
           onClose={() => setDrawer(null)}
-          onEdit={() => { setDrawer(null); openModal(drawer); }}
+          onEdit={() => { setDrawer(null); guardEdit(drawer, () => openModal(drawer)); }}
           onDelete={() => { handleDelete(drawer.id); }}
         />
       )}

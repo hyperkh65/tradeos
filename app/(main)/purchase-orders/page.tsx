@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, History, Maximize2 } from 'lucide-react';
+import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, History, Maximize2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { PurchaseOrder } from '@/types';
@@ -18,6 +18,24 @@ const emptyItem = () => ({
   luminousEff: '', lumenOutput: '',
   unit: 'PCS', qty: 1, unitPrice: 0, amount: 0, remarks: '',
 });
+
+const ADMIN_PASSWORD = '1209';
+function isPrevMonth(d?: string) { if (!d) return false; const t = new Date(d), n = new Date(); return t.getFullYear() < n.getFullYear() || (t.getFullYear() === n.getFullYear() && t.getMonth() < n.getMonth()); }
+function AdminPasswordModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const [pw, setPw] = useState(''); const [err, setErr] = useState(false);
+  const check = () => { if (pw === ADMIN_PASSWORD) onConfirm(); else setErr(true); };
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60">
+      <div className="bg-background rounded-xl shadow-2xl p-6 w-80">
+        <div className="flex items-center gap-2 mb-3"><Lock className="w-5 h-5 text-orange-500" /><h3 className="font-semibold">전월 발주 수정</h3></div>
+        <p className="text-sm text-muted-foreground mb-4">전월 발주는 관리자만 수정할 수 있습니다.<br />관리자 비밀번호를 입력하세요.</p>
+        <Input type="password" placeholder="비밀번호" value={pw} onChange={e => { setPw(e.target.value); setErr(false); }} onKeyDown={e => e.key === 'Enter' && check()} className={err ? 'border-red-400' : ''} autoFocus />
+        {err && <p className="text-xs text-red-500 mt-1">비밀번호가 올바르지 않습니다.</p>}
+        <div className="flex gap-2 mt-4"><Button variant="outline" className="flex-1" onClick={onCancel}>취소</Button><Button className="flex-1" onClick={check}>확인</Button></div>
+      </div>
+    </div>
+  );
+}
 
 const CURRENCY_CODES_RE = /\s*\|\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i;
 const cleanSpec = (s: string) => s.replace(CURRENCY_CODES_RE, '').replace(/^\s*(USD|EUR|KRW|CNY|RMB|JPY|GBP|HKD)\s*$/i, '').trim();
@@ -915,6 +933,7 @@ export default function PurchaseOrdersPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [adminModal, setAdminModal] = useState<{ open: boolean; action: () => void }>({ open: false, action: () => {} });
 
   const load = async () => {
     setLoading(true);
@@ -931,6 +950,11 @@ export default function PurchaseOrdersPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  const guardEdit = (po: any, action: () => void) => {
+    if (isPrevMonth(po.orderDate || po.createdAt)) setAdminModal({ open: true, action });
+    else action();
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('발주를 삭제하시겠습니까?')) return;
@@ -1018,7 +1042,7 @@ export default function PurchaseOrdersPage() {
                         <td className="px-3 py-3"><span className={cn('text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap', statusColor[po.status])}>{statusLabel[po.status]}</span></td>
                         <td className="px-3 py-3"><div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="발주서 출력" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(po, () => setModal({ open: true, item: po }))}>{isPrevMonth(po.orderDate || po.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(po.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div></td>
                       </tr>
@@ -1047,7 +1071,7 @@ export default function PurchaseOrdersPage() {
                         <td className="px-3 py-2"><span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap', statusColor[isLatest ? po.status : snap.status] || 'bg-gray-100 text-gray-500')}>{statusLabel[isLatest ? po.status : snap.status] || (isLatest ? po.status : snap.status) || '-'}</span></td>
                         <td className="px-3 py-2">{isLatest && <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="발주서 출력" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(po, () => setModal({ open: true, item: po }))}>{isPrevMonth(po.orderDate || po.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" /></Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(po.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>}</td>
                       </tr>
@@ -1089,7 +1113,7 @@ export default function PurchaseOrdersPage() {
                     <div className="flex items-center gap-1 shrink-0">
                       <span className={cn('text-[11px] font-semibold px-2.5 py-0.5 rounded-full', statusColor[po.status])}>{statusLabel[po.status]}</span>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" onClick={() => handlePrint(po)}><Printer className="w-3.5 h-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModal({ open: true, item: po })}><Pencil className="w-3.5 h-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(po, () => setModal({ open: true, item: po }))}><Pencil className="w-3.5 h-3.5" /></Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(po.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                     </div>
                   </div>
@@ -1118,6 +1142,12 @@ export default function PurchaseOrdersPage() {
       )}
       {printModal.open && printModal.item && company && (
         <POPrintModal po={printModal.item as any} company={company} onClose={() => setPrintModal({ open: false })} />
+      )}
+      {adminModal.open && (
+        <AdminPasswordModal
+          onConfirm={() => { setAdminModal({ open: false, action: () => {} }); adminModal.action(); }}
+          onCancel={() => setAdminModal({ open: false, action: () => {} })}
+        />
       )}
     </div>
   );
