@@ -689,15 +689,30 @@ export default function CRMPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [adminModal, setAdminModal] = useState<{ open: boolean; action: () => void }>({ open: false, action: () => {} });
 
+  const safeFetch = async (url: string, fallback: object) => {
+    try {
+      const r = await fetch(url);
+      // session expired → middleware redirects to login (returns HTML)
+      if (r.redirected || r.url.includes('/login')) {
+        window.location.href = '/login';
+        return fallback;
+      }
+      if (!r.ok) return fallback;
+      return await r.json();
+    } catch {
+      return fallback;
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
       const [sRes, cRes, pRes, csRes, poRes] = await Promise.all([
-        fetch('/api/sales').then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/companies').then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/products').then(r => r.json()).catch(() => ({ data: [] })),
-        fetch('/api/settings/company').then(r => r.json()).catch(() => ({ data: null })),
-        fetch('/api/purchase-orders').then(r => r.json()).catch(() => ({ data: [] })),
+        safeFetch('/api/sales', { data: [] }),
+        safeFetch('/api/companies', { data: [] }),
+        safeFetch('/api/products', { data: [] }),
+        safeFetch('/api/settings/company', { data: null }),
+        safeFetch('/api/purchase-orders', { data: [] }),
       ]);
       setSales(Array.isArray(sRes.data) ? sRes.data : []);
       setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
