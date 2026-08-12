@@ -11,6 +11,8 @@ function dbToSale(row: Record<string, unknown>) {
     items: JSON.parse(row.items_json as string || '[]'),
     netAmount: row.net_amount, vat: row.vat, totalAmount: row.total_amount,
     currency: row.currency, createdAt: row.created_at,
+    exchangeRate: (row.exchange_rate as number) ?? 1,
+    misc: (row.misc as string) || undefined,
   };
 }
 
@@ -74,11 +76,10 @@ export async function GET() {
     if (notionSales.length > 0) {
       db.transaction(() => {
         for (const s of notionSales) {
-          db.prepare(`INSERT OR REPLACE INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-            .run(s.id, s.businessId, s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.currency, s.createdAt);
+          db.prepare(`INSERT OR IGNORE INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run(s.id, s.businessId, s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.currency, s.createdAt, 1);
         }
       })();
-      return NextResponse.json({ data: notionSales });
     }
   } catch (e) {
     console.error('[Sales] Notion fetch error:', e);
@@ -100,9 +101,11 @@ export async function POST(req: NextRequest) {
   const bizId = body.businessId || `SA-${year}-${String(lastNum + 1).padStart(4, '0')}`;
 
   const items = body.items || [];
+  const rate = Number(body.exchangeRate) || 1;
   const netAmount = items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
-  const vat = Math.round(netAmount * 0.1);
-  const totalAmount = netAmount + vat;
+  const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
+  const vat = Math.round(netKRW * 0.1);
+  const totalAmount = netKRW + vat;
 
   // Save to Notion DB_SALES
   const salesDbId = process.env.NOTION_DB_SALES || '';
@@ -132,8 +135,8 @@ export async function POST(req: NextRequest) {
     } catch (e) { console.error('[Sales] Notion create error:', e); }
   }
 
-  db.prepare(`INSERT INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id, bizId, body.saleDate || ts.slice(0, 10), body.customer, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, totalAmount, body.currency || 'KRW', ts);
+  db.prepare(`INSERT INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate,misc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(id, bizId, body.saleDate || ts.slice(0, 10), body.customer, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, totalAmount, body.currency || 'KRW', ts, rate, body.misc ?? null);
 
   return NextResponse.json({ data: { id, businessId: bizId, saleDate: body.saleDate, customer: body.customer, saleType: body.saleType, items, netAmount, vat, totalAmount, currency: body.currency || 'KRW', createdAt: ts } }, { status: 201 });
 }
