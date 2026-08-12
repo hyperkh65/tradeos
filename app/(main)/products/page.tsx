@@ -610,7 +610,7 @@ function ImageGrid({ images, productId, onChange, disabled }: ImageGridProps) {
 
 /* ─── Product Modal (Edit/Create) ────────────────────────────────────────── */
 
-function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null; preId: string; onClose: () => void; onSave: () => void }) {
+function ProductModal({ item, preId, products: allProducts, onClose, onSave }: { item?: Product | null; preId: string; products: Product[]; onClose: () => void; onSave: () => void }) {
   const ex = item as any;
   const productId = item?.id || preId;
   const [images, setImages] = useState<string[]>(() => {
@@ -618,6 +618,7 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
     if (ex?.imageUrl) return [ex.imageUrl];
     return [];
   });
+  const [dupErr, setDupErr] = useState('');
   const [form, setForm] = useState({
     code: item?.code || '',
     nameKo: item?.nameKo || '',
@@ -652,11 +653,35 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nameKo || !form.code) return;
+    if (!form.nameKo) return;
+
+    // 중복 검사
+    const dup = allProducts.find(p =>
+      p.id !== item?.id && (
+        (form.nameKo && p.nameKo === form.nameKo) ||
+        (form.nameEn && form.nameEn.trim() && p.nameEn === form.nameEn.trim())
+      )
+    );
+    if (dup) {
+      setDupErr(`이미 등록된 제품명입니다. (${dup.code} - ${dup.nameKo})`);
+      return;
+    }
+    setDupErr('');
+
+    // 품번 자동 생성
+    let code = form.code.trim();
+    if (!code) {
+      const nums = allProducts
+        .map(p => { const m = p.code?.match(/^P-(\d+)$/); return m ? parseInt(m[1]) : 0; })
+        .filter(n => n > 0);
+      const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+      code = `P-${String(next).padStart(4, '0')}`;
+    }
+
     setSaving(true);
     try {
       const body = {
-        ...form, images,
+        ...form, code, images,
         purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
         sellingPrice: form.sellingPrice ? Number(form.sellingPrice) : undefined,
         moq: form.moq ? Number(form.moq) : undefined,
@@ -671,7 +696,7 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
   const f = (label: string, key: keyof typeof form, placeholder: string, opts?: { required?: boolean; type?: string }) => (
     <div>
       <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}{opts?.required ? ' *' : ''}</label>
-      <Input type={opts?.type || 'text'} value={form[key]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} placeholder={placeholder} required={opts?.required} />
+      <Input type={opts?.type || 'text'} value={form[key]} onChange={e => { setForm(p => ({ ...p, [key]: e.target.value })); if (key === 'nameKo' || key === 'nameEn') setDupErr(''); }} placeholder={placeholder} required={opts?.required} />
     </div>
   );
 
@@ -691,8 +716,12 @@ function ProductModal({ item, preId, onClose, onSave }: { item?: Product | null;
 
           <div className="border-t pt-4 space-y-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">기본 정보</p>
+            {dupErr && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-md">{dupErr}</p>}
             <div className="grid grid-cols-2 gap-3">
-              {f('품번 *', 'code', 'P26-001', { required: true })}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">품번 <span className="text-muted-foreground/60">(미입력 시 자동생성)</span></label>
+                <Input value={form.code} onChange={e => { setForm(p => ({ ...p, code: e.target.value })); setDupErr(''); }} placeholder="자동생성 (P-0001)" />
+              </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">카테고리</label>
                 <Input value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} placeholder="조명, 태양광..." list="cat-list" />
@@ -773,6 +802,7 @@ export default function ProductsPage() {
   const [modal, setModal] = useState<{ open: boolean; item?: Product | null; preId: string }>({ open: false, preId: '' });
   const [drawer, setDrawer] = useState<Product | null>(null);
   const [adminModal, setAdminModal] = useState<{ open: boolean; action: () => void }>({ open: false, action: () => {} });
+  const [syncing, setSyncing] = useState(false);
   const rates = useExchangeRates();
 
   const load = async () => {
@@ -788,6 +818,17 @@ export default function ProductsPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/products/sync', { method: 'POST' });
+      const j = await res.json();
+      alert(`동기화 완료: ${j.synced}개 제품 업데이트`);
+      load();
+    } catch { alert('동기화 실패'); }
+    finally { setSyncing(false); }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('제품을 삭제하시겠습니까?')) return;
@@ -833,8 +874,12 @@ export default function ProductsPage() {
                 {c}
               </button>
             ))}
-            <span className="text-xs text-muted-foreground hidden sm:block ml-1">{filtered.length}개</span>
-            <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => openModal(null)}>
+            <span className="text-xs text-muted-foreground hidden sm:block ml-1">{filtered.length}개 / 전체 {products.length}개</span>
+            <Button size="sm" variant="outline" className="h-9 gap-1 shrink-0" onClick={handleSync} disabled={syncing}>
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              <span className="hidden sm:inline">노션 동기화</span>
+            </Button>
+            <Button size="sm" className="h-9 gap-1 shrink-0" onClick={() => openModal(null)}>
               <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
             </Button>
           </div>
@@ -977,6 +1022,7 @@ export default function ProductsPage() {
         <ProductModal
           item={modal.item}
           preId={modal.preId}
+          products={products}
           onClose={() => setModal({ open: false, preId: '' })}
           onSave={() => { setModal({ open: false, preId: '' }); load(); }}
         />
