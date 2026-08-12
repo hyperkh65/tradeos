@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, ChevronDown, ChevronRight, History, Maximize2 } from 'lucide-react';
+import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, History, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { PurchaseOrder } from '@/types';
@@ -915,7 +915,6 @@ export default function PurchaseOrdersPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  const [expandedRevisions, setExpandedRevisions] = useState<Set<string>>(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -1000,21 +999,10 @@ export default function PurchaseOrdersPage() {
                 <tbody className="divide-y divide-border">
                   {filtered.map(po => {
                     const revisions: any[] = (() => { try { return JSON.parse((po as any).revisionsJson || '[]'); } catch { return []; } })();
-                    const isExpanded = expandedRevisions.has(po.id);
-                    const toggleRevisions = () => setExpandedRevisions(prev => { const s = new Set(prev); s.has(po.id) ? s.delete(po.id) : s.add(po.id); return s; });
                     return (
                     <React.Fragment key={po.id}>
                     <tr className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          {revisions.length > 0 && (
-                            <button type="button" onClick={toggleRevisions} className="text-muted-foreground hover:text-foreground shrink-0" title={`수정이력 ${revisions.length}건`}>
-                              {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                            </button>
-                          )}
-                          {po.businessId}
-                        </div>
-                      </td>
+                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
                       <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
                         <span className="truncate block max-w-[220px]">
@@ -1040,7 +1028,7 @@ export default function PurchaseOrdersPage() {
                         </div>
                       </td>
                     </tr>
-                    {isExpanded && revisions.map((rev: any, ri: number) => (
+                    {revisions.map((rev: any, ri: number) => (
                       <tr key={`${po.id}-r${ri}`} className="bg-amber-50/40 dark:bg-amber-950/20 border-l-2 border-amber-300">
                         <td className="px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
                           <div className="flex items-center gap-1 pl-4">
