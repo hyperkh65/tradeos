@@ -18,21 +18,18 @@ function dbToCompany(row: Record<string, unknown>) {
   };
 }
 
-const UPSERT_SQL = `INSERT INTO companies
-  (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,notion_id,created_at,updated_at)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  ON CONFLICT(id) DO UPDATE SET
-    business_id=excluded.business_id, name=excluded.name, name_en=excluded.name_en,
-    type=excluded.type, country=excluded.country, email=excluded.email, phone=excluded.phone,
-    website=excluded.website, wechat=excluded.wechat, memo=excluded.memo, updated_at=excluded.updated_at`;
-
 export async function GET() {
-  try {
-    const db = getDb();
+  const db = getDb();
 
+  // Sync from Notion (errors must not block SQLite fallback)
+  try {
     const notionData = await fetchNotionCompanies();
     if (notionData.length > 0) {
-      const upsert = db.prepare(UPSERT_SQL);
+      // INSERT OR REPLACE handles all UNIQUE conflicts (id PK + business_id UNIQUE)
+      // by deleting the conflicting row and inserting the new one
+      const upsert = db.prepare(`INSERT OR REPLACE INTO companies
+        (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,notion_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       db.transaction(() => {
         for (const c of notionData) {
           upsert.run(c.id, c.businessId, c.name, c.nameEn ?? null, c.type, c.country,
@@ -41,27 +38,20 @@ export async function GET() {
         }
       })();
     }
+  } catch (e) {
+    console.error('[API companies GET] Notion sync error:', e);
+    // Fall through — return whatever is in SQLite
+  }
 
+  // Always read from SQLite
+  try {
     const rows = db.prepare('SELECT * FROM companies ORDER BY created_at DESC').all() as Record<string, unknown>[];
     if (rows.length > 0) return NextResponse.json({ data: rows.map(dbToCompany) });
-
-    if (notionData.length > 0) return NextResponse.json({ data: notionData });
-
-    // Seed with demo data
-    const seed = db.prepare(`INSERT OR IGNORE INTO companies
-      (id,business_id,name,name_en,type,country,email,phone,wechat,memo,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
-    db.transaction(() => {
-      for (const c of DEMO_COMPANIES) {
-        seed.run(c.id, c.businessId, c.name, c.nameEn ?? null, c.type, c.country,
-          c.email ?? null, c.phone ?? null, c.wechat ?? null, c.memo ?? null, c.createdAt, c.updatedAt);
-      }
-    })();
-    return NextResponse.json({ data: DEMO_COMPANIES });
   } catch (e) {
-    console.error('[API companies GET]', e);
-    return NextResponse.json({ data: DEMO_COMPANIES });
+    console.error('[API companies GET] SQLite read error:', e);
   }
+
+  return NextResponse.json({ data: DEMO_COMPANIES });
 }
 
 export async function POST(req: NextRequest) {
