@@ -21,15 +21,26 @@ function dbToSale(row: Record<string, unknown>) {
 }
 
 async function fetchFromNotion() {
-  const dbId = DB.projects ?? '';  // DB_SALES not in client.ts, use custom env
   const salesDbId = process.env.NOTION_DB_SALES || '';
   if (!salesDbId || isDemoMode()) return [];
   try {
     const notion = getNotionClient();
-    const res = await notion.databases.query({ database_id: salesDbId, page_size: 200,
-      sorts: [{ property: 'Date', direction: 'descending' }] });
+    // Paginate through ALL results (newerp stores 1 page per line item)
+    const allResults: any[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await notion.databases.query({
+        database_id: salesDbId,
+        page_size: 100,
+        start_cursor: cursor,
+        sorts: [{ property: 'Date', direction: 'descending' }],
+      });
+      allResults.push(...res.results.filter((p: any) => p.object === 'page'));
+      cursor = res.has_more && res.next_cursor ? res.next_cursor : undefined;
+    } while (cursor);
+
     const rows: any[] = [];
-    res.results.filter(p => p.object === 'page').forEach((p: any) => {
+    allResults.forEach((p: any) => {
       const props = p.properties;
       const getText = (key: string) => props[key]?.rich_text?.[0]?.plain_text || props[key]?.title?.[0]?.plain_text || '';
       const getNum = (key: string) => props[key]?.number ?? 0;
@@ -80,8 +91,15 @@ export async function GET() {
     if (notionSales.length > 0) {
       db.transaction(() => {
         for (const s of notionSales) {
-          db.prepare(`INSERT OR IGNORE INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-            .run(s.id, s.businessId, s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.currency, s.createdAt, 1);
+          // Upsert: update key fields if already exists (keeps local-only fields like exchange_rate, misc)
+          const existing = db.prepare('SELECT id FROM sales WHERE business_id=?').get(s.businessId);
+          if (existing) {
+            db.prepare(`UPDATE sales SET sale_date=?,customer=?,sale_type=?,salesperson=?,po_no=?,items_json=?,net_amount=?,vat=?,total_amount=? WHERE business_id=?`)
+              .run(s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.businessId);
+          } else {
+            db.prepare(`INSERT INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+              .run(s.id, s.businessId, s.saleDate, s.customer, s.saleType, s.salesperson ?? null, s.poNo ?? null, JSON.stringify(s.items), s.netAmount, s.vat, s.totalAmount, s.currency, s.createdAt, 1);
+          }
         }
       })();
     }
