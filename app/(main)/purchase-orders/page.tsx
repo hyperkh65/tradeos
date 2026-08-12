@@ -428,6 +428,20 @@ function POModal({
     setForm(f => ({ ...f, items }));
   };
 
+  const applyRecentPOPrices = () => {
+    const updated = form.items.map(it => {
+      if (!it.productName) return it;
+      const recent = pos
+        .flatMap((po: any) => (po.items || [])
+          .filter((pi: any) => pi.productName === it.productName && (pi.unitPrice || 0) > 0)
+          .map((pi: any) => ({ price: pi.unitPrice, date: po.orderDate || po.createdAt || '' })))
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (recent) return { ...it, unitPrice: recent.price, amount: it.qty * recent.price };
+      return it;
+    });
+    setForm(f => ({ ...f, items: updated }));
+  };
+
   const importFromQuote = (quoteId: string) => {
     const q = quotes.find((q: any) => q.id === quoteId);
     if (!q) return;
@@ -633,6 +647,9 @@ function POModal({
                 </button>
                 <button type="button" onClick={() => setShowQuoteSelect(true)} className="text-xs text-amber-600 hover:underline flex items-center gap-1">
                   <History className="w-3 h-3" /> 견적서에서 가져오기
+                </button>
+                <button type="button" onClick={applyRecentPOPrices} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <TrendingDown className="w-3 h-3" /> 최근 발주가 적용
                 </button>
               </div>
               <div className="text-xs space-x-4 text-right">
