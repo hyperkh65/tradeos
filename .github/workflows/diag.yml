@@ -15,28 +15,21 @@ jobs:
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
 
-            echo "=== /volume1/web/newerp 내용 ==="
-            ls /volume1/web/newerp/ 2>/dev/null || echo "없음"
+            echo "=== newerp .env.local ==="
+            cat /volume1/web/newerp/.env.local 2>/dev/null | grep -v "^#" | grep -v "^$" | sed 's/=.*/=***/' || echo "없음"
 
             echo ""
-            echo "=== newerp DB 찾기 ==="
-            find /volume1/web/newerp -maxdepth 3 -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" 2>/dev/null | head -10
+            echo "=== newerp .env ==="
+            cat /volume1/web/newerp/.env 2>/dev/null | grep -v "^#" | grep -v "^$" | sed 's/=.*/=***/' || echo "없음"
 
             echo ""
-            echo "=== newerp package.json ==="
-            cat /volume1/web/newerp/package.json 2>/dev/null | head -20 || echo "없음"
+            echo "=== newerp src/ 구조 ==="
+            find /volume1/web/newerp/src -name "*.ts" -o -name "*.tsx" 2>/dev/null | grep -i "sale\|매출" | head -10
 
             echo ""
-            echo "=== newerp .env or data dir ==="
-            ls /volume1/web/newerp/data/ 2>/dev/null || echo "data dir 없음"
-            ls /volume1/web/newerp/.env 2>/dev/null | head -5 || echo ".env 없음"
+            echo "=== newerp이 실행 중인지 확인 ==="
+            ps aux 2>/dev/null | grep "newerp\|ynk-erp" | grep -v grep | head -5
 
             echo ""
-            echo "=== tradeos DB 현재 sales 카운트 ==="
-            $NODE -e "
-              const Database = require('/volume1/web/tradeos/.next/standalone/node_modules/better-sqlite3');
-              const db = new Database('/volume1/web/tradeos/data/nexport.db');
-              const cnt = db.prepare('SELECT COUNT(*) as c FROM sales').get();
-              console.log('tradeos sales count:', cnt.c);
-              db.close();
-            " 2>&1
+            echo "=== newerp 포트 확인 ==="
+            ss -tlnp 2>/dev/null | grep -E "3000|3001|3002|3100|3200" || netstat -tlnp 2>/dev/null | grep -E "3000|3001|3002|3100|3200"
