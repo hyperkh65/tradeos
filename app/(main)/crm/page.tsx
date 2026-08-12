@@ -123,6 +123,61 @@ function SaleProductSearch({ value, products, allSales, onSelect }: {
   );
 }
 
+function POPreviewPanel({ po, anchorRect, onClose }: { po: any; anchorRect: DOMRect; onClose: () => void }) {
+  const panelWidth = 330;
+  const spaceRight = window.innerWidth - anchorRect.right - 12;
+  const left = spaceRight >= panelWidth ? anchorRect.right + 8 : anchorRect.left - panelWidth - 8;
+  const top = Math.min(anchorRect.top, window.innerHeight - 400);
+  const items: any[] = po.items || [];
+  const total = items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+      <div style={{ position: 'fixed', top: Math.max(8, top), left: Math.max(8, left), width: panelWidth, zIndex: 9999 }}
+        className="bg-background border border-border rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+          <div>
+            <span className="text-xs font-semibold">{po.businessId}</span>
+            <span className="text-[10px] text-muted-foreground ml-2">{po.supplierName} · {po.orderDate}</span>
+          </div>
+          <button onClick={onClose}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+        </div>
+        <div className="p-2 max-h-72 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-muted-foreground text-[10px]">
+                <th className="text-left pb-1.5 font-medium">품목명</th>
+                <th className="text-right pb-1.5 font-medium">수량</th>
+                <th className="text-right pb-1.5 font-medium">단가</th>
+                <th className="text-right pb-1.5 font-medium">금액</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {items.map((item: any, i: number) => (
+                <tr key={i}>
+                  <td className="py-1.5 pr-2">
+                    <div className="font-medium leading-tight">{item.productName}</div>
+                    {item.specification && <div className="text-muted-foreground text-[10px] leading-tight mt-0.5">{item.specification}</div>}
+                  </td>
+                  <td className="py-1.5 text-right whitespace-nowrap">{(item.qty || 0).toLocaleString()}</td>
+                  <td className="py-1.5 text-right whitespace-nowrap">{(item.unitPrice || 0).toLocaleString()}</td>
+                  <td className="py-1.5 text-right font-medium whitespace-nowrap">{(item.amount || 0).toLocaleString()}</td>
+                </tr>
+              ))}
+              {items.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-muted-foreground">품목 없음</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t px-3 py-2 flex justify-between text-xs font-semibold bg-muted/20">
+          <span className="text-muted-foreground">{items.length}개 품목</span>
+          <span>{total.toLocaleString()} {po.currency || 'USD'}</span>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
 function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales, onClose, onSave }: {
   sale?: SalesRecord | null; companies: Company[]; products: any[];
   purchaseOrders: any[]; sales: SalesRecord[]; onClose: () => void; onSave: () => void;
@@ -153,6 +208,13 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
 
   const [saving, setSaving] = useState(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
+  const [poPreview, setPoPreview] = useState<{ po: any; anchorRect: DOMRect } | null>(null);
+
+  const showPoPreview = (businessId: string, el: HTMLElement) => {
+    const po = purchaseOrders.find(p => p.businessId === businessId);
+    if (po) setPoPreview({ po, anchorRect: el.getBoundingClientRect() });
+    else setPoPreview(null);
+  };
 
   const applyBatchToAll = () => {
     const po = purchaseOrders.find(p => p.businessId === batchPo);
@@ -271,18 +333,26 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             <div className="text-xs font-medium text-muted-foreground shrink-0 pb-1">일괄 적용</div>
             <div className="flex-1">
               <label className="text-[10px] text-muted-foreground mb-1 block">공급사</label>
-              <Input value={batchSupplier} onChange={e => setBatchSupplier(e.target.value)} list="batch-supplier-list" placeholder="공급사 선택..." className="h-8 text-xs" />
+              <Input value={batchSupplier} onChange={e => { setBatchSupplier(e.target.value); setBatchPo(''); setPoPreview(null); }}
+                list="batch-supplier-list" placeholder="공급사 선택..." className="h-8 text-xs" />
               <datalist id="batch-supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
             </div>
             <div className="flex-1">
-              <label className="text-[10px] text-muted-foreground mb-1 block">내부 발주번호</label>
-              <select value={batchPo} onChange={e => setBatchPo(e.target.value)} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+              <label className="text-[10px] text-muted-foreground mb-1 block">
+                내부 발주번호
+                {batchSupplier && <span className="text-blue-500 ml-1">({purchaseOrders.filter(p => p.supplierName === batchSupplier).length}건)</span>}
+              </label>
+              <select value={batchPo}
+                onChange={e => { setBatchPo(e.target.value); if (e.target.value) showPoPreview(e.target.value, e.currentTarget); else setPoPreview(null); }}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
                 <option value="">-- 선택 --</option>
-                {purchaseOrders.map(po => (
-                  <option key={po.id} value={po.businessId}>
-                    {po.businessId} | {po.supplierName} | {po.orderDate}
-                  </option>
-                ))}
+                {purchaseOrders
+                  .filter(po => !batchSupplier || po.supplierName === batchSupplier)
+                  .map(po => (
+                    <option key={po.id} value={po.businessId}>
+                      {po.businessId} | {po.supplierName} | {po.orderDate}
+                    </option>
+                  ))}
               </select>
             </div>
             <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={applyBatchToAll}>
@@ -374,25 +444,30 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                       {/* 공급사 (per-item) */}
                       <td className="px-1 py-1">
                         <input className="w-full bg-transparent border-none outline-none text-xs border-b border-dashed border-muted-foreground/30"
-                          value={item.supplierName || ''} onChange={e => updateItem(idx, 'supplierName', e.target.value)}
+                          value={item.supplierName || ''}
+                          onChange={e => { updateItem(idx, 'supplierName', e.target.value); updateItem(idx, 'poBusinessId', ''); updateItem(idx, 'poId', ''); setPoPreview(null); }}
                           list={`supplier-list-${idx}`} placeholder="공급사..." />
                         <datalist id={`supplier-list-${idx}`}>{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
                       </td>
-                      {/* 발주번호 (per-item, 전체 목록) */}
+                      {/* 발주번호 (per-item, 공급사 필터) */}
                       <td className="px-1 py-1">
                         <select value={item.poBusinessId || ''}
                           onChange={e => {
                             const po = purchaseOrders.find(p => p.businessId === e.target.value);
                             updateItem(idx, 'poBusinessId', e.target.value);
                             updateItem(idx, 'poId', po?.id || '');
+                            if (e.target.value) showPoPreview(e.target.value, e.currentTarget);
+                            else setPoPreview(null);
                           }}
                           className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
-                          {purchaseOrders.map(po => (
-                            <option key={po.id} value={po.businessId}>
-                              {po.businessId} | {po.supplierName}
-                            </option>
-                          ))}
+                          {purchaseOrders
+                            .filter(po => !item.supplierName || po.supplierName === item.supplierName)
+                            .map(po => (
+                              <option key={po.id} value={po.businessId}>
+                                {po.businessId} | {po.supplierName}
+                              </option>
+                            ))}
                         </select>
                       </td>
                       {/* 재고처리 체크박스 */}
@@ -446,6 +521,9 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             <SpecModal value={specModal.value}
               onSave={v => updateItem(specModal.idx, 'specification', v)}
               onClose={() => setSpecModal({ open: false, idx: 0, value: '' })} />
+          )}
+          {poPreview && (
+            <POPreviewPanel po={poPreview.po} anchorRect={poPreview.anchorRect} onClose={() => setPoPreview(null)} />
           )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
