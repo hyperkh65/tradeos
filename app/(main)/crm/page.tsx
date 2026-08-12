@@ -4,7 +4,8 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, Maximize2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 
 const ADMIN_PASSWORD = '1209';
@@ -66,6 +67,73 @@ function SpecModal({ value, onSave, onClose }: { value: string; onSave: (v: stri
           <Button type="button" className="flex-1" onClick={() => { onSave(text); onClose(); }}>확인</Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SaleProductSearch({ value, products, allSales, onSelect }: {
+  value: string;
+  products: any[];
+  allSales: SalesRecord[];
+  onSelect: (name: string, unitPrice: number, specification: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 280 });
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  const lower = value.toLowerCase();
+  const matched = value.length >= 1
+    ? products.filter(p =>
+        (p.nameKo || '').toLowerCase().includes(lower) ||
+        (p.code || '').toLowerCase().includes(lower)
+      ).slice(0, 12)
+    : [];
+
+  const getRecentPrice = (name: string) => {
+    const prices = allSales
+      .flatMap(s => s.items.filter(i => i.product === name).map(i => ({ price: i.unitPrice, date: s.saleDate })))
+      .filter(p => p.price > 0)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    return prices[0]?.price ?? null;
+  };
+
+  useEffect(() => {
+    if (matched.length > 0 && anchorRef.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 2, left: r.left, width: Math.max(280, r.width) });
+      setShow(true);
+    } else {
+      setShow(false);
+    }
+  }, [value, matched.length]);
+
+  return (
+    <div ref={anchorRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {show && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          className="bg-background border border-border rounded-xl shadow-2xl max-h-60 overflow-y-auto"
+        >
+          {matched.map(p => {
+            const recent = getRecentPrice(p.nameKo);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { onSelect(p.nameKo, recent ?? p.sellingPrice ?? 0, p.sizeSpec || ''); setShow(false); }}
+                className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs flex items-center justify-between gap-2"
+              >
+                <span className="font-medium truncate">{p.nameKo}</span>
+                {recent != null && (
+                  <span className="text-blue-500 shrink-0">최근 {recent.toLocaleString()}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -295,12 +363,28 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                   return (
                     <tr key={item.id} className="hover:bg-muted/20">
                       <td className="px-2 py-1">
-                        <input className="w-full bg-transparent border-none outline-none text-xs"
-                          value={item.product}
-                          onChange={e => updateItem(idx, 'product', e.target.value)}
-                          onBlur={e => autoFillProduct(idx, e.target.value)}
-                          list="prod-list"
-                          placeholder="품목명" />
+                        <div className="relative">
+                          <input className="w-full bg-transparent border-none outline-none text-xs"
+                            value={item.product}
+                            onChange={e => updateItem(idx, 'product', e.target.value)}
+                            onBlur={e => autoFillProduct(idx, e.target.value)}
+                            placeholder="품목명" />
+                          <SaleProductSearch
+                            value={item.product}
+                            products={products}
+                            allSales={allSales}
+                            onSelect={(name, price, spec) => {
+                              const items = [...form.items];
+                              items[idx].product = name;
+                              if (!items[idx].specification && spec) items[idx].specification = spec;
+                              if (items[idx].unitPrice === 0 && price > 0) {
+                                items[idx].unitPrice = price;
+                                items[idx].amount = items[idx].qty * price;
+                              }
+                              setForm(f => ({ ...f, items }));
+                            }}
+                          />
+                        </div>
                       </td>
                       <td className="px-2 py-1">
                         <div className="flex items-center gap-0.5">
@@ -345,7 +429,6 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                 })}
               </tbody>
             </table>
-            <datalist id="prod-list">{products.map(p => <option key={p.id} value={p.nameKo} />)}</datalist>
             <div className="p-2 border-t">
               <button type="button" onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
                 className="text-xs text-primary hover:underline flex items-center gap-1">
@@ -608,30 +691,35 @@ export default function CRMPage() {
 
   const load = async () => {
     setLoading(true);
-    const [sRes, cRes, pRes, csRes, poRes] = await Promise.all([
-      fetch('/api/sales').then(r => r.json()),
-      fetch('/api/companies').then(r => r.json()),
-      fetch('/api/products').then(r => r.json()),
-      fetch('/api/settings/company').then(r => r.json()),
-      fetch('/api/purchase-orders').then(r => r.json()),
-    ]);
-    setSales(Array.isArray(sRes.data) ? sRes.data : []);
-    setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
-      id: c.id,
-      businessId: c.businessId,
-      name: c.name,
-      type: c.type,
-      country: c.country || '',
-      ceo: c.ceo || undefined,
-      businessNo: c.businessNo || undefined,
-      address: c.address || undefined,
-      phone: c.phone || undefined,
-      email: c.email || undefined,
-    })));
-    setProducts(Array.isArray(pRes.data) ? pRes.data : []);
-    if (csRes.data) setCompany(csRes.data);
-    setPurchaseOrders(Array.isArray(poRes.data) ? poRes.data : []);
-    setLoading(false);
+    try {
+      const [sRes, cRes, pRes, csRes, poRes] = await Promise.all([
+        fetch('/api/sales').then(r => r.json()).catch(() => ({ data: [] })),
+        fetch('/api/companies').then(r => r.json()).catch(() => ({ data: [] })),
+        fetch('/api/products').then(r => r.json()).catch(() => ({ data: [] })),
+        fetch('/api/settings/company').then(r => r.json()).catch(() => ({ data: null })),
+        fetch('/api/purchase-orders').then(r => r.json()).catch(() => ({ data: [] })),
+      ]);
+      setSales(Array.isArray(sRes.data) ? sRes.data : []);
+      setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
+        id: c.id,
+        businessId: c.businessId,
+        name: c.name,
+        type: c.type,
+        country: c.country || '',
+        ceo: c.ceo || undefined,
+        businessNo: c.businessNo || undefined,
+        address: c.address || undefined,
+        phone: c.phone || undefined,
+        email: c.email || undefined,
+      })));
+      setProducts(Array.isArray(pRes.data) ? pRes.data : []);
+      if (csRes.data) setCompany(csRes.data);
+      setPurchaseOrders(Array.isArray(poRes.data) ? poRes.data : []);
+    } catch (e) {
+      console.error('[CRM] load error:', e);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
