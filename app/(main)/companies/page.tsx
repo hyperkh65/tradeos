@@ -312,7 +312,8 @@ export default function CompaniesPage() {
 
   const types = ['전체', ...TYPES.filter(t => companies.some(c => c.type === t))];
   const filtered = companies.filter(c => {
-    const matchSearch = c.name.includes(search) || (c.nameEn ?? '').includes(search) || c.businessId.includes(search);
+    const q = search.toLowerCase();
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || (c.nameEn ?? '').toLowerCase().includes(q) || c.businessId.toLowerCase().includes(q) || (c.businessNo ?? '').toLowerCase().includes(q) || (c.memo ?? '').toLowerCase().includes(q);
     const matchType = typeFilter === '전체' || c.type === typeFilter;
     return matchSearch && matchType;
   });
