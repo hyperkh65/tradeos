@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import type { Quote } from '@/types';
 
 const ADMIN_PASSWORD = '1209';
@@ -89,7 +90,9 @@ function ProductSearchHelper({
   value: string; products: any[]; quotes: Quote[]; onSelect: (p: PriceHint) => void; currency: string;
 }) {
   const [show, setShow] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 320 });
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   const matches = value.length >= 1 ? products.filter(p =>
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
@@ -114,50 +117,69 @@ function ProductSearchHelper({
     };
   });
 
-  // Auto-show when value changes and matches exist
+  const shouldShow = value.length >= 1 && hints.length > 0;
+
   useEffect(() => {
-    setShow(value.length >= 1 && hints.length > 0);
+    if (shouldShow && anchorRef.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left, width: Math.max(320, r.width) });
+      setShow(true);
+    } else {
+      setShow(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, hints.length]);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
+    if (!show) return;
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node) &&
+          anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+        setShow(false);
+      }
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  if (!show || hints.length === 0) return null;
+  }, [show]);
 
   return (
-    <div ref={ref} className="absolute left-0 top-full mt-0.5 z-[60] bg-background border border-border rounded-xl shadow-xl w-80 max-h-72 overflow-y-auto">
-      <div className="p-2 border-b bg-muted/30">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
-      </div>
-      {hints.map(h => (
-        <button key={h.code} type="button"
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => { onSelect(h); setShow(false); }}
-          className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold">{h.nameKo}</p>
-              <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
-              {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
-            </div>
-            <div className="text-right shrink-0">
-              {h.purchasePrice && (
-                <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
-              )}
-              {h.recentQuotePrice && (
-                <p className="text-[10px] text-emerald-600">최근견적 {h.currency} {h.recentQuotePrice.toFixed(2)}</p>
-              )}
-              {h.recentQuoteCompany && (
-                <p className="text-[9px] text-muted-foreground">{h.recentQuoteCompany}</p>
-              )}
-            </div>
+    <div ref={anchorRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {show && typeof document !== 'undefined' && createPortal(
+        <div ref={dropRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          className="bg-background border border-border rounded-xl shadow-2xl max-h-72 overflow-y-auto"
+        >
+          <div className="p-2 border-b bg-muted/30">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">제품 검색 ({hints.length})</p>
           </div>
-        </button>
-      ))}
+          {hints.map(h => (
+            <button key={h.code} type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onSelect(h); setShow(false); }}
+              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold">{h.nameKo}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
+                  {h.specification && <p className="text-[10px] text-muted-foreground mt-0.5">{h.specification}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  {h.purchasePrice && (
+                    <p className="text-xs font-bold text-blue-600">{h.currency} {h.purchasePrice.toFixed(2)}</p>
+                  )}
+                  {h.recentQuotePrice && (
+                    <p className="text-[10px] text-emerald-600">최근견적 {h.currency} {h.recentQuotePrice.toFixed(2)}</p>
+                  )}
+                  {h.recentQuoteCompany && (
+                    <p className="text-[9px] text-muted-foreground">{h.recentQuoteCompany}</p>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
