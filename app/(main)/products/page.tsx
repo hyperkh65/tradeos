@@ -860,29 +860,25 @@ export default function ProductsPage() {
       <AppHeader title="제품" />
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
 
-        {/* Search + filter bar */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="제품명, 코드, 제조사 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {allCats.slice(0, 8).map(c => (
-              <button key={c} onClick={() => setCatFilter(c)}
-                className={cn('shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors',
-                  catFilter === c ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-foreground')}>
-                {c}
+        {/* Search + action bar */}
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="제품명, 품번, 제조사, 공급업체 검색..." className="pl-9 h-10 text-sm" value={search} onChange={e => { setSearch(e.target.value); setCatFilter('전체'); }} />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
               </button>
-            ))}
-            <span className="text-xs text-muted-foreground hidden sm:block ml-1">{filtered.length}개 / 전체 {products.length}개</span>
-            <Button size="sm" variant="outline" className="h-9 gap-1 shrink-0" onClick={handleSync} disabled={syncing}>
-              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              <span className="hidden sm:inline">노션 동기화</span>
-            </Button>
-            <Button size="sm" className="h-9 gap-1 shrink-0" onClick={() => openModal(null)}>
-              <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
-            </Button>
+            )}
           </div>
+          <span className="text-xs text-muted-foreground self-center whitespace-nowrap hidden sm:block">{filtered.length} / {products.length}개</span>
+          <Button size="sm" variant="outline" className="h-10 gap-1 shrink-0" onClick={handleSync} disabled={syncing}>
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            <span className="hidden sm:inline">노션 동기화</span>
+          </Button>
+          <Button size="sm" className="h-10 gap-1 shrink-0" onClick={() => openModal(null)}>
+            <Plus className="w-4 h-4" /><span className="hidden sm:inline">제품 등록</span>
+          </Button>
         </div>
 
         {loading ? (
