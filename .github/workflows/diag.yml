@@ -13,13 +13,26 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== DB_CLIENTS 찾기 ==="
-            grep -r "DB_CLIENTS\|CLIENTS\s*=" /volume1/web/newerp/src 2>/dev/null | head -20
+            echo "=== newerp lib/settings.ts ==="
+            cat /volume1/web/newerp/src/lib/settings.ts 2>/dev/null || echo "없음"
 
             echo ""
-            echo "=== notion.ts DB_ 라인만 ==="
-            grep "^export const DB_" /volume1/web/newerp/src/lib/notion.ts 2>/dev/null
+            echo "=== newerp에서 DB_CLIENTS 정의 위치 ==="
+            grep -rn "DB_CLIENTS\s*[=:]" /volume1/web/newerp/src 2>/dev/null | head -10
 
             echo ""
-            echo "=== newerp crm/page.tsx 상단 import ==="
-            head -20 /volume1/web/newerp/src/app/crm/page.tsx 2>/dev/null
+            echo "=== newerp에서 clients 관련 Notion ID ==="
+            grep -rn "clients\|CLIENTS\|client_db\|clientDb" /volume1/web/newerp/src/lib 2>/dev/null | grep -i "notion\|db_\|[0-9a-f]{32}" | head -10
+
+            echo ""
+            echo "=== tradeos 현재 companies 카운트 및 샘플 ==="
+            NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
+            $NODE -e "
+              const Database = require('/volume1/web/tradeos/.next/standalone/node_modules/better-sqlite3');
+              const db = new Database('/volume1/web/tradeos/data/nexport.db');
+              const cnt = db.prepare('SELECT COUNT(*) as c FROM companies').get();
+              console.log('companies count:', cnt.c);
+              const rows = db.prepare('SELECT name, type FROM companies ORDER BY created_at DESC LIMIT 5').all();
+              console.log('Latest:', JSON.stringify(rows));
+              db.close();
+            " 2>&1
