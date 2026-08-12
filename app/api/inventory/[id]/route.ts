@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 
+function notionProps(body: any) {
+  return {
+    '이름': { title: [{ text: { content: body.productName || '' } }] },
+    'ProductName': { rich_text: [{ text: { content: body.productName || '' } }] },
+    'ProductCode': { rich_text: [{ text: { content: body.productCode || '' } }] },
+    'Qty': { number: body.qty ?? 0 },
+    'Warehouse': { rich_text: [{ text: { content: body.location || '본사 창고' } }] },
+    'Cost': { number: body.unitPrice ?? null },
+    'Currency': { select: body.currency ? { name: body.currency } : null },
+    'ExchangeRate': { number: body.exchangeRate ?? 1 },
+    'notes': { rich_text: [{ text: { content: body.memo || '' } }] },
+  };
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
@@ -12,25 +26,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .run(body.productName, body.productCode || '', body.qty ?? 0, body.location || '본사 창고',
       body.unitPrice ?? null, body.currency || 'USD', body.exchangeRate ?? 1, body.memo ?? null, ts, id);
 
-  // Sync to Notion
-  const dbId = DB.inventory;
-  if (dbId && !isDemoMode()) {
+  if (DB.inventory && !isDemoMode()) {
     try {
       const row = db.prepare('SELECT notion_id FROM inventory WHERE id=?').get(id) as { notion_id: string | null } | undefined;
       const notionId = row?.notion_id || id;
-      await getNotionClient().pages.update({
-        page_id: notionId,
-        properties: {
-          'ProductName': { title: [{ text: { content: body.productName || '' } }] },
-          'ProductCode': { rich_text: [{ text: { content: body.productCode || '' } }] },
-          'Qty': { number: body.qty ?? 0 },
-          'Location': { select: { name: body.location || '본사 창고' } },
-          'UnitPrice': body.unitPrice != null ? { number: body.unitPrice } : { number: null },
-          'Currency': { select: { name: body.currency || 'USD' } },
-          'ExchangeRate': { number: body.exchangeRate ?? 1 },
-          'Memo': { rich_text: [{ text: { content: body.memo || '' } }] },
-        },
-      });
+      await getNotionClient().pages.update({ page_id: notionId, properties: notionProps(body) as any });
     } catch (e) {
       console.error('[Inventory] Notion update error:', e);
     }
@@ -43,9 +43,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const db = getDb();
 
-  // Archive in Notion (set archived)
-  const dbId = DB.inventory;
-  if (dbId && !isDemoMode()) {
+  if (DB.inventory && !isDemoMode()) {
     try {
       const row = db.prepare('SELECT notion_id FROM inventory WHERE id=?').get(id) as { notion_id: string | null } | undefined;
       const notionId = row?.notion_id || id;
