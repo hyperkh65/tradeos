@@ -41,110 +41,25 @@ interface PriceHint {
 
 /* ─── 제품 hover 이력 팝업 ──────────────────────────────────────────────────── */
 
-function ProductHistoryPopup({ productName, pos, quotes }: { productName: string; pos: any[]; quotes: any[] }) {
-  const [visible, setVisible] = useState(false);
-  const [style, setStyle] = useState<React.CSSProperties>({});
-  const ref = useRef<HTMLSpanElement>(null);
-
-  const isMatch = (name: string) =>
-    name === productName || (productName.length > 4 && name.includes(productName));
-
-  const poHistory = pos
-    .flatMap((po: any) => (po.items || []).filter((it: any) => isMatch(it.productName || ''))
-      .map((it: any) => ({ date: po.orderDate || po.createdAt?.slice(0, 10) || '', supplier: po.supplierName || '', price: it.unitPrice || 0, qty: it.qty || it.quantity || 0, currency: po.currency || 'USD' })))
-    .filter(h => h.price > 0)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 5);
-
-  const qtHistory = quotes
-    .flatMap((q: any) => (q.items || []).filter((it: any) => isMatch(it.productName || ''))
-      .map((it: any) => ({ date: (q as any).quoteDate || q.createdAt?.slice(0, 10) || '', company: q.companyName || '', price: it.unitPrice || 0, qty: it.quantity || it.qty || 0, currency: q.currency || 'USD' })))
-    .filter(h => h.price > 0)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 5);
-
-  if (poHistory.length === 0 && qtHistory.length === 0) {
-    return <span>{productName}</span>;
-  }
-
-  const handleMouseEnter = () => {
-    if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      const top = rect.bottom + 4;
-      const left = Math.min(rect.left, window.innerWidth - 320);
-      setStyle({ position: 'fixed', top, left, zIndex: 9999 });
-    }
-    setVisible(true);
-  };
-
-  return (
-    <span ref={ref} className="relative cursor-default underline decoration-dotted decoration-muted-foreground"
-      onMouseEnter={handleMouseEnter} onMouseLeave={() => setVisible(false)}>
-      {productName}
-      {visible && (
-        <div style={style} className="w-72 bg-background border border-border rounded-xl shadow-2xl text-xs p-0 overflow-hidden">
-          {poHistory.length > 0 && (
-            <div>
-              <div className="px-3 py-2 bg-blue-50 border-b border-border flex items-center gap-1.5">
-                <TrendingDown className="w-3 h-3 text-blue-600" />
-                <span className="font-semibold text-blue-700 text-[10px] uppercase tracking-wide">발주 이력</span>
-              </div>
-              {poHistory.map((h, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-muted/30">
-                  <div className="min-w-0">
-                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
-                    <p className="font-medium truncate max-w-[140px]">{h.supplier}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-blue-700">{h.currency} {h.price.toLocaleString()}</p>
-                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {qtHistory.length > 0 && (
-            <div>
-              <div className="px-3 py-2 bg-emerald-50 border-b border-border flex items-center gap-1.5">
-                <TrendingUp className="w-3 h-3 text-emerald-600" />
-                <span className="font-semibold text-emerald-700 text-[10px] uppercase tracking-wide">견적(판매) 이력</span>
-              </div>
-              {qtHistory.map((h, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0 hover:bg-muted/30">
-                  <div className="min-w-0">
-                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
-                    <p className="font-medium truncate max-w-[140px]">{h.company}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-emerald-700">{h.currency} {h.price.toLocaleString()}</p>
-                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </span>
-  );
-}
-
-/* ─── 품목명 자동완성 입력 ───────────────────────────────────────────────────── */
+/* ─── 품목명 자동완성 입력 (hover 이력 포함) ─────────────────────────────────── */
 
 function POProductInput({
-  value, onChange, onSelect, products, pos,
+  value, onChange, onSelect, products, pos, quotes,
 }: {
   value: string; onChange: (v: string) => void; onSelect: (h: PriceHint) => void;
-  products: any[]; pos: any[];
+  products: any[]; pos: any[]; quotes: any[];
 }) {
-  const [show, setShow] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showHist, setShowHist] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
+  const [histStyle, setHistStyle] = useState<React.CSSProperties>({});
 
   const matches = value.length >= 1 ? products.filter(p =>
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
-  ).slice(0, 10) : [];
+  ).slice(0, 12) : [];
 
   const hints: PriceHint[] = matches.map(p => {
     const recentPOs = pos
@@ -167,32 +82,104 @@ function POProductInput({
     };
   });
 
+  // 이력 데이터
+  const isMatch = (name: string) => name === value || (value.length > 4 && name.includes(value));
+  const poHistory = pos
+    .flatMap((po: any) => (po.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: po.orderDate || po.createdAt?.slice(0, 10) || '', supplier: po.supplierName || '', price: it.unitPrice || 0, qty: it.qty || it.quantity || 0, currency: po.currency || 'USD' })))
+    .filter(h => h.price > 0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const qtHistory = quotes
+    .flatMap((q: any) => (q.items || []).filter((it: any) => isMatch(it.productName || ''))
+      .map((it: any) => ({ date: (q as any).quoteDate || q.createdAt?.slice(0, 10) || '', company: q.companyName || '', price: it.unitPrice || 0, qty: it.quantity || it.qty || 0, currency: q.currency || 'USD' })))
+    .filter(h => h.price > 0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const hasHistory = poHistory.length > 0 || qtHistory.length > 0;
+
   const openDrop = () => {
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
-      setDropStyle({ position: 'fixed', top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 280), zIndex: 9999 });
+      setDropStyle({ position: 'fixed', top: rect.bottom + 2, left: Math.min(rect.left, window.innerWidth - 420), width: 410, zIndex: 9999 });
     }
-    setShow(true);
+    setShowSearch(true);
+  };
+
+  const openHist = () => {
+    if (!hasHistory || isFocused) return;
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const top = rect.bottom + 4;
+      const left = Math.min(rect.left, window.innerWidth - 300);
+      setHistStyle({ position: 'fixed', top, left, zIndex: 9998 });
+    }
+    setShowHist(true);
   };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false); };
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShowSearch(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   return (
-    <div ref={ref} className="relative w-full">
+    <div ref={ref} className="relative w-full"
+      onMouseEnter={openHist}
+      onMouseLeave={() => setShowHist(false)}>
       <input
         ref={inputRef}
         className="w-full bg-transparent border-none outline-none text-xs"
         value={value}
-        onChange={e => { onChange(e.target.value); if (e.target.value.length >= 1) openDrop(); else setShow(false); }}
-        onFocus={() => { if (value.length >= 1) openDrop(); }}
+        onChange={e => { onChange(e.target.value); if (e.target.value.length >= 1) openDrop(); else setShowSearch(false); }}
+        onFocus={() => { setIsFocused(true); setShowHist(false); if (value.length >= 1) openDrop(); }}
+        onBlur={() => { setIsFocused(false); }}
         placeholder="품목명 검색..."
       />
-      {show && (
-        <div style={dropStyle} className="bg-background border border-border rounded-xl shadow-2xl max-h-64 overflow-y-auto">
+      {/* hover 이력 팝업 */}
+      {showHist && hasHistory && (
+        <div style={histStyle} className="w-72 bg-background border border-border rounded-xl shadow-2xl text-xs overflow-hidden">
+          {poHistory.length > 0 && (
+            <div>
+              <div className="px-3 py-2 bg-blue-50 border-b border-border flex items-center gap-1.5">
+                <TrendingDown className="w-3 h-3 text-blue-600" />
+                <span className="font-semibold text-blue-700 text-[10px] uppercase tracking-wide">발주 이력</span>
+              </div>
+              {poHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
+                    <p className="font-medium truncate max-w-[140px]">{h.supplier}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-blue-700">{h.currency} {h.price.toFixed ? h.price.toFixed(2) : h.price.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {qtHistory.length > 0 && (
+            <div>
+              <div className="px-3 py-2 bg-emerald-50 border-b border-border flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3 text-emerald-600" />
+                <span className="font-semibold text-emerald-700 text-[10px] uppercase tracking-wide">견적(판매) 이력</span>
+              </div>
+              {qtHistory.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 border-b border-border/30 last:border-0">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground">{h.date}</p>
+                    <p className="font-medium truncate max-w-[140px]">{h.company}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-emerald-700">{h.currency} {h.price.toFixed ? h.price.toFixed(2) : h.price.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">×{h.qty.toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* 검색 자동완성 드롭다운 */}
+      {showSearch && (
+        <div style={dropStyle} className="bg-background border border-border rounded-xl shadow-2xl max-h-72 overflow-y-auto">
           <div className="px-3 py-1.5 border-b bg-muted/30 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
             제품 검색 결과 ({hints.length})
           </div>
@@ -201,11 +188,11 @@ function POProductInput({
           ) : hints.map(h => (
             <button key={h.code} type="button"
               onMouseDown={e => e.preventDefault()}
-              onClick={() => { onSelect(h); setShow(false); }}
-              className="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors border-b border-border/20 last:border-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold">{h.nameKo}</p>
+              onClick={() => { onSelect(h); setShowSearch(false); }}
+              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/20 last:border-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold leading-tight">{h.nameKo}</p>
                   <p className="text-[10px] font-mono text-muted-foreground">{h.code}</p>
                   {h.specification && <p className="text-[10px] text-muted-foreground">{h.specification}</p>}
                 </div>
@@ -335,9 +322,9 @@ function POImageUpload({ images, poId, onChange }: { images: string[]; poId: str
 /* ─── PO Modal ───────────────────────────────────────────────────────────── */
 
 function POModal({
-  item, companies, products, pos, onClose, onSave,
+  item, companies, products, pos, quotes, onClose, onSave,
 }: {
-  item?: PurchaseOrder | null; companies: any[]; products: any[]; pos: any[];
+  item?: PurchaseOrder | null; companies: any[]; products: any[]; pos: any[]; quotes: any[];
   onClose: () => void; onSave: () => void;
 }) {
   const initImages = (): string[] => {
@@ -516,6 +503,7 @@ function POModal({
                         onSelect={h => applyProductHint(idx, h)}
                         products={products}
                         pos={pos}
+                        quotes={quotes}
                       />
                     </td>
                     <td className="px-2 py-1">
@@ -857,7 +845,7 @@ export default function PurchaseOrdersPage() {
                   <tr>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">발주번호</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">공급업체</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">제품 (마우스 오버 시 이력)</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">제품</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">금액</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden xl:table-cell">선금/잔금</th>
                     <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hidden lg:table-cell">ETD</th>
@@ -871,15 +859,9 @@ export default function PurchaseOrdersPage() {
                       <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
                       <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[240px]">
-                          {po.items.map((i, idx) => (
-                            <span key={idx} className="flex items-center gap-1">
-                              <ProductHistoryPopup productName={i.productName} pos={pos} quotes={quotes} />
-                              <span className="text-muted-foreground">×{i.qty}</span>
-                              {idx < po.items.length - 1 && <span className="text-border">,</span>}
-                            </span>
-                          ))}
-                        </div>
+                        <span className="truncate block max-w-[220px]">
+                          {po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}
+                        </span>
                       </td>
                       <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
                       <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">
@@ -934,6 +916,7 @@ export default function PurchaseOrdersPage() {
           companies={companies}
           products={products}
           pos={pos}
+          quotes={quotes}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load(); }}
         />
