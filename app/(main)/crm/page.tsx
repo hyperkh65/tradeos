@@ -568,7 +568,7 @@ export default function CRMPage() {
                     <tr key={s.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
-                          {prev && <Lock className="w-3 h-3 text-orange-400 shrink-0" title="전월 (관리자만 수정)" />}
+                          {prev && <Lock className="w-3 h-3 text-orange-400 shrink-0" aria-label="전월 (관리자만 수정)" />}
                           {s.businessId}
                         </div>
                       </td>
