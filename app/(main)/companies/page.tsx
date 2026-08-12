@@ -305,9 +305,8 @@ export default function CompaniesPage() {
     const preId = Math.random().toString(36).slice(2) + Date.now().toString(36);
     setModal({ open: true, item, preId });
   };
-  const guardEdit = (item: Company, action: () => void) => {
-    if (isPrevMonth(item.createdAt)) setAdminModal({ open: true, action });
-    else action();
+  const guardEdit = (_item: Company, action: () => void) => {
+    action();
   };
 
   const types = ['전체', ...TYPES.filter(t => companies.some(c => c.type === t))];
