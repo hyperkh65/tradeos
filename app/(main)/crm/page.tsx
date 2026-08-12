@@ -22,12 +22,14 @@ interface SalesRecord {
   saleType: string; salesperson?: string; poNo?: string;
   items: SalesItem[]; netAmount: number; vat: number; totalAmount: number;
   currency: string; exchangeRate?: number; misc?: string;
+  supplierId?: string; supplierName?: string;
+  poId?: string; poBusinessId?: string;
 }
-interface CompanySettings {
-  name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
-  address: string; tel: string; fax: string; email: string;
-  bank: string; bankForeign1: string; bankForeign2: string; logoUrl: string; stampUrl: string;
+interface Company {
+  id: string; businessId: string; name: string; type: string; country: string;
+  ceo?: string; businessNo?: string; address?: string; phone?: string; email?: string;
 }
+interface CompanySettings { name: string; ceo: string; bizNo: string; bizType: string; bizItem: string; address: string; tel: string; fax: string; email: string; bank: string; bankForeign1: string; bankForeign2: string; logoUrl: string; stampUrl: string; }
 
 const emptyItem = (): SalesItem => ({ id: Date.now().toString() + Math.random(), product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '' });
 
@@ -68,9 +70,14 @@ function SpecModal({ value, onSave, onClose }: { value: string; onSave: (v: stri
   );
 }
 
-function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave }: {
-  sale?: SalesRecord | null; companies: string[]; products: any[]; sales: SalesRecord[];
-  onClose: () => void; onSave: () => void;
+function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales, onClose, onSave }: {
+  sale?: SalesRecord | null;
+  companies: Company[];
+  products: any[];
+  purchaseOrders: any[];
+  sales: SalesRecord[];
+  onClose: () => void;
+  onSave: () => void;
 }) {
   const [form, setForm] = useState({
     saleDate: sale?.saleDate || new Date().toISOString().slice(0, 10),
@@ -81,17 +88,52 @@ function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave
     currency: sale?.currency || 'KRW',
     exchangeRate: String(sale?.exchangeRate ?? 1),
     misc: sale?.misc || '',
+    supplierId: sale?.supplierId || '',
+    supplierName: sale?.supplierName || '',
+    poId: sale?.poId || '',
+    poBusinessId: sale?.poBusinessId || '',
     items: sale?.items?.length
       ? sale.items.map((i, idx) => ({ ...i, id: String(idx), remark: (i as any).remark || '' }))
       : [emptyItem()],
   });
   const [saving, setSaving] = useState(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
+  const [poPreview, setPoPreview] = useState<any | null>(() =>
+    sale?.poId ? (purchaseOrders.find(p => p.id === sale.poId) || null) : null
+  );
+
+  const filteredPOs = form.supplierName
+    ? purchaseOrders.filter(p => p.supplierName === form.supplierName)
+    : purchaseOrders;
+
+  const handleSupplierChange = (name: string) => {
+    const found = companies.find(c => c.name === name);
+    setForm(f => ({ ...f, supplierName: name, supplierId: found?.id || '', poId: '', poBusinessId: '' }));
+    setPoPreview(null);
+  };
+
+  const handlePoSelect = (poBusinessId: string) => {
+    const po = filteredPOs.find(p => p.businessId === poBusinessId);
+    setForm(f => ({ ...f, poBusinessId, poId: po?.id || '' }));
+    setPoPreview(po || null);
+  };
 
   const updateItem = (idx: number, field: string, val: string | number) => {
     const items = [...form.items];
     (items[idx] as any)[field] = val;
     if (field === 'qty' || field === 'unitPrice') items[idx].amount = items[idx].qty * items[idx].unitPrice;
+    setForm(f => ({ ...f, items }));
+  };
+
+  const autoFillProduct = (idx: number, productName: string) => {
+    const prod = products.find(p => p.nameKo === productName);
+    if (!prod) return;
+    const items = [...form.items];
+    if (!items[idx].specification && prod.sizeSpec) items[idx].specification = prod.sizeSpec;
+    if (items[idx].unitPrice === 0 && prod.sellingPrice) {
+      items[idx].unitPrice = prod.sellingPrice;
+      items[idx].amount = items[idx].qty * prod.sellingPrice;
+    }
     setForm(f => ({ ...f, items }));
   };
 
@@ -131,36 +173,104 @@ function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Row 1: 날짜, 거래처, 유형, 담당자 */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">매출일자</label>
-              <Input type="date" value={form.saleDate} onChange={e => setForm(f => ({ ...f, saleDate: e.target.value }))} /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-muted-foreground mb-1 block">거래처 *</label>
-              <Input value={form.customer} onChange={e => setForm(f => ({ ...f, customer: e.target.value }))} list="cust-list" required />
-              <datalist id="cust-list">{companies.map(c => <option key={c} value={c} />)}</datalist>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">매출일자</label>
+              <Input type="date" value={form.saleDate} onChange={e => setForm(f => ({ ...f, saleDate: e.target.value }))} />
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">매출유형</label>
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">거래처 *</label>
+              <Input value={form.customer} onChange={e => setForm(f => ({ ...f, customer: e.target.value }))} list="cust-list" required />
+              <datalist id="cust-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">매출유형</label>
               <select value={form.saleType} onChange={e => setForm(f => ({ ...f, saleType: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                 {SALE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">담당자</label>
-              <Input value={form.salesperson} onChange={e => setForm(f => ({ ...f, salesperson: e.target.value }))} /></div>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">담당자</label>
+              <Input value={form.salesperson} onChange={e => setForm(f => ({ ...f, salesperson: e.target.value }))} />
+            </div>
           </div>
-          {/* Row 2: PO번호, 통화, 환율, 기타 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">고객 PO번호</label>
-              <Input value={form.poNo} onChange={e => setForm(f => ({ ...f, poNo: e.target.value }))} placeholder="PO번호" /></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
-              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
-              </select></div>
+
+          {/* Row 2: 공급사, 내부발주번호 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                적용환율 <span className="text-[10px] text-muted-foreground/70">(KRW 기준 1이면 국내거래)</span>
+                공급사 <span className="text-[10px] text-muted-foreground/60">(발주처 — 출력 미표시)</span>
+              </label>
+              <Input
+                value={form.supplierName}
+                onChange={e => handleSupplierChange(e.target.value)}
+                list="supplier-list"
+                placeholder="공급사 선택..."
+              />
+              <datalist id="supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                내부 발주번호 <span className="text-[10px] text-muted-foreground/60">(잔여량 계산용 — 출력 미표시)</span>
+              </label>
+              <select
+                value={form.poBusinessId}
+                onChange={e => handlePoSelect(e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">-- 발주번호 선택 --</option>
+                {filteredPOs.map(po => (
+                  <option key={po.id} value={po.businessId}>
+                    {po.businessId} | {po.supplierName} | {po.orderDate} | {po.currency} {Number(po.totalAmount).toLocaleString()} | {po.status}
+                  </option>
+                ))}
+              </select>
+              {poPreview && (
+                <div className="mt-1.5 p-2.5 rounded-md bg-blue-50 border border-blue-200 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 font-semibold text-blue-800 mb-1.5">
+                    <span>{poPreview.businessId}</span>
+                    <span className="text-blue-300">|</span>
+                    <span>{poPreview.supplierName}</span>
+                    <span className="text-blue-300">|</span>
+                    <span>{poPreview.orderDate}</span>
+                    <span className="ml-auto px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">{poPreview.status}</span>
+                  </div>
+                  <div className="text-blue-600 space-y-0.5">
+                    {((poPreview.items || []) as any[]).slice(0, 3).map((item: any, i: number) => (
+                      <div key={i}>• {item.productName || item.product || '-'}{item.specification ? ` (${item.specification})` : ''} — {Number(item.qty).toLocaleString()}개</div>
+                    ))}
+                    {(poPreview.items as any[] || []).length > 3 && <div className="text-blue-400">외 {(poPreview.items as any[]).length - 3}개 품목...</div>}
+                  </div>
+                  <div className="mt-1.5 pt-1.5 border-t border-blue-200 font-semibold text-blue-800">
+                    합계: {poPreview.currency} {Number(poPreview.totalAmount).toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: 고객PO번호, 통화, 환율, 기타 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">고객 PO번호</label>
+              <Input value={form.poNo} onChange={e => setForm(f => ({ ...f, poNo: e.target.value }))} placeholder="PO번호" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
+              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                적용환율 <span className="text-[10px] text-muted-foreground/70">(1=국내거래)</span>
               </label>
               <Input type="number" step="0.0001" min="0.0001" value={form.exchangeRate}
                 onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))} placeholder="1" />
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">기타 사항</label>
-              <Input value={form.misc} onChange={e => setForm(f => ({ ...f, misc: e.target.value }))} placeholder="특이사항, 참고사항 등" /></div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">기타 사항</label>
+              <Input value={form.misc} onChange={e => setForm(f => ({ ...f, misc: e.target.value }))} placeholder="특이사항, 참고사항 등" />
+            </div>
           </div>
 
           {/* Items */}
@@ -186,14 +296,17 @@ function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave
                     <tr key={item.id} className="hover:bg-muted/20">
                       <td className="px-2 py-1">
                         <input className="w-full bg-transparent border-none outline-none text-xs"
-                          value={item.product} onChange={e => updateItem(idx, 'product', e.target.value)}
-                          list="prod-list" placeholder="품목명" />
+                          value={item.product}
+                          onChange={e => updateItem(idx, 'product', e.target.value)}
+                          onBlur={e => autoFillProduct(idx, e.target.value)}
+                          list="prod-list"
+                          placeholder="품목명" />
                       </td>
                       <td className="px-2 py-1">
                         <div className="flex items-center gap-0.5">
                           <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
                             value={item.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} placeholder="규격" />
-                          <button type="button" title="크게 입력"
+                          <button type="button"
                             onClick={() => setSpecModal({ open: true, idx, value: item.specification })}
                             className="shrink-0 text-muted-foreground hover:text-primary">
                             <Maximize2 className="w-3 h-3" />
@@ -211,7 +324,6 @@ function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave
                           <div className="text-right">
                             <button type="button"
                               className="text-[9px] text-blue-500 hover:underline cursor-pointer"
-                              title="클릭하면 최근 단가 적용"
                               onClick={() => updateItem(idx, 'unitPrice', recentPrice)}>
                               최근: {recentPrice.toLocaleString()}
                             </button>
@@ -277,13 +389,20 @@ function SaleModal({ sale, companies, products, sales: allSales, onClose, onSave
 
 /* ─── 거래명세표 인쇄 모달 ───────────────────────────────────────────────── */
 
-function SalePrintModal({ sale, company, onClose }: { sale: SalesRecord; company: CompanySettings; onClose: () => void }) {
+function SalePrintModal({ sale, company, companies, onClose }: {
+  sale: SalesRecord;
+  company: CompanySettings;
+  companies: Company[];
+  onClose: () => void;
+}) {
   const items = sale.items || [];
   const rate = Number(sale.exchangeRate) || 1;
   const netAmount = items.reduce((s, i) => s + i.amount, 0);
   const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
   const vat = sale.vat ?? Math.round(netKRW * 0.1);
   const total = sale.totalAmount ?? netKRW + vat;
+
+  const customerCo = companies.find(c => c.name === sale.customer);
 
   const handlePrint = () => {
     const orig = document.title;
@@ -358,7 +477,11 @@ function SalePrintModal({ sale, company, onClose }: { sale: SalesRecord; company
                 <div style={{ padding: '8px', fontSize: '8pt' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
-                      <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '11pt' }}>{sale.customer}</td></tr>
+                      <tr><td style={{ color: '#666', width: '65px', paddingBottom: '3px', verticalAlign: 'top' }}>상호</td><td style={{ fontWeight: 'bold', fontSize: '11pt' }}>{sale.customer}</td></tr>
+                      {customerCo?.businessNo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>사업자번호</td><td>{customerCo.businessNo}</td></tr>}
+                      {customerCo?.ceo && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>대표자</td><td>{customerCo.ceo}</td></tr>}
+                      {customerCo?.address && <tr><td style={{ color: '#666', paddingBottom: '3px', verticalAlign: 'top' }}>주소</td><td style={{ fontSize: '7.5pt' }}>{customerCo.address}</td></tr>}
+                      {customerCo?.phone && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>전화</td><td>{customerCo.phone}</td></tr>}
                       {sale.salesperson && <tr><td style={{ color: '#666', paddingBottom: '3px' }}>담당자</td><td>{sale.salesperson}</td></tr>}
                     </tbody>
                   </table>
@@ -473,8 +596,9 @@ function SalePrintModal({ sale, company, onClose }: { sale: SalesRecord; company
 
 export default function CRMPage() {
   const [sales, setSales] = useState<SalesRecord[]>([]);
-  const [companies, setCompanies] = useState<string[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<{ open: boolean; sale?: SalesRecord | null }>({ open: false });
@@ -484,16 +608,29 @@ export default function CRMPage() {
 
   const load = async () => {
     setLoading(true);
-    const [sRes, cRes, pRes, csRes] = await Promise.all([
+    const [sRes, cRes, pRes, csRes, poRes] = await Promise.all([
       fetch('/api/sales').then(r => r.json()),
       fetch('/api/companies').then(r => r.json()),
       fetch('/api/products').then(r => r.json()),
       fetch('/api/settings/company').then(r => r.json()),
+      fetch('/api/purchase-orders').then(r => r.json()),
     ]);
     setSales(Array.isArray(sRes.data) ? sRes.data : []);
-    setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => c.name));
+    setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
+      id: c.id,
+      businessId: c.businessId,
+      name: c.name,
+      type: c.type,
+      country: c.country || '',
+      ceo: c.ceo || undefined,
+      businessNo: c.businessNo || undefined,
+      address: c.address || undefined,
+      phone: c.phone || undefined,
+      email: c.email || undefined,
+    })));
     setProducts(Array.isArray(pRes.data) ? pRes.data : []);
     if (csRes.data) setCompany(csRes.data);
+    setPurchaseOrders(Array.isArray(poRes.data) ? poRes.data : []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -507,10 +644,6 @@ export default function CRMPage() {
     if (!confirm('삭제하시겠습니까?')) return;
     await fetch(`/api/sales/${id}`, { method: 'DELETE' });
     load();
-  };
-
-  const handlePrint = (sale: SalesRecord) => {
-    setPrintModal({ open: true, sale });
   };
 
   const filtered = sales.filter(s =>
@@ -583,7 +716,7 @@ export default function CRMPage() {
                       <td className="px-3 py-3 text-right font-bold whitespace-nowrap">{s.totalAmount.toLocaleString()}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" title="거래명세표 출력" onClick={() => handlePrint(s)}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" onClick={() => setPrintModal({ open: true, sale: s })}>
                             <Printer className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(s, () => setModal({ open: true, sale: s }))}>
@@ -609,13 +742,19 @@ export default function CRMPage() {
           sale={modal.sale}
           companies={companies}
           products={products}
+          purchaseOrders={purchaseOrders}
           sales={sales}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load(); }}
         />
       )}
       {printModal.open && printModal.sale && company && (
-        <SalePrintModal sale={printModal.sale} company={company} onClose={() => setPrintModal({ open: false })} />
+        <SalePrintModal
+          sale={printModal.sale}
+          company={company}
+          companies={companies}
+          onClose={() => setPrintModal({ open: false })}
+        />
       )}
       {adminModal.open && (
         <AdminPasswordModal
