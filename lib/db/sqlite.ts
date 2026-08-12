@@ -379,6 +379,8 @@ function initSchema(db: Database.Database) {
       product_code TEXT NOT NULL DEFAULT '',
       qty REAL NOT NULL DEFAULT 0,
       location TEXT NOT NULL DEFAULT '본사 창고',
+      purchase_price REAL,
+      currency TEXT NOT NULL DEFAULT 'USD',
       memo TEXT,
       notion_id TEXT,
       updated_at TEXT NOT NULL,
@@ -471,6 +473,8 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE sales ADD COLUMN supplier_name TEXT`,
     `ALTER TABLE sales ADD COLUMN po_id TEXT`,
     `ALTER TABLE sales ADD COLUMN po_business_id TEXT`,
+    `ALTER TABLE inventory ADD COLUMN purchase_price REAL`,
+    `ALTER TABLE inventory ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

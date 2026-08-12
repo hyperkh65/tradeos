@@ -6,8 +6,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json();
   const db = getDb();
   const ts = now();
-  db.prepare(`UPDATE inventory SET product_name=?,product_code=?,qty=?,location=?,memo=?,updated_at=? WHERE id=?`)
-    .run(body.productName, body.productCode || '', body.qty ?? 0, body.location || '본사 창고', body.memo ?? null, ts, id);
+  db.prepare(`UPDATE inventory SET product_name=?,product_code=?,qty=?,location=?,purchase_price=?,currency=?,memo=?,updated_at=? WHERE id=?`)
+    .run(
+      body.productName, body.productCode || '', body.qty ?? 0,
+      body.location || '본사 창고',
+      body.purchasePrice ?? null, body.currency || 'USD',
+      body.memo ?? null, ts, id
+    );
   return NextResponse.json({ ok: true });
 }
 
