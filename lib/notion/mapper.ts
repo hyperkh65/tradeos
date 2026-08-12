@@ -119,7 +119,7 @@ export function notionToProduct(page: { id: string; properties: Props; created_t
   const allImages = getAllFileUrls(p, 'Image', '이미지', 'FileSpec', 'FileEMI', 'FileEfficiency', 'FileKSKC', 'FileEtc');
   const base: Product = {
     id: page.id,
-    businessId: codeFromNotion || page.id,
+    businessId: page.id,  // Always use Notion page ID — product codes can be duplicate
     code: codeFromNotion || `ERP-${page.id.slice(0, 10)}`,
     nameKo: getText(p, 'ProductName', '제품명', 'Name', '이름'),
     nameEn: getText(p, '영문명') || undefined,

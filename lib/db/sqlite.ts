@@ -56,7 +56,7 @@ function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
       business_id TEXT UNIQUE NOT NULL,
-      code TEXT UNIQUE NOT NULL,
+      code TEXT NOT NULL,
       name_ko TEXT NOT NULL,
       name_en TEXT,
       category TEXT,
