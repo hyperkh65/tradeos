@@ -38,9 +38,9 @@ function DeltaBadge({ curr, prev }: { curr: number; prev: number }) {
 
 interface SaleItem { product: string; qty: number; amount: number; unitPrice?: number; }
 interface Sale {
-  id: string; business_id: string; sale_date: string; customer: string;
-  total_amount: number; net_amount: number; currency: string;
-  items_json?: string; created_at: string;
+  id: string; businessId: string; saleDate: string; customer: string;
+  totalAmount: number; netAmount: number; currency: string;
+  items?: SaleItem[]; createdAt: string;
 }
 interface Product {
   id: string; code: string; nameKo: string; supplierName?: string;
@@ -57,15 +57,10 @@ function computeStats(sales: Sale[]) {
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-  // Monthly totals
   const monthlyAmount: Record<string, number> = {};
   const monthlyQty: Record<string, number> = {};
-
-  // Customer stats
   const customerAmount: Record<string, number> = {};
   const customerQty: Record<string, number> = {};
-
-  // Product stats
   const productQty: Record<string, number> = {};
   const productAmount: Record<string, number> = {};
 
@@ -73,15 +68,14 @@ function computeStats(sales: Sale[]) {
   let totalQty = 0;
 
   for (const s of sales) {
-    const m = getMonth(s.sale_date);
-    const amt = s.total_amount ?? 0;
+    const m = getMonth(s.saleDate ?? '');
+    const amt = s.totalAmount ?? 0;
     monthlyAmount[m] = (monthlyAmount[m] ?? 0) + amt;
     totalAmount += amt;
 
     customerAmount[s.customer] = (customerAmount[s.customer] ?? 0) + amt;
 
-    let items: SaleItem[] = [];
-    try { items = JSON.parse(s.items_json ?? '[]'); } catch { items = []; }
+    const items: SaleItem[] = Array.isArray(s.items) ? s.items : [];
     for (const it of items) {
       const qty = it.qty ?? 0;
       monthlyQty[m] = (monthlyQty[m] ?? 0) + qty;
@@ -97,7 +91,6 @@ function computeStats(sales: Sale[]) {
   const thisMonthQty = monthlyQty[thisMonth] ?? 0;
   const lastMonthQty = monthlyQty[lastMonth] ?? 0;
 
-  // Last 6 months for trend
   const trendMonths: string[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -115,7 +108,7 @@ function computeStats(sales: Sale[]) {
     totalAmount, totalQty,
     trend, topCustomersByAmount, topCustomersByQty, topProductsByQty, topProductsByAmount,
     totalSalesCount: sales.length,
-    thisMonthSalesCount: sales.filter(s => getMonth(s.sale_date) === thisMonth).length,
+    thisMonthSalesCount: sales.filter(s => getMonth(s.saleDate ?? '') === thisMonth).length,
   };
 }
 
@@ -186,7 +179,7 @@ export default function HomePage() {
   }, []);
 
   const stats = useMemo(() => computeStats(sales), [sales]);
-  const recentSales = [...sales].sort((a, b) => b.sale_date.localeCompare(a.sale_date)).slice(0, 6);
+  const recentSales = [...sales].sort((a, b) => (b.saleDate ?? '').localeCompare(a.saleDate ?? '')).slice(0, 6);
   const recentProducts = [...products].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5);
 
   return (
@@ -301,7 +294,7 @@ export default function HomePage() {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <Clock className="w-4 h-4 text-primary" /> 최근 매출
                 </CardTitle>
-                <Link href="/sales" className="text-xs text-primary hover:underline flex items-center gap-0.5">전체 <ArrowRight className="w-3 h-3" /></Link>
+                <Link href="/scm" className="text-xs text-primary hover:underline flex items-center gap-0.5">전체 <ArrowRight className="w-3 h-3" /></Link>
               </div>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-1.5">
@@ -309,9 +302,9 @@ export default function HomePage() {
                 <div key={s.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{s.customer}</p>
-                    <p className="text-[11px] text-muted-foreground">{s.sale_date}</p>
+                    <p className="text-[11px] text-muted-foreground">{s.saleDate}</p>
                   </div>
-                  <p className="text-sm font-semibold shrink-0 ml-2">₩{krw(s.total_amount)}</p>
+                  <p className="text-sm font-semibold shrink-0 ml-2">₩{krw(s.totalAmount)}</p>
                 </div>
               ))}
               {!loading && recentSales.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">매출 데이터가 없습니다.</p>}
