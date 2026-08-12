@@ -3,9 +3,9 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp } from 'lucide-react';
+import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, ChevronDown, ChevronRight, History, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { PurchaseOrder } from '@/types';
 
 const statusLabel: Record<string, string> = { draft: '초안', confirmed: '확정', production: '생산', inspection: '검품', shipped: '선적', completed: '완료', cancelled: '취소' };
@@ -39,7 +39,33 @@ interface PriceHint {
   luminousEff?: string; lumenOutput?: string;
 }
 
-/* ─── 제품 hover 이력 팝업 ──────────────────────────────────────────────────── */
+/* ─── 규격 확장 입력 모달 ─────────────────────────────────────────────────────── */
+
+function SpecModal({ value, onSave, onClose }: { value: string; onSave: (v: string) => void; onClose: () => void }) {
+  const [text, setText] = useState(value);
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-md p-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm">규격 입력</h3>
+          <button type="button" onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <textarea
+          autoFocus
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+          rows={6}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="규격을 입력하세요..."
+        />
+        <div className="flex gap-2 mt-3">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+          <Button type="button" className="flex-1" onClick={() => { onSave(text); onClose(); }}>확인</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── 품목명 자동완성 입력 (hover 이력 포함) ─────────────────────────────────── */
 
@@ -390,6 +416,8 @@ function POModal({
   const [images, setImages] = useState<string[]>(initImages);
   const [savedId] = useState<string>((item as any)?.id || '');
   const [saving, setSaving] = useState(false);
+  const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
+  const [showQuoteSelect, setShowQuoteSelect] = useState(false);
 
   const updateItem = (idx: number, field: string, val: string | number) => {
     const items = [...form.items];
@@ -398,6 +426,28 @@ function POModal({
       items[idx].amount = items[idx].qty * items[idx].unitPrice;
     }
     setForm(f => ({ ...f, items }));
+  };
+
+  const importFromQuote = (quoteId: string) => {
+    const q = quotes.find((q: any) => q.id === quoteId);
+    if (!q) return;
+    const imported = (q.items || []).map((qi: any, i: number) => ({
+      id: Date.now().toString() + i,
+      productName: qi.productName || '',
+      specification: qi.specification || '',
+      voltage: qi.voltage || '',
+      watts: qi.watts || '',
+      cct: qi.cct || '',
+      luminousEff: qi.luminousEff || '',
+      lumenOutput: qi.lumenOutput || '',
+      unit: qi.unit || 'PCS',
+      qty: qi.quantity || qi.qty || 1,
+      unitPrice: qi.unitPrice || 0,
+      amount: (qi.quantity || qi.qty || 1) * (qi.unitPrice || 0),
+      remarks: qi.remarks || '',
+    }));
+    setForm(f => ({ ...f, items: [...f.items.filter(i => i.productName !== ''), ...imported] }));
+    setShowQuoteSelect(false);
   };
 
   const applyProductHint = (idx: number, h: PriceHint) => {
@@ -540,6 +590,11 @@ function POModal({
                         <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
                           value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
                           placeholder="규격" />
+                        <button type="button" title="크게 입력"
+                          className="shrink-0 text-muted-foreground hover:text-primary"
+                          onClick={() => setSpecModal({ open: true, idx, value: it.specification })}>
+                          <Maximize2 className="w-3 h-3" />
+                        </button>
                         <button type="button" title="제품에서 규격 자동 가져오기"
                           className="shrink-0 text-[9px] text-muted-foreground hover:text-primary px-0.5"
                           onClick={() => {
@@ -572,9 +627,14 @@ function POModal({
               </tbody>
             </table>
             <div className="p-2 border-t flex items-center justify-between">
-              <button type="button" onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))} className="text-xs text-primary hover:underline flex items-center gap-1">
-                <Plus className="w-3 h-3" /> 품목 추가
-              </button>
+              <div className="flex items-center gap-4">
+                <button type="button" onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> 품목 추가
+                </button>
+                <button type="button" onClick={() => setShowQuoteSelect(true)} className="text-xs text-amber-600 hover:underline flex items-center gap-1">
+                  <History className="w-3 h-3" /> 견적서에서 가져오기
+                </button>
+              </div>
               <div className="text-xs space-x-4 text-right">
                 <span className="text-muted-foreground">총액: <strong>{form.currency} {totalAmount.toLocaleString()}</strong></span>
                 <span className="text-muted-foreground">선금({form.depositRatio}%): <strong className="text-orange-600">{depositAmount.toLocaleString()}</strong></span>
@@ -592,6 +652,43 @@ function POModal({
 
           <POImageUpload images={images} poId={uploadPoId} onChange={setImages} />
 
+          {specModal.open && (
+            <SpecModal
+              value={specModal.value}
+              onSave={v => updateItem(specModal.idx, 'specification', v)}
+              onClose={() => setSpecModal({ open: false, idx: 0, value: '' })}
+            />
+          )}
+          {showQuoteSelect && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40" onClick={() => setShowQuoteSelect(false)}>
+              <div className="bg-background rounded-xl shadow-2xl w-full max-w-md max-h-[60vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="p-3 border-b flex items-center justify-between shrink-0">
+                  <h3 className="font-semibold text-sm">견적서 선택</h3>
+                  <button type="button" onClick={() => setShowQuoteSelect(false)}><X className="w-4 h-4 text-muted-foreground" /></button>
+                </div>
+                <div className="overflow-y-auto flex-1">
+                  {quotes.length === 0 ? (
+                    <p className="p-4 text-sm text-center text-muted-foreground">등록된 견적 없음</p>
+                  ) : quotes.map((q: any) => (
+                    <button key={q.id} type="button"
+                      className="w-full text-left px-4 py-3 hover:bg-muted/50 border-b border-border/30 last:border-0"
+                      onClick={() => importFromQuote(q.id)}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold">{q.businessId}</p>
+                          <p className="text-xs text-muted-foreground">{q.companyName} · {q.quoteDate || q.createdAt?.slice(0, 10)}</p>
+                        </div>
+                        <div className="text-right shrink-0 ml-3">
+                          <p className="text-xs font-medium">{q.currency} {Number(q.totalAmount || 0).toLocaleString()}</p>
+                          <p className="text-[10px] text-muted-foreground">{(q.items || []).length}개 품목</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
@@ -801,6 +898,7 @@ export default function PurchaseOrdersPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [expandedRevisions, setExpandedRevisions] = useState<Set<string>>(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -883,9 +981,23 @@ export default function PurchaseOrdersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map(po => (
-                    <tr key={po.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
+                  {filtered.map(po => {
+                    const revisions: any[] = (() => { try { return JSON.parse((po as any).revisionsJson || '[]'); } catch { return []; } })();
+                    const isExpanded = expandedRevisions.has(po.id);
+                    const toggleRevisions = () => setExpandedRevisions(prev => { const s = new Set(prev); s.has(po.id) ? s.delete(po.id) : s.add(po.id); return s; });
+                    return (
+                    <React.Fragment key={po.id}>
+                    <tr className="hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          {revisions.length > 0 && (
+                            <button type="button" onClick={toggleRevisions} className="text-muted-foreground hover:text-foreground shrink-0" title={`수정이력 ${revisions.length}건`}>
+                              {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            </button>
+                          )}
+                          {po.businessId}
+                        </div>
+                      </td>
                       <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
                       <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">
                         <span className="truncate block max-w-[220px]">
@@ -911,7 +1023,33 @@ export default function PurchaseOrdersPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    {isExpanded && revisions.map((rev: any, ri: number) => (
+                      <tr key={`${po.id}-r${ri}`} className="bg-amber-50/40 dark:bg-amber-950/20 border-l-2 border-amber-300">
+                        <td className="px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+                          <div className="flex items-center gap-1 pl-4">
+                            <span className="text-amber-500">└</span>
+                            <History className="w-2.5 h-2.5 text-amber-500" />
+                            <span>Rev.{rev.rev}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground">{rev.date?.slice(0, 10)}</td>
+                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground hidden lg:table-cell">-</td>
+                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap">
+                          {rev.snapshot?.currency} {Number(rev.snapshot?.totalAmount || 0).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-1.5 hidden xl:table-cell"></td>
+                        <td className="px-3 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap hidden lg:table-cell">{rev.snapshot?.etd ?? '-'}</td>
+                        <td className="px-3 py-1.5">
+                          <span className={cn('text-[10px] px-2 py-0.5 rounded-full', statusColor[rev.snapshot?.status] || 'bg-gray-100 text-gray-500')}>
+                            {statusLabel[rev.snapshot?.status] || rev.snapshot?.status || '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5"></td>
+                      </tr>
+                    ))}
+                    </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
               {filtered.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground"><Boxes className="w-8 h-8 mx-auto mb-2 opacity-30" />발주가 없습니다.</div>}

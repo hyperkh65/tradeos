@@ -27,6 +27,7 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
     updatedAt: row.updated_at as string,
     imagesJson: (row.images_json as string) || undefined,
     depositRatio: (row.deposit_ratio as string) || '30',
+    revisionsJson: (row.revisions_json as string) || undefined,
   };
 }
 

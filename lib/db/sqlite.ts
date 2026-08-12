@@ -464,6 +464,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE quotes ADD COLUMN general_info TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN images_json TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN deposit_ratio TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN revisions_json TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
