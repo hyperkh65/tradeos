@@ -13,9 +13,13 @@ jobs:
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
           command_timeout: 2m
           script: |
-            echo "=== newerp lib/notion.ts 전체 DB 목록 ==="
-            cat /volume1/web/newerp/src/lib/notion.ts 2>/dev/null
+            echo "=== DB_CLIENTS 찾기 ==="
+            grep -r "DB_CLIENTS\|CLIENTS\s*=" /volume1/web/newerp/src 2>/dev/null | head -20
 
             echo ""
-            echo "=== newerp .env.local 실제 값 ==="
-            cat /volume1/web/newerp/.env.local 2>/dev/null || echo "없음"
+            echo "=== notion.ts DB_ 라인만 ==="
+            grep "^export const DB_" /volume1/web/newerp/src/lib/notion.ts 2>/dev/null
+
+            echo ""
+            echo "=== newerp crm/page.tsx 상단 import ==="
+            head -20 /volume1/web/newerp/src/app/crm/page.tsx 2>/dev/null
