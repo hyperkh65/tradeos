@@ -859,7 +859,7 @@ export default function ProductsPage() {
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(p, () => openModal(p))}>
                               {isPrevMonth(p.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(p.id)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => guardEdit(p, () => handleDelete(p.id))}>
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -900,7 +900,7 @@ export default function ProductsPage() {
                       )}
                       <div className="absolute bottom-1.5 right-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
                         <button type="button" onClick={() => guardEdit(p, () => openModal(p))} className="bg-white/90 rounded-full p-1 shadow"><Pencil className="w-3 h-3 text-gray-700" /></button>
-                        <button type="button" onClick={() => handleDelete(p.id)} className="bg-white/90 rounded-full p-1 shadow"><Trash2 className="w-3 h-3 text-red-500" /></button>
+                        <button type="button" onClick={() => guardEdit(p, () => handleDelete(p.id))} className="bg-white/90 rounded-full p-1 shadow"><Trash2 className="w-3 h-3 text-red-500" /></button>
                       </div>
                     </div>
                     <div className="p-2.5">
@@ -949,7 +949,7 @@ export default function ProductsPage() {
           quotes={quotes}
           onClose={() => setDrawer(null)}
           onEdit={() => { setDrawer(null); guardEdit(drawer, () => openModal(drawer)); }}
-          onDelete={() => { handleDelete(drawer.id); }}
+          onDelete={() => { guardEdit(drawer, () => handleDelete(drawer.id)); }}
         />
       )}
     </div>

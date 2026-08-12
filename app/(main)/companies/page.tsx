@@ -392,7 +392,7 @@ export default function CompaniesPage() {
                         <td className="px-3 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(c, () => openModal(c))}>{isPrevMonth(c.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" /></Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(c.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => guardEdit(c, () => handleDelete(c.id))}><Trash2 className="w-3.5 h-3.5" /></Button>
                           </div>
                         </td>
                       </tr>
@@ -419,7 +419,7 @@ export default function CompaniesPage() {
                       <div className="flex items-center gap-1 shrink-0">
                         <Badge className={cn('text-xs border', typeColor[c.type])} variant="outline">{c.type}</Badge>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(c, () => openModal(c))}>{isPrevMonth(c.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" /></Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(c.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => guardEdit(c, () => handleDelete(c.id))}><Trash2 className="w-3.5 h-3.5" /></Button>
                       </div>
                     </div>
                     <div className="space-y-1">
