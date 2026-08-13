@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   AlertCircle, Plus, Search, X, Loader2, Pencil, Trash2,
-  ExternalLink, FileText, ShoppingCart, AlertTriangle,
+  ExternalLink, FileText, ShoppingCart, AlertTriangle, Upload, Image, Paperclip,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -76,6 +76,106 @@ function AutocompleteField({
   );
 }
 
+// ─── FileUploadSection ───────────────────────────────────────────────────────
+
+interface FileEntry { url: string; originalName: string; fileType: string; size?: number; }
+
+function FileUploadSection({
+  claimId, imageFiles, reportFiles, onChangeImages, onChangeReports, disabled,
+}: {
+  claimId: string;
+  imageFiles: FileEntry[]; reportFiles: FileEntry[];
+  onChangeImages: (f: FileEntry[]) => void; onChangeReports: (f: FileEntry[]) => void;
+  disabled?: boolean;
+}) {
+  const [uploading, setUploading] = useState<string | null>(null);
+  const imgRef = useRef<HTMLInputElement>(null);
+  const rptRef = useRef<HTMLInputElement>(null);
+
+  const upload = async (file: File, fileType: 'image' | 'report') => {
+    setUploading(fileType);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('fileType', fileType);
+      const res = await fetch(`/api/claims/${claimId}/upload`, { method: 'POST', body: fd });
+      const j = await res.json();
+      if (!res.ok || j.error) { alert(j.error || '업로드 실패'); return; }
+      const entry: FileEntry = { url: j.url, originalName: j.originalName, fileType, size: j.size };
+      if (fileType === 'image') onChangeImages([...imageFiles, entry]);
+      else onChangeReports([...reportFiles, entry]);
+    } catch (e) { alert('업로드 중 오류: ' + String(e)); }
+    finally { setUploading(null); }
+  };
+
+  const removeImage = (idx: number) => onChangeImages(imageFiles.filter((_, i) => i !== idx));
+  const removeReport = (idx: number) => onChangeReports(reportFiles.filter((_, i) => i !== idx));
+
+  const isImg = (f: FileEntry) => /\.(jpg|jpeg|png|gif|webp)$/i.test(f.originalName || f.url);
+
+  return (
+    <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/20">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">첨부 파일</p>
+
+      {/* Images */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Image className="w-3 h-3" /> 사진 ({imageFiles.length})</span>
+          <button type="button" disabled={disabled || uploading === 'image'}
+            onClick={() => imgRef.current?.click()}
+            className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-40">
+            {uploading === 'image' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} 추가
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {imageFiles.map((f, i) => (
+            <div key={i} className="relative group w-16 h-16 rounded-lg border overflow-hidden bg-muted/30">
+              {isImg(f)
+                ? <img src={f.url} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center"><FileText className="w-6 h-6 text-muted-foreground" /></div>
+              }
+              <button type="button" onClick={() => removeImage(i)}
+                className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <input ref={imgRef} type="file" hidden accept="image/*,application/pdf" multiple
+          onChange={e => { Array.from(e.target.files || []).forEach(f => upload(f, 'image')); e.target.value = ''; }} />
+      </div>
+
+      {/* Reports / Docs */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Paperclip className="w-3 h-3" /> 문서/리포트 ({reportFiles.length})</span>
+          <button type="button" disabled={disabled || uploading === 'report'}
+            onClick={() => rptRef.current?.click()}
+            className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-40">
+            {uploading === 'report' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} 추가
+          </button>
+        </div>
+        <div className="space-y-1">
+          {reportFiles.map((f, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-xs bg-background border rounded px-2 py-1.5">
+              <a href={f.url} target="_blank" rel="noreferrer" className="text-primary hover:underline truncate flex items-center gap-1">
+                <FileText className="w-3 h-3 shrink-0" />
+                <span className="truncate">{f.originalName}</span>
+              </a>
+              <button type="button" onClick={() => removeReport(i)} className="text-muted-foreground hover:text-red-500 shrink-0">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {reportFiles.length === 0 && <p className="text-xs text-muted-foreground">첨부된 문서 없음</p>}
+        </div>
+        <input ref={rptRef} type="file" hidden accept=".pdf,.xlsx,.xls,.docx,.doc,.txt,.csv" multiple
+          onChange={e => { Array.from(e.target.files || []).forEach(f => upload(f, 'report')); e.target.value = ''; }} />
+      </div>
+    </div>
+  );
+}
+
 // ─── ClaimModal ───────────────────────────────────────────────────────────────
 
 function ClaimModal({
@@ -86,6 +186,15 @@ function ClaimModal({
   onClose: () => void; onSave: () => void;
 }) {
   const cx = item as any;
+  const claimId = item?.id || ('CLM-tmp-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+  const [imageFiles, setImageFiles] = useState<FileEntry[]>(() => {
+    const v = cx?.imageFiles; if (!v) return [];
+    return Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v) : []);
+  });
+  const [reportFiles, setReportFiles] = useState<FileEntry[]>(() => {
+    const v = cx?.reportFiles; if (!v) return [];
+    return Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v) : []);
+  });
   const [form, setForm] = useState({
     issueType: (item?.issueType || '품질') as string,
     status: (item?.status || '접수') as string,
@@ -134,6 +243,8 @@ function ClaimModal({
         ...form,
         claimAmount: form.claimAmount ? Number(form.claimAmount) : undefined,
         compensationAmount: form.compensationAmount ? Number(form.compensationAmount) : undefined,
+        imageFiles,
+        reportFiles,
       };
       const res = item
         ? await fetch(`/api/claims/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -285,6 +396,16 @@ function ClaimModal({
               </div>
             </div>
           )}
+
+          {/* 파일 업로드 */}
+          <FileUploadSection
+            claimId={claimId}
+            imageFiles={imageFiles}
+            reportFiles={reportFiles}
+            onChangeImages={setImageFiles}
+            onChangeReports={setReportFiles}
+            disabled={saving}
+          />
 
           {saveError && <p className="text-sm text-red-500">{saveError}</p>}
 
