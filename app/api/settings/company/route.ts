@@ -17,6 +17,7 @@ export const DEFAULT_COMPANY: Record<string, string> = {
   logoUrl: '',
   stampUrl: '',
   ship24ApiKey: '',
+  unipassApiKey: '',
 };
 
 function ensureTable(db: ReturnType<typeof getDb>) {

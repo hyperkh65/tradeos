@@ -325,10 +325,11 @@ function ShipmentModal({
                 <div className="flex items-center gap-2 text-xs text-blue-700 flex-wrap">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                   <BlLookupBadge carrierName={blLookup.carrierName} trackingUrl={blLookup.trackingUrl} />
+                  {blLookup.source === 'unipass' && <span className="text-green-700 font-medium">✓ 관세청 유니패스 자동 완성</span>}
                   {blLookup.source === 'ship24' && <span className="text-green-600 font-medium">✓ Ship24 자동 완성</span>}
                   {blLookup.source === 'searates' && <span className="text-blue-500">✓ Searates 자동 완성</span>}
-                  {blLookup.ship24Missing && (
-                    <span className="text-amber-600">Ship24 API 키 미설정 — 설정에서 등록하면 완전 자동화</span>
+                  {(blLookup as any).unipassMissing && (
+                    <span className="text-amber-600">관세청 유니패스 API 키 미설정 — 설정에서 무료 등록 가능</span>
                   )}
                   {blLookup.trackingUrl && !blLookup.source && (
                     <span className="text-blue-400">캐리어 추적 링크 ↗ 를 클릭해 직접 확인하세요</span>

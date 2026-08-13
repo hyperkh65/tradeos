@@ -13,7 +13,7 @@ interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
   address: string; tel: string; fax: string; email: string;
   bank: string; bankForeign1: string; bankForeign2: string;
-  logoUrl: string; stampUrl: string; ship24ApiKey: string;
+  logoUrl: string; stampUrl: string; ship24ApiKey: string; unipassApiKey: string;
 }
 
 export default function SettingsPage() {
@@ -25,7 +25,7 @@ export default function SettingsPage() {
     name: '', ceo: '', bizNo: '', bizType: '', bizItem: '',
     address: '', tel: '', fax: '', email: '',
     bank: '', bankForeign1: '', bankForeign2: '',
-    logoUrl: '', stampUrl: '', ship24ApiKey: '',
+    logoUrl: '', stampUrl: '', ship24ApiKey: '', unipassApiKey: '',
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -232,21 +232,50 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Ship24 Integration */}
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold mb-1">외부 서비스 연동</h3>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Ship24 API 키 등록 시 B/L 번호로 선박명·항차·ETD/ETA 자동 조회.{' '}
-                  <a href="https://ship24.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ship24.com</a> 무료 가입 → API 키 발급 (월 200건 무료).
-                </p>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Ship24 API Key</label>
-                  <Input
-                    type="password"
-                    value={company.ship24ApiKey}
-                    onChange={e => setCompany(c => ({ ...c, ship24ApiKey: e.target.value }))}
-                    placeholder="Apic-Key xxxxxxxxxxxx"
-                  />
+              {/* External Integrations */}
+              <div className="border-t pt-4 space-y-4">
+                <h3 className="text-sm font-semibold">외부 서비스 연동 (B/L 자동조회)</h3>
+
+                {/* 관세청 유니패스 - 무료 */}
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-green-700">★ 관세청 유니패스 (무료 · 추천)</span>
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">한국 수입 화물 전체 조회</span>
+                  </div>
+                  <p className="text-xs text-green-700">
+                    선사 무관, 한국으로 들어오는 모든 화물을 B/L 번호로 조회. 선박명·항차·ETA·통관현황 자동완성.{' '}
+                    <a href="https://unipass.customs.go.kr" target="_blank" rel="noopener noreferrer" className="underline font-medium">unipass.customs.go.kr</a>{' '}
+                    회원가입 → 마이페이지 → API 사용 신청 (즉시 발급).
+                  </p>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">관세청 유니패스 API Key (crkyCn)</label>
+                    <Input
+                      type="password"
+                      value={company.unipassApiKey}
+                      onChange={e => setCompany(c => ({ ...c, unipassApiKey: e.target.value }))}
+                      placeholder="발급받은 인증키 입력"
+                    />
+                  </div>
+                </div>
+
+                {/* Ship24 - 유료 */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-600">Ship24 (유료 · 글로벌)</span>
+                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">해외 발송 포함 전 세계</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    관세청으로 조회 안 되는 경우 보조로 사용. 유료 플랜 필요.
+                  </p>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Ship24 API Key</label>
+                    <Input
+                      type="password"
+                      value={company.ship24ApiKey}
+                      onChange={e => setCompany(c => ({ ...c, ship24ApiKey: e.target.value }))}
+                      placeholder="Apic-Key xxxxxxxxxxxx"
+                    />
+                  </div>
                 </div>
               </div>
 
