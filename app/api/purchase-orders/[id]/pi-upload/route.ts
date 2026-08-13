@@ -39,7 +39,7 @@ async function stampExcel(
   outputPath: string,
   poNumber: string,
   piNumber: string,
-  companyName: string,
+  _companyName: string,
   stampImgBuf: Uint8Array | null,
 ) {
   const ExcelJS = (await import('exceljs')).default;
@@ -60,7 +60,8 @@ async function stampExcel(
     }
 
     const labelCell = ws.getCell(insertRow, stampImgBuf ? 3 : 1);
-    labelCell.value = `${companyName}\nPO: ${poNumber}  |  PI: ${piNumber}`;
+    // ASCII only to avoid encoding issues; seal image carries company identity
+    labelCell.value = `PO: ${poNumber}\nPI: ${piNumber}\nCONFIRMED`;
     labelCell.font = { bold: true, color: { argb: 'FFCC0000' }, size: 10 };
     labelCell.alignment = { wrapText: true, vertical: 'middle' };
     labelCell.border = {
@@ -80,7 +81,7 @@ async function stampPdf(
   outputPath: string,
   poNumber: string,
   piNumber: string,
-  companyName: string,
+  _companyName: string,
   stampImgBuf: Uint8Array | null,
 ) {
   const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
@@ -92,8 +93,10 @@ async function stampPdf(
   const { width } = lastPage.getSize();
   const red = rgb(0.7, 0, 0);
 
-  const stampW = 280;
-  const stampH = 90;
+  // If stamp image covers company name — use narrower box; otherwise wider box with text
+  const hasImg = !!stampImgBuf;
+  const stampW = hasImg ? 240 : 200;
+  const stampH = hasImg ? 90 : 70;
   const margin = 30;
   const x = (width - stampW) / 2;
   const y = margin;
@@ -101,38 +104,36 @@ async function stampPdf(
   // Red border box
   lastPage.drawRectangle({ x, y, width: stampW, height: stampH, borderColor: red, borderWidth: 2 });
 
-  // Embed seal image on the left if available
+  // Embed seal image on the left — image already contains company name/logo
   if (stampImgBuf) {
     try {
       const img = await (async () => {
         try { return await pdfDoc.embedPng(stampImgBuf); } catch { return await pdfDoc.embedJpg(stampImgBuf); }
       })();
-      const imgSize = 70;
+      const imgSize = 74;
       lastPage.drawImage(img, {
-        x: x + 8,
+        x: x + 6,
         y: y + (stampH - imgSize) / 2,
         width: imgSize,
         height: imgSize,
       });
-    } catch { /* skip image embed if format not supported */ }
+    } catch { /* skip if unsupported format */ }
   }
 
-  const textX = stampImgBuf ? x + 88 : x + 12;
+  const textX = hasImg ? x + 88 : x + 12;
+  const topY = hasImg ? y + stampH - 24 : y + stampH - 18;
 
-  lastPage.drawText(companyName, {
-    x: textX, y: y + stampH - 22,
-    size: 13, font, color: red,
-  });
+  // Only ASCII text to avoid WinAnsi encoding errors with Korean
   lastPage.drawText(`PO: ${poNumber}`, {
-    x: textX, y: y + stampH - 42,
+    x: textX, y: topY,
     size: 10, font, color: red,
   });
   lastPage.drawText(`PI: ${piNumber}`, {
-    x: textX, y: y + stampH - 58,
+    x: textX, y: topY - 18,
     size: 10, font, color: red,
   });
   lastPage.drawText('CONFIRMED', {
-    x: textX, y: y + stampH - 76,
+    x: textX, y: topY - 36,
     size: 10, font, color: red,
   });
 
