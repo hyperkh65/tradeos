@@ -57,7 +57,11 @@ export default function SettingsPage() {
     e.preventDefault(); setSaving(true);
     try {
       const res = await fetch('/api/settings/company', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(company) });
-      if (res.ok) showMsg('success', '회사정보가 저장됐습니다.'); else showMsg('error', '저장 중 오류가 발생했습니다.');
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) showMsg('success', '회사정보가 저장됐습니다.');
+      else showMsg('error', j.error ? `저장 오류: ${j.error}` : `저장 오류 (HTTP ${res.status})`);
+    } catch (err) {
+      showMsg('error', `네트워크 오류: ${String(err)}`);
     } finally { setSaving(false); }
   };
 
