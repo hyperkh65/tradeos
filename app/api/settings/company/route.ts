@@ -16,6 +16,7 @@ export const DEFAULT_COMPANY: Record<string, string> = {
   bankForeign2: '',
   logoUrl: '',
   stampUrl: '',
+  ship24ApiKey: '',
 };
 
 function ensureTable(db: ReturnType<typeof getDb>) {

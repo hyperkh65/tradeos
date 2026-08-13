@@ -495,6 +495,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,
     `ALTER TABLE shipments ADD COLUMN freight_currency TEXT DEFAULT 'USD'`,
     `ALTER TABLE shipments ADD COLUMN packing_list_url TEXT`,
+    `ALTER TABLE shipments ADD COLUMN documents_json TEXT DEFAULT '[]'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

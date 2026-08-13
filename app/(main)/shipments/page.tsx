@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import {
   Ship, Plus, Search, X, Loader2, Pencil, Trash2, Upload,
   ExternalLink, RefreshCw, Plus as PlusIcon, Minus, CheckCircle2, AlertCircle,
+  FileText, Download, File,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Shipment, CargoItem } from '@/types';
+import type { Shipment, CargoItem, ShipDocument, ShipDocType } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -103,11 +104,16 @@ function ShipmentModal({
   });
 
   const [saving, setSaving] = useState(false);
-  const [blLookup, setBlLookup] = useState<{ carrierName?: string | null; trackingUrl?: string | null; source?: string } | null>(null);
+  const [blLookup, setBlLookup] = useState<{ carrierName?: string | null; trackingUrl?: string | null; source?: string; ship24Missing?: boolean; events?: { date: string; location: string; desc: string }[] } | null>(null);
   const [blLoading, setBlLoading] = useState(false);
   const [plUploading, setPlUploading] = useState(false);
   const [plMsg, setPlMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
+  const [docUploading, setDocUploading] = useState(false);
+  const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(item?.id || null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
 
   // Auto-compute totals from cargo items
   const totalGW = form.cargoItems.reduce((s, i) => s + (i.grossWeight || 0), 0);
@@ -120,8 +126,7 @@ function ShipmentModal({
     try {
       const res = await fetch(`/api/shipments/bl-lookup?bl=${encodeURIComponent(bl)}`);
       const d = await res.json();
-      setBlLookup({ carrierName: d.carrierName, trackingUrl: d.trackingUrl, source: d.source });
-      // Auto-fill if tracking API returned data
+      setBlLookup({ carrierName: d.carrierName, trackingUrl: d.trackingUrl, source: d.source, ship24Missing: d.ship24Missing, events: d.events });
       if (d.source) {
         setForm(f => ({
           ...f,
@@ -186,13 +191,70 @@ function ShipmentModal({
         freightCost: form.freightCost ? Number(form.freightCost) : undefined,
         cargoItems: form.cargoItems.filter(i => i.productName.trim()),
       };
+      let shpId = item?.id || null;
       if (item) {
         await fetch(`/api/shipments/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       } else {
-        await fetch('/api/shipments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/api/shipments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await res.json();
+        shpId = d.data?.id || null;
       }
+      setSavedId(shpId);
       onSave();
     } finally { setSaving(false); }
+  };
+
+  const DOC_TYPE_LABEL: Record<ShipDocType, string> = {
+    invoice: 'Invoice', packing_list: 'Packing List', bl: 'B/L', combined: 'Invoice+PL', other: '기타',
+  };
+  const DOC_TYPE_COLOR: Record<ShipDocType, string> = {
+    invoice: 'bg-purple-100 text-purple-700', packing_list: 'bg-green-100 text-green-700',
+    bl: 'bg-blue-100 text-blue-700', combined: 'bg-amber-100 text-amber-700', other: 'bg-gray-100 text-gray-600',
+  };
+
+  const uploadDocuments = async (files: FileList) => {
+    const shpId = savedId || item?.id;
+    if (!shpId) {
+      setDocMsg({ text: '선적을 먼저 저장한 후 서류를 업로드하세요', ok: false });
+      return;
+    }
+    setDocUploading(true);
+    setDocMsg(null);
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach(f => fd.append('files', f));
+      const res = await fetch(`/api/shipments/${shpId}/documents`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const d = await res.json();
+      setDocuments(prev => [...prev, ...d.data]);
+      const detected = (d.data as ShipDocument[]).map(doc => DOC_TYPE_LABEL[doc.docType]).join(', ');
+      setDocMsg({ text: `${d.data.length}개 업로드 완료 — 분류: ${detected}`, ok: true });
+
+      // If packing list detected, ask to extract cargo items
+      const hasPL = (d.data as ShipDocument[]).some(doc => doc.docType === 'packing_list' || doc.docType === 'combined');
+      if (hasPL && form.cargoItems.every(i => !i.productName)) {
+        const plFile = (d.data as ShipDocument[]).find(doc => doc.docType === 'packing_list' || doc.docType === 'combined');
+        if (plFile) {
+          const origFile = Array.from(files).find(f => f.name === plFile.originalName);
+          if (origFile) await uploadPackingList(origFile);
+        }
+      }
+    } catch (e) {
+      setDocMsg({ text: `업로드 실패: ${e}`, ok: false });
+    } finally {
+      setDocUploading(false);
+    }
+  };
+
+  const deleteDoc = async (docId: string) => {
+    const shpId = savedId || item?.id;
+    if (!shpId) return;
+    await fetch(`/api/shipments/${shpId}/documents?docId=${docId}`, { method: 'DELETE' });
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+  };
+
+  const changeDocType = async (doc: ShipDocument, newType: ShipDocType) => {
+    setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, docType: newType } : d));
   };
 
   const inputCls = 'w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring';
@@ -259,11 +321,31 @@ function ShipmentModal({
             </div>
 
             {blLookup && (
-              <div className="flex items-center gap-2 text-xs text-blue-700">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <BlLookupBadge carrierName={blLookup.carrierName} trackingUrl={blLookup.trackingUrl} />
-                {blLookup.trackingUrl && <span className="text-blue-500">위 링크에서 확인 후 아래 정보를 입력/수정하세요</span>}
-                {blLookup.source && <span className="text-green-600 ml-1">✓ 자동 완성됨</span>}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-blue-700 flex-wrap">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <BlLookupBadge carrierName={blLookup.carrierName} trackingUrl={blLookup.trackingUrl} />
+                  {blLookup.source === 'ship24' && <span className="text-green-600 font-medium">✓ Ship24 자동 완성</span>}
+                  {blLookup.source === 'searates' && <span className="text-blue-500">✓ Searates 자동 완성</span>}
+                  {blLookup.ship24Missing && (
+                    <span className="text-amber-600">Ship24 API 키 미설정 — 설정에서 등록하면 완전 자동화</span>
+                  )}
+                  {blLookup.trackingUrl && !blLookup.source && (
+                    <span className="text-blue-400">캐리어 추적 링크 ↗ 를 클릭해 직접 확인하세요</span>
+                  )}
+                </div>
+                {blLookup.events && blLookup.events.length > 0 && (
+                  <div className="bg-white border border-blue-100 rounded-lg p-2 max-h-28 overflow-y-auto">
+                    <p className="text-xs font-medium text-blue-600 mb-1.5">최근 운송 이력</p>
+                    {blLookup.events.map((ev, i) => (
+                      <div key={i} className="flex gap-2 text-xs text-gray-600 mb-1">
+                        <span className="text-gray-400 shrink-0">{ev.date ? String(ev.date).slice(0, 10) : ''}</span>
+                        <span className="font-medium shrink-0">{ev.location}</span>
+                        <span className="truncate">{ev.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -438,6 +520,78 @@ function ShipmentModal({
                 )}
               </table>
             </div>
+          </div>
+
+          {/* ─── Documents */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">첨부 서류</span>
+                <span className="text-xs text-muted-foreground">B/L · Invoice · Packing List (단일 파일 또는 복합 파일 모두 가능)</span>
+              </div>
+              <label className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs border border-dashed rounded-lg cursor-pointer transition-colors',
+                docUploading ? 'bg-gray-100 text-gray-400' : 'hover:bg-muted text-muted-foreground hover:text-foreground',
+              )}>
+                <input
+                  ref={docFileRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.xlsx,.xls,.doc,.docx"
+                  className="hidden"
+                  disabled={docUploading}
+                  onChange={e => { if (e.target.files?.length) uploadDocuments(e.target.files); e.target.value = ''; }}
+                />
+                {docUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                서류 업로드 (여러 파일 가능)
+              </label>
+            </div>
+
+            {docMsg && (
+              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-lg text-xs', docMsg.ok ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700')}>
+                {docMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                {docMsg.text}
+              </div>
+            )}
+
+            {!savedId && !item?.id && (
+              <div className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                서류는 선적 저장 후 업로드 가능합니다. 저장 먼저 진행 후 수정에서 업로드하세요.
+              </div>
+            )}
+
+            {documents.length > 0 && (
+              <div className="space-y-1.5">
+                {documents.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-lg border border-border">
+                    {doc.originalName.endsWith('.pdf')
+                      ? <FileText className="w-4 h-4 text-red-500 shrink-0" />
+                      : <File className="w-4 h-4 text-green-600 shrink-0" />}
+                    <span className="text-xs text-gray-700 flex-1 truncate">{doc.originalName}</span>
+                    <select
+                      value={doc.docType}
+                      onChange={e => changeDocType(doc, e.target.value as ShipDocType)}
+                      className="text-xs border border-input rounded px-1.5 py-0.5 bg-background"
+                    >
+                      <option value="invoice">Invoice</option>
+                      <option value="packing_list">Packing List</option>
+                      <option value="bl">B/L</option>
+                      <option value="combined">Invoice+PL</option>
+                      <option value="other">기타</option>
+                    </select>
+                    <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', DOC_TYPE_COLOR[doc.docType])}>
+                      {DOC_TYPE_LABEL[doc.docType]}
+                    </span>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                    <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ─── Freight / Totals */}

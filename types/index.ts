@@ -193,6 +193,18 @@ export interface Inspection {
 
 export type ShipmentType = 'FCL' | 'LCL' | 'AIR' | 'COURIER';
 
+export type ShipDocType = 'invoice' | 'packing_list' | 'bl' | 'combined' | 'other';
+
+export interface ShipDocument {
+  id: string;
+  filename: string;
+  originalName: string;
+  docType: ShipDocType;
+  url: string;
+  size?: number;
+  uploadedAt: string;
+}
+
 export interface CargoItem {
   id: string;
   productName: string;
@@ -228,6 +240,7 @@ export interface Shipment {
   freightCost?: number;
   freightCurrency?: string;
   packingListUrl?: string;
+  documents: ShipDocument[];
   cargoItems: CargoItem[];
   poIds: string[];
   status: 'booked' | 'departed' | 'in_transit' | 'arrived' | 'customs' | 'completed';

@@ -129,14 +129,14 @@ export const DEMO_SHIPMENTS: Shipment[] = [
     id: 'shp1', businessId: 'SHP-2026-0035', type: 'LCL', forwarderId: 'c5', forwarderName: '한진해운포워딩',
     origin: '닝보', pol: 'CNNGB', pod: 'KRPUS', etd: '2026-08-15', eta: '2026-08-28',
     vessel: 'EVER GLORY', voyage: '202W34', blNo: 'HJKU2026083501',
-    cbm: 18, grossWeight: 4200, cargoItems: [], poIds: ['po1'], status: 'booked',
+    cbm: 18, grossWeight: 4200, cargoItems: [], documents: [], poIds: ['po1'], status: 'booked',
     createdAt: '2026-08-06T00:00:00Z', updatedAt: '2026-08-06T00:00:00Z',
   },
   {
     id: 'shp2', businessId: 'SHP-2026-0033', type: 'FCL', forwarderId: 'c5', forwarderName: '한진해운포워딩',
     origin: '닝보', pol: 'CNNGB', pod: 'KRPUS', etd: '2026-07-10', eta: '2026-07-24',
     vessel: 'MSC MAYA', voyage: '202W28', blNo: 'MSCU2026071001',
-    cbm: 25, grossWeight: 3200, cargoItems: [], poIds: ['po3'], status: 'completed',
+    cbm: 25, grossWeight: 3200, cargoItems: [], documents: [], poIds: ['po3'], status: 'completed',
     createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-25T00:00:00Z',
   },
 ];

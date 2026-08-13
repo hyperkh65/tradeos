@@ -24,6 +24,7 @@ export function dbToShipment(row: Record<string, unknown>): Shipment {
     freightCost: (row.freight_cost as number) || undefined,
     freightCurrency: (row.freight_currency as string) || 'USD',
     packingListUrl: (row.packing_list_url as string) || undefined,
+    documents: (() => { try { return JSON.parse((row.documents_json as string) || '[]'); } catch { return []; } })(),
     cargoItems: (() => { try { return JSON.parse((row.cargo_items_json as string) || '[]'); } catch { return []; } })(),
     poIds: (() => { try { return JSON.parse((row.po_ids_json as string) || '[]'); } catch { return []; } })(),
     status: (row.status as Shipment['status']) || 'booked',

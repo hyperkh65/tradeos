@@ -13,7 +13,7 @@ interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
   address: string; tel: string; fax: string; email: string;
   bank: string; bankForeign1: string; bankForeign2: string;
-  logoUrl: string; stampUrl: string;
+  logoUrl: string; stampUrl: string; ship24ApiKey: string;
 }
 
 export default function SettingsPage() {
@@ -25,7 +25,7 @@ export default function SettingsPage() {
     name: '', ceo: '', bizNo: '', bizType: '', bizItem: '',
     address: '', tel: '', fax: '', email: '',
     bank: '', bankForeign1: '', bankForeign2: '',
-    logoUrl: '', stampUrl: '',
+    logoUrl: '', stampUrl: '', ship24ApiKey: '',
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -229,6 +229,24 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* Ship24 Integration */}
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-1">외부 서비스 연동</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Ship24 API 키 등록 시 B/L 번호로 선박명·항차·ETD/ETA 자동 조회.{' '}
+                  <a href="https://ship24.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ship24.com</a> 무료 가입 → API 키 발급 (월 200건 무료).
+                </p>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Ship24 API Key</label>
+                  <Input
+                    type="password"
+                    value={company.ship24ApiKey}
+                    onChange={e => setCompany(c => ({ ...c, ship24ApiKey: e.target.value }))}
+                    placeholder="Apic-Key xxxxxxxxxxxx"
+                  />
                 </div>
               </div>
 
