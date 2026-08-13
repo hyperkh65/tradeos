@@ -15,8 +15,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const passedQty = (checkedQty != null && failedQty != null) ? checkedQty - failedQty : (row.passed_qty != null ? Number(row.passed_qty) : null);
     const defectRate = (checkedQty && failedQty) ? Number(((failedQty / checkedQty) * 100).toFixed(2)) : (row.defect_rate != null ? Number(row.defect_rate) : null);
 
-    const reportFiles = body.reportFiles !== undefined ? JSON.stringify(body.reportFiles) : (row.report_files as string || '[]');
-    const imageFiles = body.imageFiles !== undefined ? JSON.stringify(body.imageFiles) : (row.image_files as string || '[]');
+    const reportFiles = body.reportFiles !== undefined ? JSON.stringify(body.reportFiles) : ((row.report_files as string) || '[]');
+    const imageFiles = body.imageFiles !== undefined ? JSON.stringify(body.imageFiles) : ((row.image_files as string) || '[]');
 
     db.prepare(`UPDATE inspections SET inspection_date=?,inspector=?,inspection_type=?,sample_qty=?,checked_qty=?,passed_qty=?,failed_qty=?,defect_rate=?,result=?,summary=?,opinion=?,report_files=?,image_files=?,status=?,product_name=?,product_name_manual=?,supplier_name=?,po_id=?,po_business_id=? WHERE id=?`)
       .run(

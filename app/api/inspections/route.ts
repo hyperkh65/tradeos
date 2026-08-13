@@ -16,8 +16,8 @@ function dbToInspection(row: Record<string, unknown>) {
     defectRate: row.defect_rate || undefined,
     result: row.result, summary: row.summary || undefined,
     opinion: row.opinion || undefined,
-    reportFiles: JSON.parse((row.report_files as string) || '[]'),
-    imageFiles: JSON.parse((row.image_files as string) || '[]'),
+    reportFiles: (() => { try { return JSON.parse((row.report_files as string) || '[]'); } catch { return []; } })(),
+    imageFiles: (() => { try { return JSON.parse((row.image_files as string) || '[]'); } catch { return []; } })(),
     status: row.status, createdAt: row.created_at,
   };
 }
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const defectRate = (checkedQty && failedQty) ? Number(((failedQty / checkedQty) * 100).toFixed(2)) : null;
 
     db.prepare(`INSERT INTO inspections (id,business_id,po_id,po_business_id,supplier_id,supplier_name,product_id,product_name,product_name_manual,inspection_date,inspector,inspection_type,sample_qty,checked_qty,passed_qty,failed_qty,defect_rate,result,summary,opinion,report_files,image_files,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, bizId, body.poId || null, body.poBusinessId || null, body.supplierId || null, body.supplierName || '', body.productId || null, body.productName || '', body.productNameManual || null, body.inspectionDate, body.inspector ?? null, body.inspectionType || '공장검품', body.sampleQty || 0, checkedQty, passedQty, failedQty, defectRate, body.result || 'PENDING', body.summary ?? null, body.opinion ?? null, JSON.stringify(body.reportFiles || []), JSON.stringify(body.imageFiles || []), body.status || 'scheduled', ts);
+      .run(id, bizId, body.poId || '', body.poBusinessId || '', body.supplierId || '', body.supplierName || '', body.productId || '', body.productName || '', body.productNameManual || null, body.inspectionDate, body.inspector ?? null, body.inspectionType || '공장검품', body.sampleQty || 0, checkedQty, passedQty, failedQty, defectRate, body.result || 'PENDING', body.summary ?? null, body.opinion ?? null, JSON.stringify(body.reportFiles || []), JSON.stringify(body.imageFiles || []), body.status || 'scheduled', ts);
 
     return NextResponse.json({ data: dbToInspection(db.prepare('SELECT * FROM inspections WHERE id=?').get(id) as Record<string, unknown>) }, { status: 201 });
   } catch (e) {
