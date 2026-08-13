@@ -22,13 +22,28 @@ const CARRIERS: Record<string, { name: string; trackingUrl: (bl: string) => stri
   SITC: { name: 'SITC', trackingUrl: () => 'https://www.sitcline.com/en/track' },
 };
 
-// 관세청 cargo status codes
 const UNIPASS_STATUS: Record<string, string> = {
   '01': '선적(해외출항)', '02': '선적완료', '03': '운항중',
   '04': '입항', '05': '부두반입', '06': '하선신고',
   '07': '수입신고', '08': '수입신고수리', '09': '반출/배송',
   'E01': '수출신고', 'E02': '수출신고수리', 'E03': '적재완료',
 };
+
+// Simple XML tag extractor (no library needed)
+function xmlTag(xml: string, tag: string): string {
+  const m = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i').exec(xml);
+  return m?.[1]?.trim() || '';
+}
+function xmlAllTags(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'gi');
+  const results: string[] = [];
+  let m;
+  while ((m = re.exec(xml)) !== null) results.push(m[1]);
+  return results;
+}
+
+// Unipass base URL
+const UNIPASS_BASE = 'https://unipass.customs.go.kr:38010/ext/rest';
 
 function getSettings(): Record<string, string> {
   try {
@@ -45,48 +60,42 @@ function parseKoreanDate(dt: string): string | null {
   return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 }
 
-// ── 관세청 유니패스 API ──────────────────────────────────────────────────────
-async function queryUnipass(blNo: string, apiKey: string) {
-  const url = new URL('https://unipass.customs.go.kr:38010/ext/rest/cargoCsclPrgsInfoQry/retrieveCargoCsclPrgsInfo');
+// ── 관세청 유니패스 공통 fetch ────────────────────────────────────────────────
+async function unipassFetch(endpoint: string, params: Record<string, string>, apiKey: string): Promise<string> {
+  const url = new URL(`${UNIPASS_BASE}/${endpoint}`);
   url.searchParams.set('crkyCn', apiKey);
-  url.searchParams.set('blNo', blNo);
-  url.searchParams.set('cargTp', 'B');    // B=해상, A=항공
-  url.searchParams.set('pageIndex', '1');
-  url.searchParams.set('perPage', '20');
-
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString(), {
     headers: { Accept: 'application/json' },
     signal: AbortSignal.timeout(8000),
   });
+  if (!res.ok) throw new Error(`Unipass ${endpoint} HTTP ${res.status}`);
+  return res.text();
+}
 
-  if (!res.ok) throw new Error(`Unipass HTTP ${res.status}`);
+// ── 1) 화물통관진행정보조회 (B/L 기준) ─────────────────────────────────────
+async function queryCargoProgress(blNo: string, apiKey: string) {
+  const text = await unipassFetch('cargoCsclPrgsInfoQry/retrieveCargoCsclPrgsInfo', {
+    blNo, cargTp: 'B', pageIndex: '1', perPage: '20',
+  }, apiKey);
 
-  const text = await res.text();
-  // Response can be XML or JSON
   let data: any;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    // Try to parse XML
-    const getTag = (tag: string) => {
-      const m = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i').exec(text);
-      return m?.[1]?.trim() || null;
-    };
+  try { data = JSON.parse(text); } catch {
+    // XML fallback
     return {
-      vessel: getTag('vslNm'),
-      voyage: getTag('voyNo'),
-      pol: getTag('ldprCd'),
-      pod: getTag('dsprCd'),
-      etd: parseKoreanDate(getTag('etdDt') || ''),
-      eta: parseKoreanDate(getTag('etprDt') || getTag('etaDt') || ''),
-      containerNo: getTag('cntrNo'),
-      statusCode: getTag('prcsStCd'),
-      statusName: getTag('prcsStNm') || UNIPASS_STATUS[getTag('prcsStCd') || ''] || null,
+      vessel: xmlTag(text, 'vslNm'),
+      voyage: xmlTag(text, 'voyNo'),
+      pol: xmlTag(text, 'ldprCd'),
+      pod: xmlTag(text, 'dsprCd'),
+      etd: parseKoreanDate(xmlTag(text, 'etdDt')),
+      eta: parseKoreanDate(xmlTag(text, 'etprDt') || xmlTag(text, 'etaDt')),
+      containerNos: xmlAllTags(text, 'cntrNo').filter(Boolean),
+      statusCode: xmlTag(text, 'prcsStCd'),
+      statusName: xmlTag(text, 'prcsStNm') || null,
       events: [],
     };
   }
 
-  // Parse JSON response
   const root = data?.cargCsclPrgsInfoQryVo || data?.response?.body?.items || data;
   const items: any[] = Array.isArray(root?.cargCsclPrgsInfoDtlVo)
     ? root.cargCsclPrgsInfoDtlVo
@@ -95,7 +104,6 @@ async function queryUnipass(blNo: string, apiKey: string) {
   if (!items.length) return null;
 
   const first = items[0];
-
   const events = items.map((it: any) => ({
     date: parseKoreanDate(it.prcsDttm || it.prcsYmd || ''),
     status: it.prcsStNm || UNIPASS_STATUS[it.prcsStCd] || it.prcsStCd || '',
@@ -103,52 +111,86 @@ async function queryUnipass(blNo: string, apiKey: string) {
     containerNo: it.cntrNo || '',
   })).filter((e: any) => e.date);
 
-  const latest = items.reduce((prev: any, cur: any) => {
-    const prevDt = prev.prcsDttm || prev.prcsYmd || '';
-    const curDt = cur.prcsDttm || cur.prcsYmd || '';
-    return curDt > prevDt ? cur : prev;
-  }, items[0]);
+  const latest = items.reduce((prev: any, cur: any) =>
+    (cur.prcsDttm || cur.prcsYmd || '') > (prev.prcsDttm || prev.prcsYmd || '') ? cur : prev, items[0]);
+
+  const containerNos = [...new Set(items.map((it: any) => it.cntrNo).filter(Boolean))];
 
   return {
-    vessel: first.vslNm || first.vesselName || null,
+    vessel: first.vslNm || null,
     voyage: first.voyNo || null,
     pol: first.ldprCd || null,
     pod: first.dsprCd || null,
     etd: parseKoreanDate(first.etdDt || first.shpmDttm || ''),
     eta: parseKoreanDate(first.etprDt || first.etaDt || ''),
-    containerNo: first.cntrNo || null,
+    containerNos,
+    containerNo: containerNos[0] || null,
     statusCode: latest.prcsStCd || null,
     statusName: latest.prcsStNm || UNIPASS_STATUS[latest.prcsStCd] || null,
     mblNo: first.mblNo || null,
     events: events.slice(0, 10),
-    source: 'unipass',
   };
 }
 
-// ── Port-MIS 선박 입출항 정보 ─────────────────────────────────────────────────
-async function queryPortMIS(vesselName: string, apiKey: string) {
-  const url = new URL('https://apis.data.go.kr/1220000/VsslScheInfoService/getVsslScheInfo');
-  url.searchParams.set('serviceKey', apiKey);
-  url.searchParams.set('vslNm', vesselName);
-  url.searchParams.set('numOfRows', '5');
-  url.searchParams.set('pageNo', '1');
-  url.searchParams.set('type', 'json');
-
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
-  if (!res.ok) return null;
+// ── 2) 컨테이너내역조회 ────────────────────────────────────────────────────
+async function queryContainer(cntrNo: string, apiKey: string) {
   try {
-    const data = await res.json();
-    const items = data?.response?.body?.items?.item;
-    if (!items) return null;
-    const list = Array.isArray(items) ? items : [items];
-    return list.map((it: any) => ({
-      vessel: it.vslNm,
-      voyage: it.voyNo,
-      pol: it.ldgPrtCd,
-      pod: it.dschPrtCd,
-      etd: parseKoreanDate(it.etd || it.atd || ''),
-      eta: parseKoreanDate(it.eta || it.ata || ''),
-    }));
+    const text = await unipassFetch('cntrInfoQry/retrieveCntrInfo', {
+      cntrNo, pageIndex: '1', perPage: '5',
+    }, apiKey);
+
+    let data: any;
+    try { data = JSON.parse(text); } catch {
+      return {
+        sealNo: xmlTag(text, 'sealNo'),
+        cntrSzTpCd: xmlTag(text, 'cntrSzTpCd'),
+        grossWeight: xmlTag(text, 'wght'),
+      };
+    }
+
+    const root = data?.cntrInfoQryVo || data?.response?.body?.items || data;
+    const items: any[] = Array.isArray(root?.cntrInfoDtlVo)
+      ? root.cntrInfoDtlVo
+      : Array.isArray(root) ? root : (root ? [root] : []);
+
+    if (!items.length) return null;
+    const c = items[0];
+    return {
+      sealNo: c.sealNo || null,
+      cntrSzTpCd: c.cntrSzTpCd || c.cntrTpCd || null,
+      grossWeight: c.wght || c.grssWght || null,
+    };
+  } catch { return null; }
+}
+
+// ── 3) 입항보고내역조회(해상) — vessel + voyage 기준 ─────────────────────
+async function queryArrivalReport(vessel: string, voyage: string, apiKey: string) {
+  try {
+    const text = await unipassFetch('arrivRptInfoQry/retrieveArrivRptInfo', {
+      vslNm: vessel, voyNo: voyage, pageIndex: '1', perPage: '5',
+    }, apiKey);
+
+    let data: any;
+    try { data = JSON.parse(text); } catch {
+      return {
+        eta: parseKoreanDate(xmlTag(text, 'etprDt') || xmlTag(text, 'etaDt')),
+        ata: parseKoreanDate(xmlTag(text, 'ata') || xmlTag(text, 'arrDt')),
+        pod: xmlTag(text, 'dsprCd') || xmlTag(text, 'arrPrtCd'),
+      };
+    }
+
+    const root = data?.arrivRptInfoQryVo || data?.response?.body?.items || data;
+    const items: any[] = Array.isArray(root?.arrivRptInfoDtlVo)
+      ? root.arrivRptInfoDtlVo
+      : Array.isArray(root) ? root : (root ? [root] : []);
+
+    if (!items.length) return null;
+    const r = items[0];
+    return {
+      eta: parseKoreanDate(r.etprDt || r.etaDt || ''),
+      ata: parseKoreanDate(r.ata || r.arrDt || r.arrDttm || ''),
+      pod: r.dsprCd || r.arrPrtCd || null,
+    };
   } catch { return null; }
 }
 
@@ -174,11 +216,28 @@ export async function GET(req: NextRequest) {
   // ── 1순위: 관세청 유니패스 (무료, 한국 수입 화물 전체) ─────────────────────
   if (unipassKey) {
     try {
-      const info = await queryUnipass(bl, unipassKey);
-      if (info) {
-        Object.assign(result, info);
+      // Step 1: 화물통관진행정보조회 (B/L 기준)
+      const cargo = await queryCargoProgress(bl, unipassKey);
+      if (cargo) {
+        Object.assign(result, cargo);
         result.source = 'unipass';
         result.sourceLabel = '관세청 유니패스';
+
+        // Step 2: 컨테이너 + 입항보고 병렬 조회 (결과 보완)
+        const [cntrResult, arrResult] = await Promise.allSettled([
+          cargo.containerNo ? queryContainer(cargo.containerNo, unipassKey) : Promise.resolve(null),
+          cargo.vessel && cargo.voyage ? queryArrivalReport(cargo.vessel, cargo.voyage, unipassKey) : Promise.resolve(null),
+        ]);
+
+        if (cntrResult.status === 'fulfilled' && cntrResult.value) {
+          result.containerDetail = cntrResult.value;
+        }
+        if (arrResult.status === 'fulfilled' && arrResult.value) {
+          const arr = arrResult.value;
+          if (arr.eta && !result.eta) result.eta = arr.eta;
+          if (arr.ata) result.ata = arr.ata;
+          if (arr.pod && !result.pod) result.pod = arr.pod;
+        }
       }
     } catch (e) {
       result.unipassError = String(e);
