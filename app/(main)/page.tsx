@@ -49,9 +49,6 @@ interface Product {
   id: string; code: string; nameKo: string; supplierName?: string;
   purchasePrice?: number; sellingPrice?: number; created_at?: string;
 }
-interface PORow {
-  id: string; supplierName: string; totalAmount: number; currency: string; status: string;
-}
 
 // ─── stat computation ─────────────────────────────────────────────────────────
 
@@ -115,6 +112,7 @@ function computeStats(sales: Sale[], allSales: Sale[]) {
     topCustomersByAmount: Object.entries(customerAmount).sort((a, b) => b[1] - a[1]).slice(0, 5),
     topCustomersByTx: Object.entries(customerTxCount).sort((a, b) => b[1] - a[1]).slice(0, 5),
     topProductsByAmount: Object.entries(productAmount).sort((a, b) => b[1] - a[1]).slice(0, 5),
+    topProductsByQty: Object.entries(productQty).sort((a, b) => b[1] - a[1]).slice(0, 5),
     saleTypeDistribution: Object.entries(saleTypeAmount).sort((a, b) => b[1] - a[1]),
     totalSalesCount: sales.length,
     thisMonthSalesCount: sales.filter(s => getMonth(s.saleDate ?? '') === thisMonth).length,
@@ -218,21 +216,12 @@ export default function HomePage() {
   const [userName, setUserName] = useState('');
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<PORow[]>([]);
-  const [fxRates, setFxRates] = useState<Record<string, number>>({});
-  const [fxDate, setFxDate] = useState('');
   const [opStats, setOpStats] = useState({ activePOs: 0, upcomingShipments: 0, pendingTasks: 0, pendingApprovals: 0, openClaims: 0, totalCompanies: 0 });
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'year' | 'all'>('year');
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setUserName(j.user.name); }).catch(() => {});
-
-    // Exchange rates (KRW base)
-    fetch('https://api.frankfurter.app/latest?base=KRW')
-      .then(r => r.json())
-      .then(j => { setFxRates(j.rates || {}); setFxDate(j.date || ''); })
-      .catch(() => setFxRates({ USD: 0.000714, CNY: 0.00516, EUR: 0.000659, JPY: 0.1073 }));
 
     Promise.all([
       fetch('/api/sales').then(r => r.json()),
@@ -247,7 +236,6 @@ export default function HomePage() {
       setSales(Array.isArray(sRes.data) ? sRes.data : []);
       setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       const po = Array.isArray(poRes.data) ? poRes.data : [];
-      setPurchaseOrders(po.map((p: any) => ({ id: p.id, supplierName: p.supplierName || '', totalAmount: p.totalAmount || 0, currency: (p.currency || 'USD').toUpperCase(), status: p.status || '' })));
       const sh = Array.isArray(shRes.data) ? shRes.data : [];
       const tk = Array.isArray(tRes.data) ? tRes.data : [];
       const ap = Array.isArray(aRes.data) ? aRes.data : [];
@@ -270,18 +258,6 @@ export default function HomePage() {
   }, [sales, filterMode, curYear]);
 
   const stats = useMemo(() => computeStats(filteredSales, sales), [filteredSales, sales]);
-
-  const topSuppliersByPoAmount = useMemo(() => {
-    if (!purchaseOrders.length) return [];
-    const supplierAmounts: Record<string, number> = {};
-    for (const po of purchaseOrders) {
-      const currency = po.currency?.toUpperCase() || 'USD';
-      const rate = fxRates[currency];
-      const amountKRW = rate ? Math.round(po.totalAmount / rate) : po.totalAmount;
-      supplierAmounts[po.supplierName] = (supplierAmounts[po.supplierName] ?? 0) + amountKRW;
-    }
-    return Object.entries(supplierAmounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [purchaseOrders, fxRates]);
 
   const recentSales = [...sales].sort((a, b) => (b.saleDate ?? '').localeCompare(a.saleDate ?? '')).slice(0, 6);
   const recentProducts = [...products].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')).slice(0, 5);
@@ -462,29 +438,13 @@ export default function HomePage() {
             valueLabel={v => `₩${krw(v)}`}
             barColor="bg-gradient-to-r from-green-500 to-emerald-400"
           />
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <SectionTitle icon={Target} label="발주금액 TOP 5 공급사" color="text-purple-600" />
-              {fxDate && <span className="text-[10px] text-muted-foreground shrink-0">환율 {fxDate} 기준</span>}
-            </div>
-            <div className="space-y-3">
-              {topSuppliersByPoAmount.map(([name, val], i) => (
-                <div key={name}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={cn('text-[11px] font-bold w-5 shrink-0 text-center', RANK_TEXT[i])}>
-                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}
-                      </span>
-                      <span className="text-sm truncate text-foreground/90">{name}</span>
-                    </div>
-                    <span className="text-sm font-semibold shrink-0 ml-2 tabular-nums">₩{krw(val)}</span>
-                  </div>
-                  <RankBar value={val} max={topSuppliersByPoAmount[0]?.[1] ?? 1} color="bg-gradient-to-r from-purple-500 to-violet-400" />
-                </div>
-              ))}
-              {topSuppliersByPoAmount.length === 0 && <p className="text-xs text-muted-foreground text-center py-3">데이터 없음</p>}
-            </div>
-          </div>
+          <RankCard
+            title={`판매수량 TOP 5 제품 (${curYear}년)`}
+            icon={Target} iconColor="text-purple-600"
+            items={stats.topProductsByQty}
+            valueLabel={v => `${fmt(v)}개`}
+            barColor="bg-gradient-to-r from-purple-500 to-violet-400"
+          />
         </div>
 
         {/* ── 매출 유형 분포 ── */}
