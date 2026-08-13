@@ -272,6 +272,8 @@ export interface Claim {
   productName?: string;
   poId?: string;
   poBusinessId?: string;
+  saleId?: string;
+  saleBusinessId?: string;
   shipmentId?: string;
   issueType: ClaimIssueType;
   description: string;

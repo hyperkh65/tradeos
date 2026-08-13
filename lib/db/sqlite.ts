@@ -480,6 +480,10 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE inspections ADD COLUMN report_files TEXT DEFAULT '[]'`,
     `ALTER TABLE inspections ADD COLUMN image_files TEXT DEFAULT '[]'`,
     `ALTER TABLE inspections ADD COLUMN product_name_manual TEXT`,
+    `ALTER TABLE claims ADD COLUMN sale_id TEXT`,
+    `ALTER TABLE claims ADD COLUMN sale_business_id TEXT`,
+    `ALTER TABLE claims ADD COLUMN shipment_id TEXT`,
+    `ALTER TABLE claims ADD COLUMN resolved_at TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
