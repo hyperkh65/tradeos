@@ -111,29 +111,40 @@ function InspectionModal({ inspection, companies, products, purchaseOrders, onCl
       const newReportUrls = [...existingReports];
       const newImageUrls = [...existingImages];
 
+      const uploadFile = async (file: File, fileType: 'report' | 'image', idx: number, total: number): Promise<string | null> => {
+        const label = fileType === 'report' ? '리포트' : '사진';
+        setUploadProgress(`${label} 업로드 ${idx + 1}/${total} (${file.name})...`);
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('fileType', fileType);
+          const r = await fetch(`/api/inspections/${inspId}/upload`, { method: 'POST', body: fd });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+            console.warn(`[upload] ${file.name} 실패:`, err.error);
+            return null;
+          }
+          const j = await r.json();
+          return j.url || null;
+        } catch (err) {
+          console.warn(`[upload] ${file.name} 오류:`, err);
+          return null;
+        }
+      };
+
       // Upload reports
       for (let i = 0; i < pendingReports.length; i++) {
-        setUploadProgress(`리포트 업로드 ${i + 1}/${pendingReports.length}...`);
-        const fd = new FormData();
-        fd.append('file', pendingReports[i]);
-        fd.append('fileType', 'report');
-        const r = await fetch(`/api/inspections/${inspId}/upload`, { method: 'POST', body: fd });
-        const j = await r.json();
-        if (j.url) newReportUrls.push(j.url);
+        const url = await uploadFile(pendingReports[i], 'report', i, pendingReports.length);
+        if (url) newReportUrls.push(url);
       }
 
       // Upload images
       for (let i = 0; i < pendingImages.length; i++) {
-        setUploadProgress(`사진 업로드 ${i + 1}/${pendingImages.length}...`);
-        const fd = new FormData();
-        fd.append('file', pendingImages[i]);
-        fd.append('fileType', 'image');
-        const r = await fetch(`/api/inspections/${inspId}/upload`, { method: 'POST', body: fd });
-        const j = await r.json();
-        if (j.url) newImageUrls.push(j.url);
+        const url = await uploadFile(pendingImages[i], 'image', i, pendingImages.length);
+        if (url) newImageUrls.push(url);
       }
 
-      // Update with file URLs if any
+      // Always update with final file URLs (even if partial upload)
       if (pendingReports.length > 0 || pendingImages.length > 0) {
         setUploadProgress('파일 정보 저장 중...');
         await fetch(`/api/inspections/${inspId}`, {
@@ -146,7 +157,8 @@ function InspectionModal({ inspection, companies, products, purchaseOrders, onCl
       onSave();
     } catch (e) {
       console.error(e);
-      alert('저장 중 오류가 발생했습니다.');
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`저장 중 오류가 발생했습니다:\n${msg}`);
     } finally {
       setSaving(false);
       setUploadProgress('');
