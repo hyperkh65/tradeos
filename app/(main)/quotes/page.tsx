@@ -237,10 +237,11 @@ function QuoteImageUpload({ images, quoteId, onChange }: { images: string[]; quo
 /* ─── Quote Modal ────────────────────────────────────────────────────────── */
 
 function QuoteModal({
-  item, companies, products, quotes, me, onClose, onSave,
+  item, companies, products, quotes, me, onClose, onSave, onPrint,
 }: {
   item?: Quote | null; companies: any[]; products: any[]; quotes: Quote[];
   me: { name: string; role: string } | null; onClose: () => void; onSave: () => void;
+  onPrint?: (q: Quote) => void;
 }) {
   const q = item as any;
   const quoteId = item?.id || ('QT-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -285,6 +286,7 @@ function QuoteModal({
       : [emptyItem()]) as any[],
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [specMode, setSpecMode] = useState<Record<number, 'auto' | 'manual'>>({});
 
   const filteredCompanies = companies.filter(c =>
@@ -334,8 +336,9 @@ function QuoteModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.companyName) return;
+    if (!form.companyName) { setSaveError('거래처를 선택해주세요.'); return; }
     setSaving(true);
+    setSaveError('');
     try {
       const body = {
         ...form,
@@ -348,12 +351,17 @@ function QuoteModal({
         specialNotes: form.specialNotes,
         generalInfo: form.generalInfo,
       };
-      if (item) {
-        await fetch(`/api/quotes/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      } else {
-        await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = item
+        ? await fetch(`/api/quotes/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setSaveError(j.error || `저장 실패 (${res.status})`);
+        return;
       }
       onSave();
+    } catch (e) {
+      setSaveError('네트워크 오류가 발생했습니다.');
     } finally { setSaving(false); }
   };
 
@@ -610,8 +618,40 @@ function QuoteModal({
             );
           })()}
 
+          {saveError && (
+            <p className="text-sm text-red-500 text-center -mt-1">{saveError}</p>
+          )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+            {onPrint && (
+              <Button type="button" variant="outline" className="gap-1" onClick={() => {
+                const preview = {
+                  id: item?.id || quoteId,
+                  businessId: (item as any)?.businessId || 'PREVIEW',
+                  type: form.type as Quote['type'],
+                  companyId: form.companyId,
+                  companyName: form.companyName,
+                  items: form.items,
+                  currency: form.currency,
+                  incoterm: form.incoterm,
+                  paymentTerms: form.paymentTerms,
+                  validity: form.validity,
+                  status: form.status as Quote['status'],
+                  remark: form.remark,
+                  createdBy: (item as any)?.createdBy || 'user-1',
+                  createdAt: (item as any)?.createdAt || new Date().toISOString(),
+                  quoteDate: form.quoteDate,
+                  totalAmount,
+                  docType: form.docType,
+                  specialNotes: form.specialNotes,
+                  generalInfo: form.generalInfo,
+                  imagesJson: JSON.stringify(images),
+                } as any;
+                onPrint(preview);
+              }}>
+                <Printer className="w-4 h-4" /> 미리보기
+              </Button>
+            )}
             <Button type="submit" className="flex-1" disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정 저장' : '저장')}
             </Button>
@@ -789,12 +829,14 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
             <div style={{ display: 'flex', gap: '30px', marginTop: '40px' }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#171717', marginBottom: '10px', textTransform: 'uppercase' }}>Terms &amp; Conditions</div>
-                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.6', borderTop: '1px solid #e5e5e5', paddingTop: '10px', whiteSpace: 'pre-wrap' }}>
-                  {quote.paymentTerms && `Payment: ${quote.paymentTerms}\n`}
-                  {quote.incoterm && `Incoterm: ${quote.incoterm}\n`}
-                  {quote.validity && `Valid Until: ${quote.validity}\n`}
-                  {specialNotes && `${specialNotes}\n`}
-                  {generalInfo && `${generalInfo}`}
+                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.8', borderTop: '1px solid #e5e5e5', paddingTop: '10px', whiteSpace: 'pre-wrap' }}>
+                  {[
+                    quote.paymentTerms ? `Payment: ${quote.paymentTerms}` : '',
+                    quote.incoterm ? `Incoterm: ${quote.incoterm}` : '',
+                    quote.validity ? `Valid Until: ${quote.validity}` : '',
+                    specialNotes || '',
+                    generalInfo || '',
+                  ].filter(Boolean).join('\n') || '—'}
                 </div>
                 {bankInfo && (
                   <div style={{ marginTop: '14px' }}>
@@ -1078,6 +1120,7 @@ export default function QuotesPage() {
           me={me}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load(); }}
+          onPrint={(q) => { setModal({ open: false }); setPrintModal({ open: true, item: q as Quote }); }}
         />
       )}
 
