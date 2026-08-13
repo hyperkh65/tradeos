@@ -93,48 +93,64 @@ async function stampPdf(
   const { width } = lastPage.getSize();
   const red = rgb(0.7, 0, 0);
 
-  // If stamp image covers company name — use narrower box; otherwise wider box with text
-  const hasImg = !!stampImgBuf;
-  const stampW = hasImg ? 240 : 200;
-  const stampH = hasImg ? 90 : 70;
-  const margin = 30;
+  const margin = 40;
+  const padding = 10;
+
+  // Embed seal image first to get its natural dimensions
+  let embeddedImg = null;
+  let imgDrawW = 0;
+  let imgDrawH = 0;
+
+  if (stampImgBuf) {
+    try {
+      embeddedImg = await (async () => {
+        try { return await pdfDoc.embedPng(stampImgBuf); } catch { return await pdfDoc.embedJpg(stampImgBuf); }
+      })();
+      // Scale to fit within 180×120 while preserving aspect ratio
+      const maxW = 180;
+      const maxH = 120;
+      const { width: nw, height: nh } = embeddedImg.scale(1);
+      const scale = Math.min(maxW / nw, maxH / nh);
+      imgDrawW = nw * scale;
+      imgDrawH = nh * scale;
+    } catch { /* skip */ }
+  }
+
+  // Box dimensions: image width + text column (200px) + padding
+  const textColW = 200;
+  const stampH = Math.max(imgDrawH, 80) + padding * 2;
+  const stampW = (embeddedImg ? imgDrawW + padding : 0) + textColW + padding * 2;
   const x = (width - stampW) / 2;
   const y = margin;
 
   // Red border box
   lastPage.drawRectangle({ x, y, width: stampW, height: stampH, borderColor: red, borderWidth: 2 });
 
-  // Embed seal image on the left — image already contains company name/logo
-  if (stampImgBuf) {
-    try {
-      const img = await (async () => {
-        try { return await pdfDoc.embedPng(stampImgBuf); } catch { return await pdfDoc.embedJpg(stampImgBuf); }
-      })();
-      const imgSize = 74;
-      lastPage.drawImage(img, {
-        x: x + 6,
-        y: y + (stampH - imgSize) / 2,
-        width: imgSize,
-        height: imgSize,
-      });
-    } catch { /* skip if unsupported format */ }
+  // Draw seal image — vertically centered, natural aspect ratio
+  if (embeddedImg) {
+    lastPage.drawImage(embeddedImg, {
+      x: x + padding,
+      y: y + (stampH - imgDrawH) / 2,
+      width: imgDrawW,
+      height: imgDrawH,
+    });
   }
 
-  const textX = hasImg ? x + 88 : x + 12;
-  const topY = hasImg ? y + stampH - 24 : y + stampH - 18;
+  const textX = embeddedImg ? x + imgDrawW + padding * 2 : x + padding;
+  const topY = y + stampH - padding - 14;
 
   // Only ASCII text to avoid WinAnsi encoding errors with Korean
   lastPage.drawText(`PO: ${poNumber}`, {
     x: textX, y: topY,
-    size: 10, font, color: red,
+    size: 12, font, color: red,
   });
   lastPage.drawText(`PI: ${piNumber}`, {
-    x: textX, y: topY - 18,
-    size: 10, font, color: red,
+    x: textX, y: topY - 22,
+    size: 12, font, color: red,
   });
   lastPage.drawText('CONFIRMED', {
-    x: textX, y: topY - 36,
-    size: 10, font, color: red,
+    x: textX, y: topY - 44,
+    size: 12, font, color: red,
   });
 
   const out = await pdfDoc.save();
