@@ -105,30 +105,42 @@ async function queryCargoProgress(blNo: string, apiKey: string) {
 
   const first = items[0];
   const events = items.map((it: any) => ({
-    date: parseKoreanDate(it.prcsDttm || it.prcsYmd || ''),
+    date: parseKoreanDate(it.prcsDttm || it.prcsYmd || it.prcsDt || ''),
     status: it.prcsStNm || UNIPASS_STATUS[it.prcsStCd] || it.prcsStCd || '',
-    location: it.dsprNm || it.ldprNm || it.cargClprSttnNm || '',
+    location: it.dsprNm || it.ldprNm || it.cargClprSttnNm || it.prcsPrtNm || '',
     containerNo: it.cntrNo || '',
+    statusCode: it.prcsStCd || '',
   })).filter((e: any) => e.date);
 
   const latest = items.reduce((prev: any, cur: any) =>
-    (cur.prcsDttm || cur.prcsYmd || '') > (prev.prcsDttm || prev.prcsYmd || '') ? cur : prev, items[0]);
+    (cur.prcsDttm || cur.prcsYmd || cur.prcsDt || '') > (prev.prcsDttm || prev.prcsYmd || prev.prcsDt || '') ? cur : prev, items[0]);
 
   const containerNos = [...new Set(items.map((it: any) => it.cntrNo).filter(Boolean))];
+
+  // ETD: API 필드 → 출발 이벤트(03=운항중 이전) 날짜 순으로 fallback
+  const etdRaw = first.etdDt || first.etd || first.shpmDt || first.ldDt || first.departureDt || '';
+  const etdFromEvents = events.find(e => ['01', '02', '03'].includes(e.statusCode))?.date || null;
+  const etd = parseKoreanDate(etdRaw) || etdFromEvents;
+
+  // ETA: API 필드 → 입항 이벤트 날짜 순으로 fallback
+  const etaRaw = first.etprDt || first.etaDt || first.eta || first.arrvEstDt || first.prdArvlDt || '';
+  const etaFromEvents = events.find(e => ['04', '05', '06'].includes(e.statusCode))?.date || null;
+  const eta = parseKoreanDate(etaRaw) || etaFromEvents;
 
   return {
     vessel: first.vslNm || null,
     voyage: first.voyNo || null,
     pol: first.ldprCd || null,
     pod: first.dsprCd || null,
-    etd: parseKoreanDate(first.etdDt || first.shpmDttm || ''),
-    eta: parseKoreanDate(first.etprDt || first.etaDt || ''),
+    etd,
+    eta,
     containerNos,
     containerNo: containerNos[0] || null,
     statusCode: latest.prcsStCd || null,
     statusName: latest.prcsStNm || UNIPASS_STATUS[latest.prcsStCd] || null,
     mblNo: first.mblNo || null,
     events: events.slice(0, 10),
+    _firstKeys: Object.keys(first),  // 실제 응답 필드명 확인용 (디버그)
   };
 }
 
