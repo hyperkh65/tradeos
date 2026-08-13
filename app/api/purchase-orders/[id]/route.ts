@@ -36,8 +36,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     const revisionsJson = JSON.stringify(existingRevs);
 
-    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=?,images_json=?,deposit_ratio=?,revisions_json=? WHERE id=?`)
-      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, status, body.incoterm ?? null, body.remark ?? null, ts, body.imagesJson ?? row.images_json ?? null, body.depositRatio ?? row.deposit_ratio ?? '30', revisionsJson, id);
+    // Auto-confirm: draft → confirmed when PI number is set
+    const newPiNumber = body.piNumber !== undefined ? body.piNumber : (row.pi_number ?? null);
+    const autoStatus = (status === 'draft' || row.status === 'draft') && newPiNumber ? 'confirmed' : status;
+
+    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=?,images_json=?,deposit_ratio=?,revisions_json=?,pi_number=?,pi_file_url=?,pi_stamped_url=? WHERE id=?`)
+      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, autoStatus, body.incoterm ?? null, body.remark ?? null, ts, body.imagesJson ?? row.images_json ?? null, body.depositRatio ?? row.deposit_ratio ?? '30', revisionsJson, newPiNumber, body.piFileUrl !== undefined ? body.piFileUrl : (row.pi_file_url ?? null), body.piStampedUrl !== undefined ? body.piStampedUrl : (row.pi_stamped_url ?? null), id);
 
     // Sync to Notion (ERP)
     await updateNotionPurchaseOrder(businessId, {

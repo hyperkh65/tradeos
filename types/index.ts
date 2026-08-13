@@ -135,6 +135,9 @@ export interface PurchaseOrder {
   status: 'draft' | 'confirmed' | 'production' | 'inspection' | 'shipped' | 'completed' | 'cancelled';
   remark?: string;
   incoterm?: string;
+  piNumber?: string;
+  piFileUrl?: string;
+  piStampedUrl?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

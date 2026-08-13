@@ -487,6 +487,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE claims ADD COLUMN notion_id TEXT`,
     `ALTER TABLE claims ADD COLUMN image_files TEXT DEFAULT '[]'`,
     `ALTER TABLE claims ADD COLUMN report_files TEXT DEFAULT '[]'`,
+    `ALTER TABLE purchase_orders ADD COLUMN pi_number TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN pi_file_url TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN pi_stamped_url TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

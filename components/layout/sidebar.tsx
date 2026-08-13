@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Compass, Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ const navGroups = [
       { label: '재고', href: '/inventory', icon: Warehouse },
       { label: '견적', href: '/quotes', icon: ClipboardList },
       { label: '발주', href: '/purchase-orders', icon: Boxes },
+      { label: '계약', href: '/contracts', icon: FileSignature },
       { label: '검품', href: '/inspections', icon: CheckSquare },
       { label: '선적', href: '/shipments', icon: Ship },
       { label: '수입통관', href: '/imports', icon: TruckIcon },
