@@ -193,9 +193,23 @@ export interface Inspection {
 
 export type ShipmentType = 'FCL' | 'LCL' | 'AIR' | 'COURIER';
 
+export interface CargoItem {
+  id: string;
+  productName: string;
+  supplierId?: string;
+  supplierName?: string;
+  poId?: string;
+  poBusinessId?: string;
+  qty?: number;
+  grossWeight?: number;
+  netWeight?: number;
+  cbm?: number;
+  remark?: string;
+}
+
 export interface Shipment {
   id: string;
-  businessId: string; // SHP-2026-0001
+  businessId: string;
   type: ShipmentType;
   forwarderId?: string;
   forwarderName?: string;
@@ -211,6 +225,10 @@ export interface Shipment {
   blNo?: string;
   cbm?: number;
   grossWeight?: number;
+  freightCost?: number;
+  freightCurrency?: string;
+  packingListUrl?: string;
+  cargoItems: CargoItem[];
   poIds: string[];
   status: 'booked' | 'departed' | 'in_transit' | 'arrived' | 'customs' | 'completed';
   createdAt: string;

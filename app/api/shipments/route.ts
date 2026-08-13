@@ -3,7 +3,7 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import { fetchNotionShipments, createNotionShipment } from '@/lib/notion/mapper';
 import type { Shipment } from '@/types';
 
-function dbToShipment(row: Record<string, unknown>): Shipment {
+export function dbToShipment(row: Record<string, unknown>): Shipment {
   return {
     id: row.id as string,
     businessId: row.business_id as string,
@@ -18,24 +18,43 @@ function dbToShipment(row: Record<string, unknown>): Shipment {
     vessel: (row.vessel as string) || undefined,
     voyage: (row.voyage as string) || undefined,
     blNo: (row.bl_no as string) || undefined,
+    containerNo: (row.container_no as string) || undefined,
     cbm: (row.cbm as number) || undefined,
     grossWeight: (row.gross_weight as number) || undefined,
-    poIds: JSON.parse(row.po_ids_json as string || '[]'),
+    freightCost: (row.freight_cost as number) || undefined,
+    freightCurrency: (row.freight_currency as string) || 'USD',
+    packingListUrl: (row.packing_list_url as string) || undefined,
+    cargoItems: (() => { try { return JSON.parse((row.cargo_items_json as string) || '[]'); } catch { return []; } })(),
+    poIds: (() => { try { return JSON.parse((row.po_ids_json as string) || '[]'); } catch { return []; } })(),
     status: (row.status as Shipment['status']) || 'booked',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
 }
 
-function syncShipmentToDb(db: ReturnType<typeof getDb>, s: Shipment, ts: string) {
+function syncShipmentToDb(db: ReturnType<typeof getDb>, body: Record<string, unknown>, id: string, ts: string, existingCreatedAt?: string) {
+  const cargoItems = body.cargoItems || [];
+  const poIds = Array.isArray(body.poIds) ? body.poIds
+    : (cargoItems as { poId?: string }[]).map(i => i.poId).filter(Boolean);
+
   db.prepare(`INSERT OR REPLACE INTO shipments
-    (id,business_id,type,forwarder_id,forwarder_name,origin,pol,pod,etd,eta,vessel,voyage,bl_no,cbm,gross_weight,po_ids_json,status,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(s.id, s.businessId, s.type, s.forwarderId ?? null, s.forwarderName ?? null,
-      s.origin ?? null, s.pol ?? null, s.pod ?? null, s.etd ?? null, s.eta ?? null,
-      s.vessel ?? null, s.voyage ?? null, s.blNo ?? null, s.cbm ?? null,
-      s.grossWeight ?? null, JSON.stringify(s.poIds ?? []), s.status,
-      s.createdAt || ts, ts);
+    (id,business_id,type,forwarder_id,forwarder_name,origin,pol,pod,etd,eta,vessel,voyage,bl_no,container_no,cbm,gross_weight,freight_cost,freight_currency,packing_list_url,cargo_items_json,po_ids_json,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(
+      id, body.businessId, body.type || 'LCL',
+      body.forwarderId ?? null, body.forwarderName ?? null,
+      body.origin ?? null, body.pol ?? null, body.pod ?? null,
+      body.etd ?? null, body.eta ?? null,
+      body.vessel ?? null, body.voyage ?? null,
+      body.blNo ?? null, body.containerNo ?? null,
+      body.cbm ?? null, body.grossWeight ?? null,
+      body.freightCost ?? null, body.freightCurrency ?? 'USD',
+      body.packingListUrl ?? null,
+      JSON.stringify(cargoItems),
+      JSON.stringify(poIds),
+      body.status || 'booked',
+      existingCreatedAt || ts, ts,
+    );
 }
 
 export async function GET() {
@@ -46,9 +65,10 @@ export async function GET() {
     const notionShipments = await fetchNotionShipments();
     if (notionShipments.length > 0) {
       db.transaction(() => {
-        for (const s of notionShipments) syncShipmentToDb(db, s, ts);
+        for (const s of notionShipments) {
+          syncShipmentToDb(db, { ...s, cargoItems: (s as any).cargoItems || [] }, s.id, ts, s.createdAt);
+        }
       })();
-      return NextResponse.json({ data: notionShipments });
     }
   } catch (e) {
     console.error('[Shipments] Notion fetch error:', e);
@@ -68,25 +88,16 @@ export async function POST(req: NextRequest) {
     const lastRow = db.prepare(`SELECT business_id FROM shipments WHERE business_id LIKE 'SHP-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
     const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
     const year = new Date().getFullYear();
-    const bizId = body.businessId || `SHP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    body.businessId = body.businessId || `SHP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    body.id = id;
 
-    const shipment: Shipment = {
-      id, businessId: bizId, type: body.type || 'LCL',
-      forwarderId: body.forwarderId, forwarderName: body.forwarderName,
-      origin: body.origin, pol: body.pol, pod: body.pod,
-      etd: body.etd, eta: body.eta, vessel: body.vessel, voyage: body.voyage,
-      blNo: body.blNo, cbm: body.cbm, grossWeight: body.grossWeight,
-      poIds: body.poIds || [],
-      status: body.status || 'booked',
-      createdAt: ts, updatedAt: ts,
-    };
+    const shipment = { ...body, id, createdAt: ts, updatedAt: ts };
+    await createNotionShipment(shipment as Shipment).catch(() => null);
 
-    // Save to Notion (ERP)
-    await createNotionShipment(shipment).catch(() => null);
-
-    syncShipmentToDb(db, shipment, ts);
-    return NextResponse.json({ data: shipment }, { status: 201 });
-  } catch {
+    syncShipmentToDb(db, body, id, ts);
+    return NextResponse.json({ data: dbToShipment(db.prepare('SELECT * FROM shipments WHERE id=?').get(id) as Record<string, unknown>) }, { status: 201 });
+  } catch (e) {
+    console.error('[shipments POST]', e);
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
   }
 }

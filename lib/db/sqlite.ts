@@ -490,6 +490,11 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE purchase_orders ADD COLUMN pi_number TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN pi_file_url TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN pi_stamped_url TEXT`,
+    `ALTER TABLE shipments ADD COLUMN cargo_items_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE shipments ADD COLUMN container_no TEXT`,
+    `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,
+    `ALTER TABLE shipments ADD COLUMN freight_currency TEXT DEFAULT 'USD'`,
+    `ALTER TABLE shipments ADD COLUMN packing_list_url TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

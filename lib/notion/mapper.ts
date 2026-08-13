@@ -416,6 +416,7 @@ function notionToShipment(page: { id: string; properties: Props; created_time: s
     voyage: parts[1] || undefined,
     blNo: getText(p, 'BLNoMaster') || getText(p, 'BLNoHouse') || undefined,
     containerType: getText(p, 'ContainerType') || undefined,
+    cargoItems: [],
     poIds: [],
     status,
     createdAt: page.created_time,
