@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
-import { DEMO_CLAIMS } from '@/lib/demo-data';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,17 +69,9 @@ export async function GET() {
   try {
     const db = getDb();
     const rows = db.prepare('SELECT * FROM claims ORDER BY created_at DESC').all() as Record<string, unknown>[];
-    if (rows.length > 0) return NextResponse.json({ data: rows.map(dbToClaim) });
-
-    const seed = db.prepare(`INSERT OR IGNORE INTO claims (id,business_id,customer_id,customer_name,supplier_id,supplier_name,product_id,product_name,po_id,po_business_id,issue_type,description,claim_amount,currency,compensation_type,compensation_amount,status,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-    db.transaction(() => {
-      for (const c of DEMO_CLAIMS) {
-        seed.run(c.id, c.businessId, c.customerId ?? null, c.customerName ?? null, c.supplierId ?? null, c.supplierName ?? null, c.productId ?? null, c.productName ?? null, c.poId ?? null, c.poBusinessId ?? null, c.issueType, c.description, c.claimAmount ?? null, c.currency ?? null, c.compensationType ?? null, c.compensationAmount ?? null, c.status, c.createdBy, c.createdAt, c.updatedAt);
-      }
-    })();
-    return NextResponse.json({ data: DEMO_CLAIMS });
+    return NextResponse.json({ data: rows.map(dbToClaim) });
   } catch {
-    return NextResponse.json({ data: DEMO_CLAIMS });
+    return NextResponse.json({ data: [] });
   }
 }
 
