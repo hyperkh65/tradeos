@@ -157,20 +157,21 @@ export interface POItem {
 
 // ─── Inspections ──────────────────────────────────────────────────────────────
 
-export type InspectionResult = 'PASS' | 'CONDITIONAL_PASS' | 'FAIL' | 'PENDING';
+export type InspectionResult = 'PASS' | 'RETEST' | 'FAIL' | 'PENDING';
 
 export interface Inspection {
   id: string;
-  businessId: string; // QC-2026-0001
-  poId: string;
-  poBusinessId: string;
-  supplierId: string;
+  businessId: string;
+  poId?: string;
+  poBusinessId?: string;
+  supplierId?: string;
   supplierName: string;
-  productId: string;
+  productId?: string;
   productName: string;
+  productNameManual?: string;
   inspectionDate: string;
   inspector?: string;
-  inspectionType: '공장검품' | '출하검품' | '수입검품' | '샘플검품';
+  inspectionType: string;
   sampleQty: number;
   checkedQty?: number;
   passedQty?: number;
@@ -178,7 +179,10 @@ export interface Inspection {
   defectRate?: number;
   result: InspectionResult;
   summary?: string;
-  status: 'scheduled' | 'in_progress' | 'completed';
+  opinion?: string;
+  reportFiles?: string[];
+  imageFiles?: string[];
+  status: 'scheduled' | 'in_progress' | 'completed' | 'on_hold';
   createdAt: string;
 }
 

@@ -103,7 +103,7 @@ export const DEMO_INSPECTIONS: Inspection[] = [
     supplierId: 'c1', supplierName: 'Ningbo Alpha Lighting', productId: 'p1', productName: 'LED 패널 40W 1x1',
     inspectionDate: '2026-08-05', inspector: '박검품', inspectionType: '공장검품',
     sampleQty: 80, checkedQty: 80, passedQty: 77, failedQty: 3, defectRate: 3.75,
-    result: 'CONDITIONAL_PASS', summary: '외관 스크래치 3개 발견. 공장 재검 후 출하 조건 합격.',
+    result: 'RETEST', summary: '외관 스크래치 3개 발견. 공장 재검 후 출하 조건 합격.',
     status: 'completed', createdAt: '2026-08-05T08:00:00Z',
   },
   {
