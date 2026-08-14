@@ -16,7 +16,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       arrival_date=?, declaration_date=?, tax_payment_date=?, release_date=?,
       invoice_value=?, invoice_currency=?, exchange_rate=?,
       freight_usd=?, freight_exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?,
-      inspection_fee=?, warehouse_fee=?, inland_freight=?,
+      inspection_fee=?, warehouse_fee=?, detention_fee=?, inland_freight=?, inland_freight_region=?, custom_costs_json=?,
       hs_code=?, duty_rate=?, duty=?, vat=?, broker_fee=?, items_json=?,
       fta_applicable=?, fta_type=?, co_status=?, co_no=?,
       inspection_type=?, refund_amount=?, refund_status=?, remark=?, status=?, updated_at=?
@@ -39,7 +39,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.customsValue ?? row.customs_value,
         body.inspectionFee ?? row.inspection_fee,
         body.warehouseFee ?? row.warehouse_fee,
+        body.detentionFee ?? row.detention_fee,
         body.inlandFreight ?? row.inland_freight,
+        body.inlandFreightRegion ?? row.inland_freight_region,
+        body.customCosts !== undefined ? JSON.stringify(body.customCosts) : (row.custom_costs_json ?? '[]'),
         body.hsCode ?? row.hs_code,
         body.dutyRate ?? row.duty_rate,
         body.duty ?? row.duty,
@@ -70,7 +73,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       brokerFee: (body.brokerFee ?? updated.broker_fee) as number | undefined,
       inspectionFee: (body.inspectionFee ?? updated.inspection_fee) as number | undefined,
       warehouseFee: (body.warehouseFee ?? updated.warehouse_fee) as number | undefined,
+      detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
       inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
+      customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
     });
 
     return NextResponse.json({ data: dbToImport(updated) });

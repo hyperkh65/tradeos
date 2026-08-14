@@ -25,7 +25,10 @@ export function dbToImport(row: Record<string, unknown>): Import {
     customsValue: (row.customs_value as number) || undefined,
     inspectionFee: (row.inspection_fee as number) || undefined,
     warehouseFee: (row.warehouse_fee as number) || undefined,
+    detentionFee: (row.detention_fee as number) || undefined,
     inlandFreight: (row.inland_freight as number) || undefined,
+    inlandFreightRegion: (row.inland_freight_region as string) || undefined,
+    customCosts: (() => { try { return JSON.parse((row.custom_costs_json as string) || '[]'); } catch { return []; } })(),
     hsCode: (row.hs_code as string) || undefined,
     dutyRate: (row.duty_rate as number) || undefined,
     duty: (row.duty as number) || undefined,
@@ -71,11 +74,11 @@ export async function POST(req: NextRequest) {
       (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
        arrival_date,declaration_date,tax_payment_date,release_date,
        invoice_value,invoice_currency,exchange_rate,freight_usd,freight_exchange_rate,freight_krw,insurance_krw,customs_value,
-       inspection_fee,warehouse_fee,inland_freight,
+       inspection_fee,warehouse_fee,detention_fee,inland_freight,inland_freight_region,custom_costs_json,
        hs_code,duty_rate,duty,vat,broker_fee,items_json,
        fta_applicable,fta_type,co_status,co_no,inspection_type,
        refund_amount,refund_status,documents_json,remark,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.shipmentId || '',
@@ -96,7 +99,10 @@ export async function POST(req: NextRequest) {
         body.customsValue ?? null,
         body.inspectionFee ?? null,
         body.warehouseFee ?? null,
+        body.detentionFee ?? null,
         body.inlandFreight ?? null,
+        body.inlandFreightRegion ?? null,
+        JSON.stringify(body.customCosts || []),
         body.hsCode ?? null,
         body.dutyRate ?? null,
         body.duty ?? null,
@@ -125,7 +131,8 @@ export async function POST(req: NextRequest) {
     syncImportExpenses(db, id, bizId, {
       duty: body.duty, vat: body.vat,
       brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
-      warehouseFee: body.warehouseFee, inlandFreight: body.inlandFreight,
+      warehouseFee: body.warehouseFee, detentionFee: body.detentionFee,
+      inlandFreight: body.inlandFreight, customCosts: body.customCosts,
     });
 
     const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;

@@ -8,7 +8,9 @@ interface ImportExpenseFields {
   brokerFee?: number;
   inspectionFee?: number;
   warehouseFee?: number;
+  detentionFee?: number;
   inlandFreight?: number;
+  customCosts?: { name: string; amount: number }[];
 }
 
 function nextExpenseBizId(db: Db): string {
@@ -34,7 +36,9 @@ export function syncImportExpenses(
     { cat: '통관비',     amt: fields.brokerFee },
     { cat: '세관검사비', amt: fields.inspectionFee },
     { cat: '창고비',     amt: fields.warehouseFee },
+    { cat: '억류비',     amt: fields.detentionFee },
     { cat: '내륙운송비', amt: fields.inlandFreight },
+    ...(fields.customCosts || []).filter(c => c.name && c.amount > 0).map(c => ({ cat: c.name, amt: c.amount })),
   ];
 
   const ts = now();

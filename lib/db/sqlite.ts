@@ -522,6 +522,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN inland_freight REAL`,
     `ALTER TABLE imports ADD COLUMN refund_amount REAL`,
     `ALTER TABLE imports ADD COLUMN refund_status TEXT DEFAULT '없음'`,
+    `ALTER TABLE imports ADD COLUMN detention_fee REAL`,
+    `ALTER TABLE imports ADD COLUMN inland_freight_region TEXT`,
+    `ALTER TABLE imports ADD COLUMN custom_costs_json TEXT DEFAULT '[]'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

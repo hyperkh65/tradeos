@@ -284,7 +284,12 @@ export interface ImportItem {
   qty?: number;
 }
 
-export type ImportDocType = 'clearance_cert' | 'tax_bill' | 'co' | 'inspection' | 'other';
+export type ImportDocType = 'clearance_cert' | 'tax_bill' | 'co' | 'inspection' | 'freight_invoice' | 'warehouse_bill' | 'broker_invoice' | 'other';
+
+export interface ImportCustomCost {
+  name: string;
+  amount: number;
+}
 
 export interface ImportDocument {
   id: string;
@@ -320,7 +325,10 @@ export interface Import {
   customsValue?: number;
   inspectionFee?: number;
   warehouseFee?: number;
+  detentionFee?: number;
   inlandFreight?: number;
+  inlandFreightRegion?: string;
+  customCosts?: ImportCustomCost[];
   hsCode?: string;
   dutyRate?: number;
   duty?: number;
