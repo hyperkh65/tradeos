@@ -319,6 +319,8 @@ export interface Import {
   insuranceKrw?: number;
   customsValue?: number;
   inspectionFee?: number;
+  warehouseFee?: number;
+  inlandFreight?: number;
   hsCode?: string;
   dutyRate?: number;
   duty?: number;
@@ -332,6 +334,9 @@ export interface Import {
   coNo?: string;
   // 세관검사
   inspectionType?: 'none' | 'document' | 'physical';
+  // 환급
+  refundAmount?: number;
+  refundStatus?: '없음' | '신청' | '완료';
   // 서류
   documents?: ImportDocument[];
   remark?: string;

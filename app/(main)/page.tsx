@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import {
   Boxes, Ship, AlertCircle, CheckSquare, FileText, Clock,
   TrendingUp, TrendingDown, BarChart2, Users, Package,
-  ShoppingCart, ArrowRight, Zap, Target, Repeat2, PieChart,
+  ShoppingCart, ArrowRight, Zap, Target, Repeat2, PieChart, Truck as TruckIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -216,7 +216,8 @@ export default function HomePage() {
   const [userName, setUserName] = useState('');
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [opStats, setOpStats] = useState({ activePOs: 0, upcomingShipments: 0, pendingTasks: 0, pendingApprovals: 0, openClaims: 0, totalCompanies: 0 });
+  const [opStats, setOpStats] = useState({ activePOs: 0, upcomingShipments: 0, pendingTasks: 0, pendingApprovals: 0, openClaims: 0, totalCompanies: 0, pendingCustoms: 0 });
+  const [thisMonthTax, setThisMonthTax] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'year' | 'all'>('year');
 
@@ -232,7 +233,8 @@ export default function HomePage() {
       fetch('/api/approvals').then(r => r.json()),
       fetch('/api/claims').then(r => r.json()),
       fetch('/api/companies').then(r => r.json()),
-    ]).then(([sRes, pRes, poRes, shRes, tRes, aRes, cRes, coRes]) => {
+      fetch('/api/imports').then(r => r.json()),
+    ]).then(([sRes, pRes, poRes, shRes, tRes, aRes, cRes, coRes, imRes]) => {
       setSales(Array.isArray(sRes.data) ? sRes.data : []);
       setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       const po = Array.isArray(poRes.data) ? poRes.data : [];
@@ -241,6 +243,12 @@ export default function HomePage() {
       const ap = Array.isArray(aRes.data) ? aRes.data : [];
       const cl = Array.isArray(cRes.data) ? cRes.data : [];
       const co = Array.isArray(coRes.data) ? coRes.data : [];
+      const im = Array.isArray(imRes.data) ? imRes.data : [];
+      const thisMonth = new Date().toISOString().slice(0, 7);
+      const monthTax = im
+        .filter((i: any) => (i.declarationDate || i.createdAt || '').startsWith(thisMonth))
+        .reduce((s: number, i: any) => s + (i.duty || 0) + (i.vat || 0), 0);
+      setThisMonthTax(monthTax);
       setOpStats({
         activePOs: po.filter((p: any) => !['completed', 'cancelled'].includes(p.status)).length,
         upcomingShipments: sh.filter((s: any) => !['delivered', 'cancelled'].includes(s.status ?? '')).length,
@@ -248,6 +256,7 @@ export default function HomePage() {
         pendingApprovals: ap.filter((a: any) => ['대기', '진행중'].includes(a.status ?? '')).length,
         openClaims: cl.filter((c: any) => !['해결', '종결'].includes(c.status ?? '')).length,
         totalCompanies: co.length,
+        pendingCustoms: im.filter((i: any) => i.status !== 'completed').length,
       });
     }).finally(() => setLoading(false));
   }, []);
@@ -265,6 +274,7 @@ export default function HomePage() {
   const opItems = [
     { label: '진행 발주', value: opStats.activePOs, href: '/purchase-orders', bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-600 dark:text-blue-400', icon: FileText },
     { label: '선적 예정', value: opStats.upcomingShipments, href: '/shipments', bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-600 dark:text-green-400', icon: Ship },
+    { label: '통관 진행', value: opStats.pendingCustoms, href: '/imports', bg: 'bg-orange-50 dark:bg-orange-950/30', text: 'text-orange-600 dark:text-orange-400', icon: Clock },
     { label: '미완료 업무', value: opStats.pendingTasks, href: '/tasks', bg: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-600 dark:text-purple-400', icon: CheckSquare },
     { label: '결재 대기', value: opStats.pendingApprovals, href: '/approvals', bg: 'bg-yellow-50 dark:bg-yellow-950/30', text: 'text-yellow-600 dark:text-yellow-400', icon: AlertCircle },
     { label: '진행 클레임', value: opStats.openClaims, href: '/claims', bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-500 dark:text-red-400', icon: Zap },
@@ -307,6 +317,15 @@ export default function HomePage() {
       border: 'border-l-orange-500',
       icon: Package,
       iconBg: 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400',
+    },
+    {
+      label: '이달 납부세액',
+      value: loading ? '-' : `₩${krw(thisMonthTax)}`,
+      sub: '관세 + 부가세 합계',
+      badge: null,
+      border: 'border-l-red-500',
+      icon: TruckIcon,
+      iconBg: 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-400',
     },
   ];
 
@@ -358,7 +377,7 @@ export default function HomePage() {
         </div>
 
         {/* ── 운영 현황 ── */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
           {opItems.map(s => (
             <Link key={s.label} href={s.href}>
               <div className={cn('rounded-xl p-3 text-center cursor-pointer hover:opacity-80 transition-opacity', s.bg)}>

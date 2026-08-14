@@ -107,8 +107,15 @@ function ExpenseModal({ item, onClose, onSave }: { item?: Expense | null; onClos
   );
 }
 
+interface ImportTax {
+  id: string; businessId: string; declarationDate?: string; createdAt: string;
+  duty?: number; vat?: number; brokerFee?: number; inspectionFee?: number;
+  warehouseFee?: number; inlandFreight?: number; refundAmount?: number;
+}
+
 export default function AccountingPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [imports, setImports] = useState<ImportTax[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('전체');
@@ -116,8 +123,12 @@ export default function AccountingPage() {
 
   const load = async () => {
     setLoading(true);
-    const res = await fetch('/api/expenses').then(r => r.json());
-    setExpenses(Array.isArray(res.data) ? res.data : []);
+    const [expRes, impRes] = await Promise.all([
+      fetch('/api/expenses').then(r => r.json()),
+      fetch('/api/imports').then(r => r.json()),
+    ]);
+    setExpenses(Array.isArray(expRes.data) ? expRes.data : []);
+    setImports(Array.isArray(impRes.data) ? impRes.data : []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -146,6 +157,30 @@ export default function AccountingPage() {
 
   const cats = ['전체', ...CATEGORIES.filter(c => expenses.some(e => e.category === c))];
 
+  // 수입세금 월별 집계 (최근 6개월)
+  const monthlyTax = (() => {
+    const now = new Date();
+    const months: { label: string; duty: number; vat: number; other: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const label = `${d.getMonth() + 1}월`;
+      const monthImports = imports.filter(imp =>
+        (imp.declarationDate || imp.createdAt || '').startsWith(key)
+      );
+      months.push({
+        label,
+        duty: monthImports.reduce((s, i) => s + (i.duty || 0), 0),
+        vat: monthImports.reduce((s, i) => s + (i.vat || 0), 0),
+        other: monthImports.reduce((s, i) => s + (i.brokerFee || 0) + (i.inspectionFee || 0) + (i.warehouseFee || 0) + (i.inlandFreight || 0), 0),
+      });
+    }
+    return months;
+  })();
+  const maxMonthTax = Math.max(...monthlyTax.map(m => m.duty + m.vat + m.other), 1);
+  const yearTotalDuty = imports.filter(i => (i.declarationDate || i.createdAt || '').startsWith(String(new Date().getFullYear()))).reduce((s, i) => s + (i.duty || 0) + (i.vat || 0), 0);
+  const yearTotalRefund = imports.reduce((s, i) => s + (i.refundAmount || 0), 0);
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader title="회계 / 청구" icon={<Receipt className="w-5 h-5" />} />
@@ -165,6 +200,44 @@ export default function AccountingPage() {
             <p className="text-xl font-bold text-green-600 mt-1">{paidCount}건</p>
           </div>
         </div>
+
+        {/* 수입세금 월별 차트 */}
+        {imports.length > 0 && (
+          <div className="bg-card border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium">수입세금 월별 현황 (최근 6개월)</p>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-orange-400 rounded-sm inline-block" />관세</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-400 rounded-sm inline-block" />부가세</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-300 rounded-sm inline-block" />기타</span>
+              </div>
+            </div>
+            <div className="flex items-end gap-2 h-28">
+              {monthlyTax.map(m => {
+                const total = m.duty + m.vat + m.other;
+                const dutyH = total > 0 ? Math.round((m.duty / maxMonthTax) * 100) : 0;
+                const vatH = total > 0 ? Math.round((m.vat / maxMonthTax) * 100) : 0;
+                const otherH = total > 0 ? Math.round((m.other / maxMonthTax) * 100) : 0;
+                return (
+                  <div key={m.label} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex flex-col justify-end h-20 gap-px">
+                      {otherH > 0 && <div className="w-full bg-gray-300 rounded-t-sm" style={{ height: `${otherH}%` }} />}
+                      {vatH > 0 && <div className="w-full bg-blue-400" style={{ height: `${vatH}%` }} />}
+                      {dutyH > 0 && <div className="w-full bg-orange-400 rounded-b-sm" style={{ height: `${dutyH}%` }} />}
+                      {total === 0 && <div className="w-full h-px bg-muted" />}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{m.label}</span>
+                    {total > 0 && <span className="text-[9px] font-medium text-foreground">{total >= 1000000 ? `${(total/1000000).toFixed(0)}만` : total.toLocaleString()}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 pt-3 border-t flex items-center gap-6 text-xs text-muted-foreground">
+              <span>올해 납부세액: <strong className="text-orange-600">₩{yearTotalDuty.toLocaleString()}</strong></span>
+              {yearTotalRefund > 0 && <span>환급 합계: <strong className="text-green-600">₩{yearTotalRefund.toLocaleString()}</strong></span>}
+            </div>
+          </div>
+        )}
 
         {/* Category bar chart */}
         {catEntries.length > 0 && (

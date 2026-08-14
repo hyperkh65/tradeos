@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   TruckIcon, Plus, Search, X, Loader2, Pencil, Trash2,
-  FileText, File, Upload, Download, RefreshCw, CheckCircle2, AlertCircle, Info,
+  FileText, File, Upload, Download, RefreshCw, CheckCircle2, AlertCircle, Info, Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -108,6 +108,10 @@ function ImportModal({
     freightKrw: item?.freightKrw?.toString() || '',
     insuranceKrw: item?.insuranceKrw?.toString() || '',
     inspectionFee: item?.inspectionFee?.toString() || '',
+    warehouseFee: item?.warehouseFee?.toString() || '',
+    inlandFreight: item?.inlandFreight?.toString() || '',
+    refundAmount: item?.refundAmount?.toString() || '',
+    refundStatus: (item?.refundStatus || '없음') as '없음' | '신청' | '완료',
     hsCode: item?.hsCode || '',
     dutyRate: item?.dutyRate?.toString() || '',
     duty: item?.duty?.toString() || '',
@@ -179,10 +183,12 @@ function ImportModal({
   const dutyCalc = Math.round(customsValueCalc * (parseFloat(form.dutyRate || '0') / 100));
   const vatCalc = Math.round((customsValueCalc + dutyCalc) * 0.1);
 
-  // 기타비용 (과세 제외): 세관검사비 + 통관비(관세사수수료)
+  // 기타비용 (과세 제외)
   const inspectionFeeVal = parseFloat(form.inspectionFee || '0');
   const brokerFeeVal = parseFloat(form.brokerFee || '0');
-  const otherCosts = inspectionFeeVal + brokerFeeVal;
+  const warehouseFeeVal = parseFloat(form.warehouseFee || '0');
+  const inlandFreightVal = parseFloat(form.inlandFreight || '0');
+  const otherCosts = inspectionFeeVal + brokerFeeVal + warehouseFeeVal + inlandFreightVal;
 
   // 총납부액
   const dutyFinal = parseFloat(form.duty || '0') || dutyCalc;
@@ -253,6 +259,10 @@ function ImportModal({
         vat: form.vat ? Number(form.vat) : (vatCalc || undefined),
         brokerFee: form.brokerFee ? Number(form.brokerFee) : undefined,
         inspectionFee: form.inspectionFee ? Number(form.inspectionFee) : undefined,
+        warehouseFee: form.warehouseFee ? Number(form.warehouseFee) : undefined,
+        inlandFreight: form.inlandFreight ? Number(form.inlandFreight) : undefined,
+        refundAmount: form.refundAmount ? Number(form.refundAmount) : undefined,
+        refundStatus: form.refundStatus,
       };
 
       let savedId = item?.id || null;
@@ -657,6 +667,33 @@ function ImportModal({
                       <label className={labelCls}>통관비 / 관세사 수수료 (원)</label>
                       <Input type="number" value={form.brokerFee} onChange={e => setForm(f => ({ ...f, brokerFee: e.target.value }))} placeholder="150000" />
                     </div>
+                    <div>
+                      <label className={labelCls}>창고비 (원)</label>
+                      <Input type="number" value={form.warehouseFee} onChange={e => setForm(f => ({ ...f, warehouseFee: e.target.value }))} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>내륙운송비 (원)</label>
+                      <Input type="number" value={form.inlandFreight} onChange={e => setForm(f => ({ ...f, inlandFreight: e.target.value }))} placeholder="0" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 환급 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">환급</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>환급액 (원)</label>
+                      <Input type="number" value={form.refundAmount} onChange={e => setForm(f => ({ ...f, refundAmount: e.target.value }))} placeholder="FTA 사후 환급 등" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>환급 상태</label>
+                      <select value={form.refundStatus} onChange={e => setForm(f => ({ ...f, refundStatus: e.target.value as '없음' | '신청' | '완료' }))} className={inputCls}>
+                        <option value="없음">없음</option>
+                        <option value="신청">신청</option>
+                        <option value="완료">완료</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -683,10 +720,28 @@ function ImportModal({
                         <span>{brokerFeeVal.toLocaleString()}원</span>
                       </div>
                     )}
+                    {warehouseFeeVal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">창고비</span>
+                        <span>{warehouseFeeVal.toLocaleString()}원</span>
+                      </div>
+                    )}
+                    {inlandFreightVal > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">내륙운송비</span>
+                        <span>{inlandFreightVal.toLocaleString()}원</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center border-t border-border pt-1.5 mt-1">
                       <span className="font-semibold">총 납부액</span>
                       <span className="text-lg font-bold text-red-600">{totalTax.toLocaleString()}원</span>
                     </div>
+                    {parseFloat(form.refundAmount || '0') > 0 && (
+                      <div className="flex justify-between items-center text-green-700">
+                        <span className="text-sm">환급 후 실납부</span>
+                        <span className="font-bold">{(totalTax - parseFloat(form.refundAmount || '0')).toLocaleString()}원</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -756,6 +811,37 @@ function ImportModal({
                         <span className="flex-1 text-xs truncate" title={doc.originalName}>{doc.originalName}</span>
                         <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full shrink-0', DOC_TYPE_COLOR[doc.docType])}>{DOC_TYPE_LABEL[doc.docType]}</span>
                         <span className="text-xs text-muted-foreground shrink-0">{doc.size ? `${(doc.size / 1024).toFixed(0)}KB` : ''}</span>
+                        {(doc.docType === 'clearance_cert' || doc.docType === 'tax_bill') && doc.originalName.match(/\.pdf$/i) && savedIdRef.current && (
+                          <button type="button" title="PDF 자동 파싱"
+                            className="text-purple-500 hover:text-purple-700 shrink-0"
+                            onClick={async () => {
+                              const id = savedIdRef.current;
+                              if (!id) return;
+                              const res = await fetch(`/api/imports/${id}/parse-doc`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ filename: doc.filename, docType: doc.docType }),
+                              });
+                              const d = await res.json();
+                              if (d.data && Object.keys(d.data).length > 0) {
+                                const e = d.data;
+                                setForm(f => ({
+                                  ...f,
+                                  ...(e.declarationNo && !f.declarationNo ? { declarationNo: e.declarationNo } : {}),
+                                  ...(e.hsCode && !f.hsCode ? { hsCode: e.hsCode } : {}),
+                                  ...(e.customsValue ? {} : {}),
+                                  ...(e.duty && !f.duty ? { duty: String(e.duty) } : {}),
+                                  ...(e.vat && !f.vat ? { vat: String(e.vat) } : {}),
+                                  ...(e.taxPaymentDate && !f.taxPaymentDate ? { taxPaymentDate: e.taxPaymentDate } : {}),
+                                }));
+                                alert(`파싱 완료: ${Object.keys(e).join(', ')}`);
+                              } else {
+                                alert('파싱 결과 없음. 수동 입력하세요.');
+                              }
+                            }}>
+                            <Wand2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 shrink-0">
                           <Download className="w-3.5 h-3.5" />
                         </a>
@@ -847,7 +933,10 @@ export default function ImportsPage() {
             <option value="all">전체 단계</option>
             {STATUS_STEPS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          <Button size="sm" className="h-9 gap-1 ml-auto" onClick={() => setModal({ open: true, item: null })}>
+          <a href="/api/imports/export" className="inline-flex items-center gap-1 h-9 px-3 rounded-md border border-input bg-background text-sm hover:bg-muted transition-colors">
+            <Download className="w-4 h-4" /><span className="hidden sm:inline">내보내기</span>
+          </a>
+          <Button size="sm" className="h-9 gap-1" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">통관 등록</span>
           </Button>
         </div>

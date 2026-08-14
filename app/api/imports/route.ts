@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
+import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
 import type { Import } from '@/types';
 
 export function dbToImport(row: Record<string, unknown>): Import {
@@ -23,6 +24,8 @@ export function dbToImport(row: Record<string, unknown>): Import {
     insuranceKrw: (row.insurance_krw as number) || undefined,
     customsValue: (row.customs_value as number) || undefined,
     inspectionFee: (row.inspection_fee as number) || undefined,
+    warehouseFee: (row.warehouse_fee as number) || undefined,
+    inlandFreight: (row.inland_freight as number) || undefined,
     hsCode: (row.hs_code as string) || undefined,
     dutyRate: (row.duty_rate as number) || undefined,
     duty: (row.duty as number) || undefined,
@@ -34,6 +37,8 @@ export function dbToImport(row: Record<string, unknown>): Import {
     coStatus: (row.co_status as Import['coStatus']) || undefined,
     coNo: (row.co_no as string) || undefined,
     inspectionType: (row.inspection_type as Import['inspectionType']) || 'none',
+    refundAmount: (row.refund_amount as number) || undefined,
+    refundStatus: (row.refund_status as Import['refundStatus']) || '없음',
     documents: (() => { try { return JSON.parse((row.documents_json as string) || '[]'); } catch { return []; } })(),
     remark: (row.remark as string) || undefined,
     status: (row.status as Import['status']) || 'in_progress',
@@ -65,11 +70,12 @@ export async function POST(req: NextRequest) {
     db.prepare(`INSERT INTO imports
       (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
        arrival_date,declaration_date,tax_payment_date,release_date,
-       invoice_value,invoice_currency,exchange_rate,freight_usd,freight_exchange_rate,freight_krw,insurance_krw,customs_value,inspection_fee,
+       invoice_value,invoice_currency,exchange_rate,freight_usd,freight_exchange_rate,freight_krw,insurance_krw,customs_value,
+       inspection_fee,warehouse_fee,inland_freight,
        hs_code,duty_rate,duty,vat,broker_fee,items_json,
        fta_applicable,fta_type,co_status,co_no,inspection_type,
-       documents_json,remark,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+       refund_amount,refund_status,documents_json,remark,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.shipmentId || '',
@@ -89,6 +95,8 @@ export async function POST(req: NextRequest) {
         body.insuranceKrw ?? null,
         body.customsValue ?? null,
         body.inspectionFee ?? null,
+        body.warehouseFee ?? null,
+        body.inlandFreight ?? null,
         body.hsCode ?? null,
         body.dutyRate ?? null,
         body.duty ?? null,
@@ -100,11 +108,25 @@ export async function POST(req: NextRequest) {
         body.coStatus ?? null,
         body.coNo ?? null,
         body.inspectionType || 'none',
+        body.refundAmount ?? null,
+        body.refundStatus || '없음',
         '[]',
         body.remark ?? null,
         body.status || 'in_progress',
         ts, ts,
       );
+
+    // 선적 상태 자동 업데이트
+    if (body.shipmentId) {
+      updateLinkedShipmentStatus(db, body.shipmentId, body.status || 'in_progress');
+    }
+
+    // 비용 자동 연동
+    syncImportExpenses(db, id, bizId, {
+      duty: body.duty, vat: body.vat,
+      brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
+      warehouseFee: body.warehouseFee, inlandFreight: body.inlandFreight,
+    });
 
     const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
     return NextResponse.json({ data: dbToImport(row) }, { status: 201 });

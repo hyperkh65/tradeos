@@ -518,6 +518,10 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN freight_usd REAL`,
     `ALTER TABLE imports ADD COLUMN freight_exchange_rate REAL`,
     `ALTER TABLE imports ADD COLUMN inspection_fee REAL`,
+    `ALTER TABLE imports ADD COLUMN warehouse_fee REAL`,
+    `ALTER TABLE imports ADD COLUMN inland_freight REAL`,
+    `ALTER TABLE imports ADD COLUMN refund_amount REAL`,
+    `ALTER TABLE imports ADD COLUMN refund_status TEXT DEFAULT '없음'`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

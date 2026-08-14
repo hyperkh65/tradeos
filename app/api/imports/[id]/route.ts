@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { dbToImport } from '../route';
+import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,10 +15,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       shipment_business_id=?, broker_name=?, declaration_no=?,
       arrival_date=?, declaration_date=?, tax_payment_date=?, release_date=?,
       invoice_value=?, invoice_currency=?, exchange_rate=?,
-      freight_usd=?, freight_exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?, inspection_fee=?,
+      freight_usd=?, freight_exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?,
+      inspection_fee=?, warehouse_fee=?, inland_freight=?,
       hs_code=?, duty_rate=?, duty=?, vat=?, broker_fee=?, items_json=?,
       fta_applicable=?, fta_type=?, co_status=?, co_no=?,
-      inspection_type=?, remark=?, status=?, updated_at=?
+      inspection_type=?, refund_amount=?, refund_status=?, remark=?, status=?, updated_at=?
       WHERE id=?`)
       .run(
         body.shipmentBusinessId ?? row.shipment_business_id,
@@ -36,6 +38,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.insuranceKrw ?? row.insurance_krw,
         body.customsValue ?? row.customs_value,
         body.inspectionFee ?? row.inspection_fee,
+        body.warehouseFee ?? row.warehouse_fee,
+        body.inlandFreight ?? row.inland_freight,
         body.hsCode ?? row.hs_code,
         body.dutyRate ?? row.duty_rate,
         body.duty ?? row.duty,
@@ -47,12 +51,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.coStatus ?? row.co_status,
         body.coNo ?? row.co_no,
         body.inspectionType ?? row.inspection_type,
+        body.refundAmount ?? row.refund_amount,
+        body.refundStatus ?? row.refund_status,
         body.remark ?? row.remark,
         body.status ?? row.status,
         now(), id,
       );
 
+    // 선적 상태 자동 업데이트
+    const shipmentId = (body.shipmentId || row.shipment_id) as string | undefined;
+    updateLinkedShipmentStatus(db, shipmentId, body.status ?? (row.status as string));
+
+    // 비용 자동 연동
     const updated = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
+    syncImportExpenses(db, id, row.business_id as string, {
+      duty: (body.duty ?? updated.duty) as number | undefined,
+      vat: (body.vat ?? updated.vat) as number | undefined,
+      brokerFee: (body.brokerFee ?? updated.broker_fee) as number | undefined,
+      inspectionFee: (body.inspectionFee ?? updated.inspection_fee) as number | undefined,
+      warehouseFee: (body.warehouseFee ?? updated.warehouse_fee) as number | undefined,
+      inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
+    });
+
     return NextResponse.json({ data: dbToImport(updated) });
   } catch (e) {
     console.error('[imports PUT]', e);
@@ -65,6 +85,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const db = getDb();
     db.prepare('UPDATE imports SET local_deleted=1, updated_at=? WHERE id=?').run(now(), id);
+    // 연동 비용도 함께 삭제
+    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
