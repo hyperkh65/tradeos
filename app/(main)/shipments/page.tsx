@@ -106,6 +106,8 @@ function ShipmentModal({
   const [saving, setSaving] = useState(false);
   const [blLookup, setBlLookup] = useState<{ carrierName?: string | null; trackingUrl?: string | null; source?: string; ship24Missing?: boolean; events?: { date: string; location: string; desc: string }[] } | null>(null);
   const [blLoading, setBlLoading] = useState(false);
+  const [blPdfUploading, setBlPdfUploading] = useState(false);
+  const [blPdfMsg, setBlPdfMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [plUploading, setPlUploading] = useState(false);
   const [plMsg, setPlMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
@@ -113,6 +115,7 @@ function ShipmentModal({
   const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [savedId, setSavedId] = useState<string | null>(item?.id || null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const blPdfRef = useRef<HTMLInputElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
 
   // Auto-compute totals from cargo items
@@ -142,6 +145,43 @@ function ShipmentModal({
       setBlLoading(false);
     }
   }, [form.blNo]);
+
+  const uploadBlPdf = async (file: File) => {
+    setBlPdfUploading(true);
+    setBlPdfMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/shipments/parse-bl', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const { data: d } = await res.json();
+
+      const filled: string[] = [];
+      setForm(f => {
+        const next = { ...f };
+        if (d.blNo && !f.blNo) { next.blNo = d.blNo; filled.push('B/L No'); }
+        if (d.vessel) { next.vessel = d.vessel; filled.push('선박명'); }
+        if (d.voyage) { next.voyage = d.voyage; filled.push('항차'); }
+        if (d.pol) { next.pol = d.pol; filled.push('POL'); }
+        if (d.pod) { next.pod = d.pod; filled.push('POD'); }
+        if (d.etd) { next.etd = d.etd; filled.push('ETD'); }
+        if (d.grossWeight) { next.grossWeight = String(d.grossWeight); filled.push('중량'); }
+        if (d.cbm) { next.cbm = String(d.cbm); filled.push('CBM'); }
+        if (d.containerNo && !f.containerNo) { next.containerNo = d.containerNo; filled.push('컨테이너'); }
+        return next;
+      });
+
+      if (filled.length > 0) {
+        setBlPdfMsg({ text: `자동 완성: ${filled.join(', ')}`, ok: true });
+      } else {
+        setBlPdfMsg({ text: 'B/L 정보를 자동으로 찾지 못했습니다. 직접 입력해 주세요.', ok: false });
+      }
+    } catch (e) {
+      setBlPdfMsg({ text: `파싱 오류: ${e}`, ok: false });
+    } finally {
+      setBlPdfUploading(false);
+    }
+  };
 
   const uploadPackingList = async (file: File) => {
     setPlUploading(true);
@@ -292,11 +332,34 @@ function ShipmentModal({
 
           {/* ─── B/L Section */}
           <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Ship className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-semibold text-blue-800">B/L 정보</span>
-              <span className="text-xs text-blue-500">— B/L 번호 입력 후 조회하면 캐리어 감지 및 정보 자동 완성</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Ship className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-semibold text-blue-800">B/L 정보</span>
+                <span className="text-xs text-blue-500 hidden sm:inline">— B/L 번호 입력 후 조회하면 캐리어 감지 및 정보 자동 완성</span>
+              </div>
+              <label className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 text-xs border border-dashed border-blue-300 rounded-lg cursor-pointer transition-colors',
+                blPdfUploading ? 'bg-blue-50 text-blue-300' : 'hover:bg-blue-50 text-blue-600',
+              )}>
+                <input
+                  ref={blPdfRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  disabled={blPdfUploading}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadBlPdf(f); e.target.value = ''; }}
+                />
+                {blPdfUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                B/L PDF 업로드
+              </label>
             </div>
+            {blPdfMsg && (
+              <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs', blPdfMsg.ok ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700')}>
+                {blPdfMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                {blPdfMsg.text}
+              </div>
+            )}
 
             <div className="flex gap-2">
               <div className="flex-1">
