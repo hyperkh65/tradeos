@@ -111,57 +111,67 @@ function findSealNos(text: string): string[] {
 // ── 메인 파서 ──────────────────────────────────────────────────────────────────
 
 function parseBLText(text: string): Record<string, unknown> {
-  // 정규화: 줄바꿈 보존, 공백 압축
+  // 정규화
   const t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/[ \t]+/g, ' ');
 
-  // B/L No
+  // ── B/L No ─────────────────────────────────────────────────────────────────
   const blNo = findField(t, [
-    /B[\/.]?L\s*(?:No|Number|NUM)[.:]?\s*([A-Z0-9-]{6,30})/i,
-    /Bill\s+of\s+Lading\s*(?:No|Number)?[.:]?\s*([A-Z0-9-]{6,30})/i,
-    /(?:House\s+)?B[\/.]?L\s*(?:No|#)[.:]?\s*([A-Z0-9-]{6,30})/i,
-    /\bHBL\b[.:\s]*([A-Z0-9-]{6,30})/i,
-    /\bMBL\b[.:\s]*([A-Z0-9-]{6,30})/i,
+    /B(?:ILL)?\.?\s*(?:OF\s+LADING\s*)?[\/.]?L(?:ADING)?\s*(?:No\.?|Number|NUM|#)[.:\s]+([A-Z0-9-]{5,30})/i,
+    /(?:House\s+)?B[\/.]?L\s*(?:No|#)[.:\s]+([A-Z0-9-]{5,30})/i,
+    /BILL\s+NO\.?\s*[.:\s]+([A-Z0-9-]{5,30})/i,   // CI/PL format: "BILL NO.: SHLNB2608093"
+    /\bH\.?B\.?L\.?\s*[.:\s]+([A-Z0-9-]{5,30})/i,
+    /\bM\.?B\.?L\.?\s*[.:\s]+([A-Z0-9-]{5,30})/i,
   ]);
 
-  // 선박명 (vessel)
-  const vessel = findField(t, [
-    /Ocean\s+Vessel[.:\s]*([^\n/]{3,40}?)(?:\s*VOY|\s*Voy|\s*\/|\n)/i,
-    /Vessel\s+(?:Name)?[.:\s]*([^\n/]{3,40}?)(?:\s*VOY|\s*Voy|\s*\/|\n)/i,
-    /Ship\s*Name[.:\s]*([^\n]{3,40})/i,
-    /선박명[.:\s]*([^\n]{2,40})/i,
+  // ── 선박명 + 항차 ────────────────────────────────────────────────────────────
+  // "VESSEL NO.: XIN MING ZHOU 92 V.2630E" 형태 처리
+  const vesselRaw = findField(t, [
+    /VESSEL\s*(?:NO\.?|NAME)?[.:\s]+([^\n/]{3,50}?)(?:\s*V\.\d|\s*VOY|\s*VYG|\s*\/|\n|$)/i,
+    /Ocean\s+Vessel[.:\s]+([^\n/]{3,40}?)(?:\s*VOY|\s*\/|\n|$)/i,
+    /Ship(?:ping)?\s*Name[.:\s]+([^\n]{3,40})/i,
+    /선박명[.:\s]+([^\n]{2,40})/i,
   ]) || findAfterLabel(t, ['Ocean Vessel', 'Vessel Name', 'VESSEL', '선박명']);
 
-  // 항차 (voyage)
+  // 항차: "V.2630E" 또는 "VOY 202W34" 패턴
   const voyage = findField(t, [
-    /Voy(?:age)?\.?\s*(?:No\.?)?[.:\s]*([A-Z0-9]{2,15})/i,
-    /항차[.:\s]*([A-Z0-9]{2,15})/i,
-    /VOY[.:\s#]*([A-Z0-9]{2,15})/i,
+    /\bV\.(\w{3,12})\b/,                                          // "V.2630E" in vessel field
+    /Voy(?:age)?\.?\s*(?:No\.?)?[.:\s]+([A-Z0-9]{2,15})/i,
+    /항차[.:\s]+([A-Z0-9]{2,15})/i,
+    /VOY(?:AGE)?\s*[.:\s#]+([A-Z0-9]{2,15})/i,
   ]);
 
-  // 선적항 POL
+  // 선박명에서 항차 부분 제거
+  let vessel = vesselRaw;
+  if (vessel) {
+    vessel = vessel.replace(/\s*V\.\w+$/, '').replace(/\s*VOY.*$/i, '').trim();
+  }
+
+  // ── 선적항 POL ───────────────────────────────────────────────────────────────
   const pol = findField(t, [
-    /Port\s+of\s+Loading[.:\s]*([^\n]{2,40})/i,
-    /Place\s+of\s+Receipt[.:\s]*([^\n]{2,40})/i,
-    /(?:출발|선적)항[.:\s]*([^\n]{2,40})/i,
-    /POL[.:\s]*([^\n]{2,40})/i,
+    /Port\s+of\s+(?:Loading|Receipt)[.:\s]+([^\n]{2,50})/i,
+    /Place\s+of\s+(?:Receipt|Loading)[.:\s]+([^\n]{2,50})/i,
+    /FROM[.:\s]+([^\n]{2,40})/i,                                  // "FROM: NINGBO CHINA"
+    /(?:출발|선적|적재)항[.:\s]+([^\n]{2,40})/i,
+    /POL[.:\s]+([A-Z]{5}[^\n]{0,30})/i,
   ]);
 
-  // 양륙항 POD
+  // ── 양륙항 POD ───────────────────────────────────────────────────────────────
   const pod = findField(t, [
-    /Port\s+of\s+Discharge[.:\s]*([^\n]{2,40})/i,
-    /Place\s+of\s+Delivery[.:\s]*([^\n]{2,40})/i,
-    /Final\s+Destination[.:\s]*([^\n]{2,40})/i,
-    /(?:도착|양륙)항[.:\s]*([^\n]{2,40})/i,
-    /POD[.:\s]*([^\n]{2,40})/i,
+    /Port\s+of\s+Discharge[.:\s]+([^\n]{2,50})/i,
+    /Place\s+of\s+(?:Delivery|Destination)[.:\s]+([^\n]{2,50})/i,
+    /Final\s+Dest(?:ination)?[.:\s]+([^\n]{2,50})/i,
+    /\bTO[.:\s]+([^\n]{2,40})/i,                                  // "TO: BUSAN KOREA"
+    /(?:도착|양륙|목적)항[.:\s]+([^\n]{2,40})/i,
+    /POD[.:\s]+([A-Z]{5}[^\n]{0,30})/i,
   ]);
 
-  // On-Board Date (ETD에 사용)
+  // ── ETD ─────────────────────────────────────────────────────────────────────
   const etdRaw = findField(t, [
-    /(?:Shipped\s+)?On\s+Board(?:\s+Date)?[.:\s]*([^\n]{4,20})/i,
-    /On-Board\s+Date[.:\s]*([^\n]{4,20})/i,
-    /Date\s+(?:of\s+)?(?:Shipment|Issue)[.:\s]*([^\n]{4,20})/i,
-    /선적일[.:\s]*([^\n]{4,20})/i,
-    /출항일[.:\s]*([^\n]{4,20})/i,
+    /(?:Shipped\s+)?On\s+Board(?:\s+Date)?[.:\s]+([^\n]{4,30})/i,
+    /ETD[.:\s]+([^\n]{4,30})/i,                                   // "ETD: Aug 07 2026"
+    /Date\s+(?:of\s+)?(?:Shipment|Issue|Sailing)[.:\s]+([^\n]{4,25})/i,
+    /선적일[.:\s]+([^\n]{4,20})/i,
+    /출항일[.:\s]+([^\n]{4,20})/i,
   ]);
   const etd = parseDate(etdRaw);
 

@@ -208,8 +208,10 @@ function ShipmentModal({
           cargoItems: d.items,
           grossWeight: d.totalGrossWeight ? String(d.totalGrossWeight) : f.grossWeight,
           cbm: d.totalCbm ? String(d.totalCbm) : f.cbm,
+          containerNo: d.containerNo || f.containerNo,
         }));
-        setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)`, ok: true });
+        const extra = d.containerNo ? ` · 컨테이너 ${d.containerNo}` : '';
+        setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)${extra}`, ok: true });
       } else {
         setPlMsg({ text: '자동 추출 실패 — 직접 입력해주세요', ok: false });
       }
