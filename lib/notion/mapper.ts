@@ -712,26 +712,26 @@ export async function createNotionQuote(q: Quote): Promise<string | null> {
     const itemsToCreate = q.items.length > 0 ? q.items : [{ productId: '', productName: '', quantity: 0, unitPrice: 0 }];
     for (let i = 0; i < itemsToCreate.length; i++) {
       const item = itemsToCreate[i];
-      const qty = (item as { quantity?: number; qty?: number }).quantity ?? (item as { qty?: number }).qty ?? 0;
-      const amount = qty * (item.unitPrice ?? 0);
+      const qty = item.quantity ?? (item as any).qty ?? 0;
+      const amount = item.amount ?? qty * (item.unitPrice ?? 0);
       const page = await notion.pages.create({
         parent: { database_id: DB.quotes },
         properties: {
           'EstimateNo1': titleProp(q.businessId),
           'EstimateNo': rich(q.businessId),
           'index': rich(String(i + 1)),
-          'Date': dt(q.createdAt?.slice(0, 10)),
+          'Date': dt(q.quoteDate || q.createdAt?.slice(0, 10)),
           'Client': rich(q.companyName),
           'Currency': rich(q.currency),
           'Product': rich(item.productName || ''),
-          'Description': rich(''),
-          'Unit': sel('PCS'),
+          'Description': rich(item.specification || ''),
+          'Unit': sel(item.unit || 'PCS'),
           'UnitPrice': num(item.unitPrice),
           'Qty': num(qty),
           'Amount': num(amount),
-          'Remarks': rich(''),
-          'GeneralInfo': rich(q.incoterm || ''),
-          'SpecialNotes': rich(q.remark || ''),
+          'Remarks': rich(item.remark || ''),
+          'GeneralInfo': rich(q.generalInfo || q.incoterm || ''),
+          'SpecialNotes': rich(q.specialNotes || q.remark || ''),
         },
       });
       if (i === 0) firstPageId = page.id;

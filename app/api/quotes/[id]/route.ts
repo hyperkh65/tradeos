@@ -49,10 +49,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       type: (body.type ?? row.type) as 'customer' | 'supplier',
       companyId: body.companyId ?? (row.company_id as string) ?? '',
       companyName, items, currency,
-      incoterm: body.incoterm, remark: body.remark,
+      incoterm: body.incoterm ?? (row.incoterm as string) ?? undefined,
+      remark: body.remark ?? (row.remark as string) ?? undefined,
       status: (body.status ?? row.status) as import('@/types').Quote['status'],
       createdBy: (row.created_by as string) || 'user-1',
       createdAt: row.created_at as string,
+      quoteDate: body.quoteDate ?? (row.quote_date as string) ?? undefined,
+      specialNotes: body.specialNotes ?? (row.special_notes as string) ?? undefined,
+      generalInfo: body.generalInfo ?? (row.general_info as string) ?? undefined,
     }).catch(() => {});
 
     const updated = db.prepare('SELECT * FROM quotes WHERE id=?').get(id) as Record<string, unknown>;

@@ -103,6 +103,17 @@ export interface Quote {
   remark?: string;
   createdBy: string;
   createdAt: string;
+  // Extended fields
+  quoteDate?: string;
+  totalAmount?: number;
+  updatedAt?: string;
+  updatedBy?: string;
+  createdByName?: string;
+  docType?: string;
+  specialNotes?: string;
+  generalInfo?: string;
+  imagesJson?: string;
+  historyJson?: string;
 }
 
 export interface QuoteItem {
@@ -113,6 +124,16 @@ export interface QuoteItem {
   moq?: number;
   leadTime?: string;
   samplePrice?: number;
+  // Extended fields
+  specification?: string;
+  voltage?: string;
+  watts?: string;
+  luminousEff?: string;
+  lumenOutput?: string;
+  cct?: string;
+  unit?: string;
+  amount?: number;
+  remark?: string;
 }
 
 // ─── Purchase Orders ──────────────────────────────────────────────────────────
