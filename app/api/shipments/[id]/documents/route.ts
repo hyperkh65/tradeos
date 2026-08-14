@@ -5,14 +5,15 @@ import { newId } from '@/lib/db/sqlite';
 import type { ShipDocument } from '@/types';
 import fs from 'fs';
 import path from 'path';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
 
 export const maxDuration = 120;
 
-const UPLOAD_BASE = process.env.NODE_ENV === 'production'
-  ? '/volume1/web/tradeos/data/uploads/shipments'
-  : path.join(process.cwd(), 'data/uploads/shipments');
+// UPLOAD_DIR env var → env에서 읽거나 경로 직접 지정
+const UPLOAD_BASE = process.env.UPLOAD_DIR
+  ? path.join(process.env.UPLOAD_DIR, 'shipments')
+  : process.env.NODE_ENV === 'production'
+    ? '/volume1/web/tradeos/data/uploads/shipments'
+    : path.join(process.cwd(), 'data/uploads/shipments');
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,12 +46,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const safeName = `${docId}${ext}`;
       const filePath = path.join(dir, safeName);
 
-      // Stream to disk
-      const nodeStream = Readable.fromWeb(file.stream() as any);
-      await pipeline(nodeStream, fs.createWriteStream(filePath));
+      // arrayBuffer → Buffer → 디스크 저장 (Readable.fromWeb 없이)
+      const arrayBuf = await file.arrayBuffer();
+      const buf = Buffer.from(arrayBuf);
+      fs.writeFileSync(filePath, buf);
 
-      // Read file for classification
-      const buf = fs.readFileSync(filePath) as unknown as Buffer;
+      // 텍스트 추출 (분류용)
       let text = '';
       try {
         if (ext === '.pdf') {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } else if (ext === '.xlsx' || ext === '.xls') {
           text = await extractExcelText(buf);
         }
-      } catch { /* skip text extraction */ }
+      } catch { /* 분류 실패해도 업로드는 계속 */ }
 
       const { docType, detectedTypes } = classifyText(text, file.name);
 
@@ -70,7 +71,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         url: `/api/shipments/${id}/documents/${safeName}`,
         size: file.size,
         uploadedAt: now(),
-        // @ts-ignore — store extra metadata
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
         detectedTypes,
       };
 

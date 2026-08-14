@@ -1,5 +1,19 @@
 import type { ShipDocType } from '@/types';
 
+// pdfjs-dist가 Node.js에서 DOMMatrix를 요구하므로 폴리필
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).DOMMatrix = class DOMMatrix {
+    a=1;b=0;c=0;d=1;e=0;f=0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    multiply(o:any){const r=new(globalThis as any).DOMMatrix();r.a=this.a*o.a+this.b*o.c;r.b=this.a*o.b+this.b*o.d;r.c=this.c*o.a+this.d*o.c;r.d=this.c*o.b+this.d*o.d;r.e=this.e*o.a+this.f*o.c+o.e;r.f=this.e*o.b+this.f*o.d+o.f;return r;}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transformPoint(p:any){return{x:(p.x??0)*this.a+(p.y??0)*this.c+this.e,y:(p.x??0)*this.b+(p.y??0)*this.d+this.f};}
+    translate(tx=0,ty=0){return new(globalThis as any).DOMMatrix([this.a,this.b,this.c,this.d,this.e+tx,this.f+ty]);}
+    scale(sx=1,sy=1){return new(globalThis as any).DOMMatrix([this.a*sx,this.b*sx,this.c*sy,this.d*sy,this.e,this.f]);}
+  };
+}
+
 const KEYWORDS: Record<string, string[]> = {
   invoice: [
     'commercial invoice', 'proforma invoice', 'invoice no', 'invoice number',
@@ -98,10 +112,21 @@ export async function extractExcelText(buf: Buffer): Promise<string> {
 // Extract text from PDF
 export async function extractPdfText(buf: Buffer): Promise<string> {
   try {
-    const pdfModule = await import('pdf-parse');
-    const pdfParse = (pdfModule as any).default ?? pdfModule;
-    const data = await pdfParse(buf);
-    return data.text || '';
+    // pdf-parse v2: class-based API
+    const { PDFParse } = await import('pdf-parse');
+    const { createRequire } = await import('module');
+    const { join } = await import('path');
+    let workerSrc = '';
+    try {
+      const req = createRequire(join(process.cwd(), '_dummy_'));
+      workerSrc = `file://${req.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')}`;
+    } catch {
+      workerSrc = `file://${join(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs')}`;
+    }
+    PDFParse.setWorker(workerSrc);
+    const parser = new PDFParse({ data: buf });
+    const result = await parser.getText({ lineEnforce: true });
+    return result.text || '';
   } catch {
     return '';
   }
