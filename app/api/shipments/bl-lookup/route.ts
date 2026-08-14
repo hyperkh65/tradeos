@@ -176,18 +176,21 @@ async function queryContainer(cntrNo: string, apiKey: string) {
 }
 
 // ── 3) 입항보고내역조회(해상) — vessel + voyage 기준 ─────────────────────
-async function queryArrivalReport(vessel: string, voyage: string, apiKey: string) {
-  try {
+async function queryArrivalReport(vessel: string, voyage: string, apiKey: string): Promise<{
+  eta: string | null; ata: string | null; pod: string | null; _debug?: any
+} | null> {
+  const tryQuery = async (params: Record<string, string>) => {
     const text = await unipassFetch('arrivRptInfoQry/retrieveArrivRptInfo', {
-      vslNm: vessel, voyNo: voyage, pageIndex: '1', perPage: '5',
+      ...params, pageIndex: '1', perPage: '5',
     }, apiKey);
 
     let data: any;
     try { data = JSON.parse(text); } catch {
       return {
         eta: parseKoreanDate(xmlTag(text, 'etprDt') || xmlTag(text, 'etaDt')),
-        ata: parseKoreanDate(xmlTag(text, 'ata') || xmlTag(text, 'arrDt')),
+        ata: parseKoreanDate(xmlTag(text, 'atvDt') || xmlTag(text, 'ata') || xmlTag(text, 'arrDt')),
         pod: xmlTag(text, 'dsprCd') || xmlTag(text, 'arrPrtCd'),
+        _debug: { raw: text.slice(0, 300) },
       };
     }
 
@@ -196,14 +199,27 @@ async function queryArrivalReport(vessel: string, voyage: string, apiKey: string
       ? root.arrivRptInfoDtlVo
       : Array.isArray(root) ? root : (root ? [root] : []);
 
-    if (!items.length) return null;
+    if (!items.length) return { eta: null, ata: null, pod: null, _debug: { empty: true, rawKeys: Object.keys(root || {}) } };
     const r = items[0];
     return {
       eta: parseKoreanDate(r.etprDt || r.etaDt || ''),
-      ata: parseKoreanDate(r.ata || r.arrDt || r.arrDttm || ''),
-      pod: r.dsprCd || r.arrPrtCd || null,
+      ata: parseKoreanDate(r.atvDt || r.ata || r.arrDt || r.arrDttm || ''),
+      pod: r.dsprCd || r.prtCd || r.arrPrtCd || null,
+      _debug: { keys: Object.keys(r), count: items.length },
     };
-  } catch { return null; }
+  };
+
+  try {
+    // 1차: vessel + voyage
+    const r1 = await tryQuery({ vslNm: vessel, voyNo: voyage });
+    if (r1?.eta || r1?.ata) return r1;
+    // 2차: vessel만으로 재시도 (voyage 형식 불일치 대비)
+    const r2 = await tryQuery({ vslNm: vessel });
+    if (r2?.eta || r2?.ata) return r2;
+    return r1; // 디버그 정보는 유지
+  } catch (e) {
+    return { eta: null, ata: null, pod: null, _debug: { error: String(e) } };
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -251,6 +267,9 @@ export async function GET(req: NextRequest) {
           if (arr.eta && !result.eta) result.eta = arr.eta;
           if (arr.ata) result.ata = arr.ata;
           if (arr.pod && !result.pod) result.pod = arr.pod;
+          result._arrivalDebug = (arr as any)._debug; // 디버그용
+        } else {
+          result._arrivalDebug = arrResult.status === 'rejected' ? String((arrResult as any).reason) : 'skipped';
         }
       }
     } catch (e) {
