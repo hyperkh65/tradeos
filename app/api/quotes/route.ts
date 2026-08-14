@@ -49,13 +49,17 @@ export async function GET() {
   try {
     const notionQuotes = await fetchNotionQuotes();
     if (notionQuotes.length > 0) {
-      const upsert = db.prepare(UPSERT);
+      // INSERT OR IGNORE: never overwrite existing local data
+      const insert = db.prepare(UPSERT.replace('INSERT OR REPLACE', 'INSERT OR IGNORE'));
       db.transaction(() => {
         for (const q of notionQuotes) {
-          const existing = db.prepare('SELECT updated_at, created_at FROM quotes WHERE id=?').get(q.id) as { updated_at: string; created_at: string } | undefined;
-          if (existing) continue; // keep local if exists
+          // Check by BOTH id AND business_id (local id ≠ Notion page id)
+          const existing = db.prepare(
+            'SELECT id FROM quotes WHERE id=? OR business_id=?'
+          ).get(q.id, q.businessId);
+          if (existing) continue; // local data always wins
           const totalAmount = q.items.reduce((s, it) => s + ((it as any).amount || it.unitPrice * ((it as any).quantity || (it as any).qty || 0)), 0);
-          upsert.run(
+          insert.run(
             q.id, q.businessId, q.type || 'customer', q.companyId ?? null, q.companyName,
             JSON.stringify(q.items), q.currency, q.incoterm ?? null, q.paymentTerms ?? null,
             q.validity ?? null, q.status || 'sent', q.remark ?? null,
