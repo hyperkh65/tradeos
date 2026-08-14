@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, User, Key, Database, Building2 } from 'lucide-react';
+import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'profile' | 'company' | 'notion' | 'security';
@@ -29,6 +29,13 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Notion DB check/create state
+  const [notionCheckResult, setNotionCheckResult] = useState<Record<string, { set: boolean; reachable?: boolean; error?: string }> | null>(null);
+  const [notionChecking, setNotionChecking] = useState(false);
+  const [notionParentPageId, setNotionParentPageId] = useState('');
+  const [notionCreating, setNotionCreating] = useState(false);
+  const [notionCreateResult, setNotionCreateResult] = useState<{ results?: Record<string, { id: string; url: string; secret: string }>; errors?: Record<string, string>; commands?: string[] } | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => {
@@ -84,6 +91,30 @@ export default function SettingsPage() {
     { id: 'security', label: '보안', icon: <Key className="w-4 h-4" /> },
     { id: 'notion', label: 'Notion 연동', icon: <Database className="w-4 h-4" /> },
   ];
+
+  const checkNotionDbs = async () => {
+    setNotionChecking(true);
+    try {
+      const res = await fetch('/api/setup/notion-check');
+      const j = await res.json();
+      setNotionCheckResult(j.databases || {});
+    } catch { /* ignore */ } finally { setNotionChecking(false); }
+  };
+
+  const createNotionDbs = async () => {
+    if (!notionParentPageId.trim()) { showMsg('error', 'Notion 부모 페이지 ID를 입력하세요'); return; }
+    setNotionCreating(true);
+    try {
+      const res = await fetch('/api/setup/create-notion-dbs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentPageId: notionParentPageId.trim() }),
+      });
+      const j = await res.json();
+      if (res.ok) { setNotionCreateResult(j); await checkNotionDbs(); }
+      else showMsg('error', j.error || 'DB 생성 실패');
+    } catch (e) { showMsg('error', String(e)); } finally { setNotionCreating(false); }
+  };
 
   const NOTION_FIELDS = [
     { key: 'NOTION_TOKEN', label: 'Notion API 토큰', placeholder: 'secret_xxxxxxxxxxxxxxxxxxxx', desc: 'Notion Integrations에서 발급' },
@@ -330,6 +361,83 @@ export default function SettingsPage() {
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
                 현재는 SQLite 로컬 저장 모드입니다. Notion 환경변수 설정 후 재배포하면 Notion이 Primary DB로 동작합니다.
+              </div>
+
+              {/* DB 연동 상태 확인 */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Notion DB 연동 상태</h3>
+                  <Button type="button" variant="outline" size="sm" onClick={checkNotionDbs} disabled={notionChecking}>
+                    {notionChecking ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                    상태 확인
+                  </Button>
+                </div>
+
+                {notionCheckResult && (
+                  <div className="bg-muted/40 rounded-xl p-3 space-y-1.5">
+                    {Object.entries(notionCheckResult).map(([label, status]) => (
+                      <div key={label} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className={cn('font-medium', status.reachable ? 'text-green-600' : status.set ? 'text-yellow-600' : 'text-red-500')}>
+                          {status.reachable ? '✅ 연결됨' : status.set ? `⚠️ 오류: ${status.error || ''}` : '❌ 미설정'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 누락된 DB 자동 생성 */}
+                {notionCheckResult && Object.values(notionCheckResult).some(s => !s.set) && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                    <p className="text-sm font-medium text-blue-800">누락된 DB 자동 생성</p>
+                    <p className="text-xs text-blue-700">
+                      Notion에서 TradeOS 통합 앱이 연결된 페이지 ID를 입력하면, 클레임/검품 DB를 자동으로 생성합니다.
+                    </p>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                        부모 페이지 ID (Notion URL의 32자리)
+                      </label>
+                      <Input
+                        value={notionParentPageId}
+                        onChange={e => setNotionParentPageId(e.target.value)}
+                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">예: notion.so/TradeOS-ABC123... 에서 ABC123... 부분</p>
+                    </div>
+                    <Button type="button" onClick={createNotionDbs} disabled={notionCreating || !notionParentPageId.trim()} size="sm">
+                      {notionCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <PlusCircle className="w-3.5 h-3.5 mr-1" />}
+                      DB 자동 생성
+                    </Button>
+                  </div>
+                )}
+
+                {/* 생성 결과 + gh secret set 명령어 */}
+                {notionCreateResult && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                    <p className="text-sm font-semibold text-green-800">생성 완료! 아래 명령어를 터미널에서 실행하세요</p>
+                    {notionCreateResult.results && Object.entries(notionCreateResult.results).map(([name, r]) => (
+                      <div key={name} className="space-y-1">
+                        <p className="text-xs font-medium text-green-700">{name}: <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline">{r.id}</a></p>
+                      </div>
+                    ))}
+                    {notionCreateResult.commands && (
+                      <div className="bg-gray-900 rounded-lg p-3 space-y-1">
+                        {notionCreateResult.commands.map((cmd, i) => (
+                          <p key={i} className="text-xs font-mono text-green-400 break-all">{cmd}</p>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-green-700">명령어 실행 후 GitHub Actions에서 재배포하세요.</p>
+                    {notionCreateResult.errors && Object.keys(notionCreateResult.errors).length > 0 && (
+                      <div className="text-xs text-red-600 space-y-1">
+                        {Object.entries(notionCreateResult.errors).map(([name, err]) => (
+                          <p key={name}><span className="font-medium">{name}</span>: {err}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
