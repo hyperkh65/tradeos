@@ -206,6 +206,34 @@ function parseBLText(text: string): Record<string, unknown> {
 
 // ── Route Handler ─────────────────────────────────────────────────────────────
 
+async function extractPdfText(buf: Buffer): Promise<string> {
+  // serverExternalPackages: ['pdfjs-dist'] 로 인해 번들링 없이 node_modules에서 직접 로드
+  // → worker 파일이 실제 경로에 존재함
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  // workerSrc를 빈 문자열로 설정 → fake worker(메인 스레드 실행)로 폴백
+  // 패키지가 externalized 되어 있어 worker import가 정상 경로에서 동작
+  pdfjs.GlobalWorkerOptions.workerSrc = '';
+
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buf),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+  const pdf = await loadingTask.promise;
+
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pageText = content.items.map((item: any) => item.str ?? '').join(' ');
+    text += pageText + '\n';
+  }
+  return text;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -215,11 +243,7 @@ export async function POST(req: NextRequest) {
     const ab = await file.arrayBuffer();
     const buf = Buffer.from(ab);
 
-    // pdf-parse v2: PDFParse class with { data: buffer }
-    const { PDFParse } = await import('pdf-parse');
-    const parser = new PDFParse({ data: buf });
-    const pdfResult = await parser.getText();
-    const text = pdfResult.text || '';
+    const text = await extractPdfText(buf);
 
     if (!text.trim()) {
       return NextResponse.json({ error: 'PDF에서 텍스트를 추출할 수 없습니다. 스캔 이미지 PDF는 지원되지 않습니다.' }, { status: 422 });
