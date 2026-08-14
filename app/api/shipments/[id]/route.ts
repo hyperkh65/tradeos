@@ -55,7 +55,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
     const db = getDb();
-    db.prepare('DELETE FROM shipments WHERE id=?').run(id);
+    // 소프트 삭제: Notion 싱크가 다시 살리지 못하도록 local_deleted=1 마킹
+    db.prepare('UPDATE shipments SET local_deleted=1, updated_at=? WHERE id=?').run(now(), id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
