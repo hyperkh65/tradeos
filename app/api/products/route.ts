@@ -35,14 +35,16 @@ export async function GET() {
 
     const notionData = await fetchNotionProducts();
     if (notionData.length > 0) {
-      const upsert = db.prepare(UPSERT_SQL);
+      // INSERT OR IGNORE: never overwrite local edits with Notion data
+      const insert = db.prepare(UPSERT_SQL.replace('INSERT OR REPLACE', 'INSERT OR IGNORE'));
       db.transaction(() => {
         for (const p of notionData) {
-          const existing = db.prepare('SELECT updated_at FROM products WHERE id=?').get(p.id) as { updated_at: string } | undefined;
-          if (existing && existing.updated_at > p.updatedAt) continue;
+          // Check by both id AND business_id (local id ≠ Notion page id)
+          const existing = db.prepare('SELECT id FROM products WHERE id=? OR business_id=?').get(p.id, p.businessId);
+          if (existing) continue;
           const ex = p as any;
           const imagesJson = ex.imagesJson || (ex.imageUrl ? JSON.stringify([ex.imageUrl]) : null);
-          upsert.run(
+          insert.run(
             p.id, p.businessId, p.code, p.nameKo, p.nameEn ?? null, p.category ?? null,
             p.supplierName ?? null, p.status,
             p.purchasePrice ?? null, p.sellingPrice ?? null, p.currency,

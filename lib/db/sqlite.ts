@@ -502,6 +502,29 @@ function runMigrations(db: Database.Database) {
   }
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
+
+  // Dedup: keep only the row with shortest id (local id) per business_id, for products and quotes
+  // This cleans up duplicates created by Notion sync bug (Notion page id vs local id)
+  try {
+    db.exec(`
+      DELETE FROM products WHERE id IN (
+        SELECT id FROM (
+          SELECT id, business_id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY length(id) ASC, created_at ASC) AS rn
+          FROM products
+        ) WHERE rn > 1
+      )
+    `);
+  } catch { /* ignore if ROW_NUMBER not supported */ }
+  try {
+    db.exec(`
+      DELETE FROM quotes WHERE id IN (
+        SELECT id FROM (
+          SELECT id, business_id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY length(id) ASC, created_at ASC) AS rn
+          FROM quotes
+        ) WHERE rn > 1
+      )
+    `);
+  } catch { /* ignore */ }
 }
 
 export function newId(): string {
