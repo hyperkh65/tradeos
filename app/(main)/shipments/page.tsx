@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Shipment, CargoItem, ShipDocument, ShipDocType } from '@/types';
+import type { Shipment, CargoItem, ShipDocument, ShipDocType, PurchaseOrder } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,15 +96,22 @@ function ShipmentModal({
     }).catch(() => {});
   }, []);
 
-  // 공급사 선택 시 해당 PO 목록 로드
+  // 공급사 선택 시 해당 PO 목록 로드 (전체 데이터)
   const loadPOsForSupplier = async (supplierName: string) => {
     if (!supplierName || posBySupplier[supplierName]) return;
     try {
-      const d = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}&slim=1`).then(r => r.json());
+      const d = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}`).then(r => r.json());
       if (Array.isArray(d.data)) {
-        setPosBySupplier(prev => ({ ...prev, [supplierName]: d.data.map((p: { id: string; businessId: string }) => ({ id: p.id, businessId: p.businessId })) }));
+        setPosBySupplier(prev => ({ ...prev, [supplierName]: d.data as PurchaseOrder[] }));
       }
     } catch { /* ignore */ }
+  };
+
+  // PO 번호 입력 시 해당 PO 미리보기
+  const handlePoSelect = (supplierName: string, poBusinessId: string) => {
+    const pos = posBySupplier[supplierName] || [];
+    const found = pos.find(p => p.businessId === poBusinessId);
+    setPoPreview(found || null);
   };
 
   const [form, setForm] = useState<ShipForm>({
@@ -139,7 +146,8 @@ function ShipmentModal({
   const [plPendingFile, setPlPendingFile] = useState<File | null>(null);
   // 공급업체 + PO 데이터
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
-  const [posBySupplier, setPosBySupplier] = useState<Record<string, { id: string; businessId: string }[]>>({});
+  const [posBySupplier, setPosBySupplier] = useState<Record<string, PurchaseOrder[]>>({});
+  const [poPreview, setPoPreview] = useState<PurchaseOrder | null>(null); // 선택된 PO 미리보기
   const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
   const [docUploading, setDocUploading] = useState(false);
   const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -626,7 +634,11 @@ function ShipmentModal({
                           className="w-full px-2 py-1 border border-input rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                           placeholder="PO 번호 선택..."
                           value={ci.poBusinessId || ''}
-                          onChange={e => updateCargoItem(idx, { poBusinessId: e.target.value })}
+                          onChange={e => {
+                            updateCargoItem(idx, { poBusinessId: e.target.value });
+                            handlePoSelect(ci.supplierName || '', e.target.value);
+                          }}
+                          onBlur={e => handlePoSelect(ci.supplierName || '', e.target.value)}
                         />
                         <datalist id={`po-list-${idx}`}>
                           {(posBySupplier[ci.supplierName || ''] || []).map(p => (
@@ -693,6 +705,53 @@ function ShipmentModal({
               </table>
             </div>
           </div>
+
+          {/* ─── PO Preview Panel */}
+          {poPreview && (
+            <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-800">발주서 확인 — {poPreview.businessId}</span>
+                <button type="button" onClick={() => setPoPreview(null)} className="text-blue-400 hover:text-blue-600">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-blue-700">
+                <span>공급사: <b>{poPreview.supplierName}</b></span>
+                <span>발주일: {poPreview.orderDate}</span>
+                {poPreview.etd && <span>ETD: {poPreview.etd}</span>}
+                <span>통화: {poPreview.currency}</span>
+                {poPreview.incoterm && <span>Incoterm: {poPreview.incoterm}</span>}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-blue-100 text-blue-800">
+                      <th className="px-2 py-1 text-left font-medium border border-blue-200">제품명</th>
+                      <th className="px-2 py-1 text-right font-medium border border-blue-200 w-16">수량</th>
+                      <th className="px-2 py-1 text-right font-medium border border-blue-200 w-20">단가</th>
+                      <th className="px-2 py-1 text-right font-medium border border-blue-200 w-24">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {poPreview.items.map((item, i) => (
+                      <tr key={i} className="border-b border-blue-100">
+                        <td className="px-2 py-1 border border-blue-200">{item.productName}</td>
+                        <td className="px-2 py-1 text-right border border-blue-200">{item.qty?.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right border border-blue-200">{item.unitPrice?.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right border border-blue-200">{item.amount?.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-blue-100 font-semibold text-blue-800">
+                      <td colSpan={3} className="px-2 py-1 text-right border border-blue-200">합계</td>
+                      <td className="px-2 py-1 text-right border border-blue-200">{poPreview.currency} {poPreview.totalAmount?.toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* ─── Documents */}
           <div className="space-y-2">
