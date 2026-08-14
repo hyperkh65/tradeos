@@ -743,6 +743,58 @@ export async function createNotionQuote(q: Quote): Promise<string | null> {
   }
 }
 
+// ─── Import Settlement → Notion ─────────────────────────────────────────────
+
+export async function createNotionImportSettlement(imp: Import): Promise<string | null> {
+  if (!DB.imports || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const items = (imp.settlementItems || []) as { category: string; calculated: number; adjusted?: number; reason?: string }[];
+    const totalCalc = items.reduce((s, it) => s + it.calculated, 0);
+    const totalAdj = items.reduce((s, it) => s + (it.adjusted ?? it.calculated), 0);
+
+    const summaryLines = items
+      .filter(it => it.calculated > 0 || (it.adjusted ?? 0) > 0)
+      .map(it => {
+        const adj = it.adjusted ?? it.calculated;
+        const diff = adj - it.calculated;
+        const diffStr = diff !== 0 ? ` (조정 ${diff > 0 ? '+' : ''}${diff.toLocaleString()})` : '';
+        return `${it.category}: ${adj.toLocaleString()}원${diffStr}${it.reason ? ` [${it.reason}]` : ''}`;
+      })
+      .join('\n');
+
+    const summaryText = [
+      `[정산서] ${imp.businessId}`,
+      `마감일시: ${imp.closedAt ? imp.closedAt.slice(0, 16) : ''}`,
+      `마감자: ${imp.closedBy || ''}`,
+      ``,
+      `── 비용 항목 ──`,
+      summaryLines,
+      ``,
+      `계산 합계: ${totalCalc.toLocaleString()}원`,
+      `확정 합계: ${totalAdj.toLocaleString()}원`,
+      `차이: ${(totalAdj - totalCalc).toLocaleString()}원`,
+    ].join('\n');
+
+    const page = await notion.pages.create({
+      parent: { database_id: DB.imports },
+      properties: {
+        'ImportNo': rich(`정산-${imp.businessId}`),
+        'Importer': rich(imp.brokerName || ''),
+        'ClearanceDate': dt(imp.closedAt?.slice(0, 10)),
+        'DutyAmount': num(imp.duty),
+        'VATAmount': num(imp.vat),
+        'BLNoMaster': rich(imp.blNo || ''),
+        'Exporter': rich(summaryText.slice(0, 2000)), // 정산 요약을 Exporter 필드에 임시 저장
+      },
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[Notion] create import settlement error:', e);
+    return null;
+  }
+}
+
 // ─── Update / Delete in Notion ───────────────────────────────────────────────
 
 export async function updateNotionPage(pageId: string, props: Record<string, unknown>): Promise<void> {

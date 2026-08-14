@@ -3,6 +3,7 @@ import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { dbToImport } from '../../route';
 import { syncImportExpenses } from '@/lib/import-helpers';
+import { createNotionImportSettlement } from '@/lib/notion/mapper';
 import type { SettlementHistoryEntry } from '@/types';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,7 +71,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const final = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
-    return NextResponse.json({ data: dbToImport(final) });
+    const finalImp = dbToImport(final);
+
+    // 마감 시 Notion 정산서 저장 (비동기, 실패해도 메인 응답에 영향 없음)
+    if (action === 'close') {
+      createNotionImportSettlement(finalImp).then(notionId => {
+        if (notionId) {
+          db.prepare('UPDATE imports SET notion_id=? WHERE id=?').run(notionId, id);
+        }
+      }).catch(e => console.error('[close] Notion settlement save failed:', e));
+    }
+
+    return NextResponse.json({ data: finalImp });
   } catch (e) {
     console.error('[imports close]', e);
     return NextResponse.json({ error: '처리 실패' }, { status: 500 });

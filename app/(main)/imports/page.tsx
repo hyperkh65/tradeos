@@ -111,7 +111,10 @@ function ImportModal({
   const [documents, setDocuments] = useState<ImportDocument[]>(item?.documents || []);
   const [pendingFiles, setPendingFiles] = useState<{ file: File; docType: ImportDocType }[]>([]);
   const [uploadDocType, setUploadDocType] = useState<ImportDocType>('clearance_cert');
+  const [parseLoading, setParseLoading] = useState(false);
+  const [parseMsg, setParseMsg] = useState<string | null>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
+  const parseFileRef = useRef<HTMLInputElement>(null);
   const savedIdRef = useRef<string | null>(item?.id || null);
 
   const [brokers, setBrokers] = useState<Company[]>([]);
@@ -687,11 +690,75 @@ function ImportModal({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">④ 품목별 관세</div>
-                    {canEdit && <button type="button" className="text-xs text-blue-500 hover:text-blue-700"
-                      onClick={() => setItems(prev => [...prev, { id: `new-${Date.now()}`, productName: '', hsCode: '', dutyRate: undefined, customsValue: undefined, duty: undefined, vat: undefined, qty: undefined, customsValueStr: '', dutyRateStr: '' }])}>
-                      + 품목 추가
-                    </button>}
+                    {canEdit && (
+                      <div className="flex items-center gap-2">
+                        {/* 엑셀 파싱 버튼 */}
+                        <label className={cn('flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded border transition-colors',
+                          parseLoading ? 'text-muted-foreground border-muted' : 'text-green-600 border-green-300 hover:bg-green-50')}>
+                          <input ref={parseFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              e.target.value = '';
+                              const id = savedIdRef.current;
+                              setParseLoading(true);
+                              setParseMsg(null);
+                              try {
+                                const fd = new FormData();
+                                fd.append('file', file);
+                                const endpoint = id
+                                  ? `/api/imports/${id}/parse-items`
+                                  : '/api/imports/parse-items-temp';
+                                const res = await fetch(endpoint, { method: 'POST', body: fd });
+                                const d = await res.json();
+                                if (d.data?.length > 0) {
+                                  setItems(prev => {
+                                    const parsed = (d.data as { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]).map(it => ({
+                                      id: `parsed-${Date.now()}-${Math.random()}`,
+                                      productName: it.productName,
+                                      hsCode: it.hsCode,
+                                      dutyRate: it.dutyRate,
+                                      customsValue: it.customsValue,
+                                      duty: undefined,
+                                      vat: undefined,
+                                      qty: it.qty,
+                                      customsValueStr: it.customsValue?.toString() || '',
+                                      dutyRateStr: it.dutyRate?.toString() || '',
+                                    }));
+                                    // 기존 빈 행만 있으면 교체, 아니면 추가
+                                    const hasData = prev.some(p => p.productName || (p.customsValue ?? 0) > 0);
+                                    return hasData ? [...prev, ...parsed] : parsed;
+                                  });
+                                  setParseMsg(d.message || `${d.data.length}개 파싱 완료`);
+                                } else {
+                                  setParseMsg(d.message || '인식된 품목 없음 — 헤더명(품명/Qty/금액 등)을 확인하세요');
+                                }
+                              } catch (ex) {
+                                setParseMsg(`파싱 실패: ${ex}`);
+                              } finally {
+                                setParseLoading(false);
+                                setTimeout(() => setParseMsg(null), 5000);
+                              }
+                            }} />
+                          {parseLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                          엑셀 가져오기
+                        </label>
+                        <button type="button" className="text-xs text-blue-500 hover:text-blue-700"
+                          onClick={() => setItems(prev => [...prev, { id: `new-${Date.now()}`, productName: '', hsCode: '', dutyRate: undefined, customsValue: undefined, duty: undefined, vat: undefined, qty: undefined, customsValueStr: '', dutyRateStr: '' }])}>
+                          + 품목 추가
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {/* 파싱 결과 메시지 */}
+                  {parseMsg && (
+                    <div className={cn('text-xs px-2 py-1.5 rounded flex items-center gap-1.5',
+                      parseMsg.includes('완료') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700')}>
+                      {parseMsg.includes('완료') ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                      {parseMsg}
+                    </div>
+                  )}
 
                   {/* HS코드/관세율 일괄 적용 */}
                   {items.length > 1 && canEdit && (
