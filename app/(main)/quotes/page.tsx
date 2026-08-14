@@ -240,7 +240,7 @@ function QuoteModal({
   item, companies, products, quotes, me, onClose, onSave, onPrint,
 }: {
   item?: Quote | null; companies: any[]; products: any[]; quotes: Quote[];
-  me: { name: string; role: string } | null; onClose: () => void; onSave: () => void;
+  me: { name: string; role: string } | null; onClose: () => void; onSave: (saved?: any) => void;
   onPrint?: (q: Quote) => void;
 }) {
   const q = item as any;
@@ -301,11 +301,14 @@ function QuoteModal({
 
   const updateItem = (idx: number, field: string, val: string | number) => {
     setForm(f => {
-      const items = [...f.items];
-      (items[idx] as any)[field] = val;
-      if (['quantity', 'unitPrice'].includes(field)) {
-        items[idx].amount = (items[idx].quantity ?? 0) * (items[idx].unitPrice ?? 0);
-      }
+      const items = f.items.map((it, i) => {
+        if (i !== idx) return it;
+        const updated = { ...it, [field]: val };
+        if (field === 'quantity' || field === 'unitPrice') {
+          updated.amount = (updated.quantity ?? 0) * (updated.unitPrice ?? 0);
+        }
+        return updated;
+      });
       return { ...f, items };
     });
   };
@@ -354,12 +357,12 @@ function QuoteModal({
       const res = item
         ? await fetch(`/api/quotes/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         : await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         setSaveError(j.error || `저장 실패 (${res.status})`);
         return;
       }
-      onSave();
+      onSave(j.data);
     } catch (e) {
       setSaveError('네트워크 오류가 발생했습니다.');
     } finally { setSaving(false); }
@@ -1119,7 +1122,15 @@ export default function QuotesPage() {
           quotes={quotes}
           me={me}
           onClose={() => setModal({ open: false })}
-          onSave={() => { setModal({ open: false }); load(); }}
+          onSave={(saved) => {
+            setModal({ open: false });
+            if (saved) {
+              setQuotes(qs => qs.some(q => q.id === saved.id)
+                ? qs.map(q => q.id === saved.id ? saved : q)
+                : [saved, ...qs]);
+            }
+            load();
+          }}
           onPrint={(q) => { setModal({ open: false }); setPrintModal({ open: true, item: q as Quote }); }}
         />
       )}
