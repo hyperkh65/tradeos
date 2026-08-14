@@ -2,9 +2,11 @@ import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import type { User } from '@/types';
 
-const SECRET = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? 'tradeos-fallback-secret-change-in-production'
-);
+const AUTH_SECRET = process.env.AUTH_SECRET;
+if (!AUTH_SECRET) {
+  console.error('[SECURITY] AUTH_SECRET 환경변수가 설정되지 않았습니다. 운영 배포 전 반드시 설정하세요.');
+}
+const SECRET = new TextEncoder().encode(AUTH_SECRET ?? 'tradeos-fallback-CHANGE-IN-PRODUCTION');
 
 export async function createSession(user: User): Promise<string> {
   const token = await new SignJWT({ user })
