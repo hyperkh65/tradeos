@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 
-// SCAC code → carrier info
 const CARRIERS: Record<string, { name: string; trackingUrl: (bl: string) => string }> = {
   EGLV: { name: 'Evergreen Line', trackingUrl: bl => `https://www.evergreen-line.com/ebusiness/tracking.do?bl_no=${bl}` },
   MSCU: { name: 'MSC', trackingUrl: bl => `https://www.msc.com/track-a-shipment?bl=${bl}` },
@@ -22,27 +21,6 @@ const CARRIERS: Record<string, { name: string; trackingUrl: (bl: string) => stri
   SITC: { name: 'SITC', trackingUrl: () => 'https://www.sitcline.com/en/track' },
 };
 
-const UNIPASS_STATUS: Record<string, string> = {
-  '01': '선적(해외출항)', '02': '선적완료', '03': '운항중',
-  '04': '입항', '05': '부두반입', '06': '하선신고',
-  '07': '수입신고', '08': '수입신고수리', '09': '반출/배송',
-  'E01': '수출신고', 'E02': '수출신고수리', 'E03': '적재완료',
-};
-
-// Simple XML tag extractor (no library needed)
-function xmlTag(xml: string, tag: string): string {
-  const m = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i').exec(xml);
-  return m?.[1]?.trim() || '';
-}
-function xmlAllTags(xml: string, tag: string): string[] {
-  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'gi');
-  const results: string[] = [];
-  let m;
-  while ((m = re.exec(xml)) !== null) results.push(m[1]);
-  return results;
-}
-
-// Unipass base URL
 const UNIPASS_BASE = 'https://unipass.customs.go.kr:38010/ext/rest';
 
 function getSettings(): Record<string, string> {
@@ -54,172 +32,83 @@ function getSettings(): Record<string, string> {
   return {};
 }
 
-function parseKoreanDate(dt: string): string | null {
-  if (!dt || dt.length < 8) return null;
+function xmlTag(xml: string, tag: string): string {
+  const m = new RegExp(`<${tag}[^>]*>([^<]*)<\/${tag}>`, 'i').exec(xml);
+  return m?.[1]?.trim() || '';
+}
+
+function xmlAllTags(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, 'gi');
+  const out: string[] = [];
+  let m;
+  while ((m = re.exec(xml)) !== null) out.push(m[1].trim());
+  return out;
+}
+
+function parseDate(dt: string): string | null {
+  if (!dt) return null;
   const d = dt.replace(/[^0-9]/g, '');
+  if (d.length < 8) return null;
   return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 }
 
-// ── 관세청 유니패스 공통 fetch ────────────────────────────────────────────────
+// 유니패스 공통 fetch — Accept 헤더 없음 (API는 XML만 반환)
 async function unipassFetch(endpoint: string, params: Record<string, string>, apiKey: string): Promise<string> {
   const url = new URL(`${UNIPASS_BASE}/${endpoint}`);
   url.searchParams.set('crkyCn', apiKey);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
-  });
+  for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
   if (!res.ok) throw new Error(`Unipass ${endpoint} HTTP ${res.status}`);
   return res.text();
 }
 
-// ── 1) 화물통관진행정보조회 (B/L 기준) ─────────────────────────────────────
-async function queryCargoProgress(blNo: string, apiKey: string) {
-  const text = await unipassFetch('cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo', {
-    blNo, cargTp: 'B', pageIndex: '1', perPage: '20',
-  }, apiKey);
-
-  let data: any;
-  try { data = JSON.parse(text); } catch {
-    // XML fallback
-    return {
-      vessel: xmlTag(text, 'vslNm'),
-      voyage: xmlTag(text, 'voyNo'),
-      pol: xmlTag(text, 'ldprCd'),
-      pod: xmlTag(text, 'dsprCd'),
-      etd: parseKoreanDate(xmlTag(text, 'etdDt')),
-      eta: parseKoreanDate(xmlTag(text, 'etprDt') || xmlTag(text, 'etaDt')),
-      containerNos: xmlAllTags(text, 'cntrNo').filter(Boolean),
-      statusCode: xmlTag(text, 'prcsStCd'),
-      statusName: xmlTag(text, 'prcsStNm') || null,
-      events: [],
-    };
-  }
-
-  const root = data?.cargCsclPrgsInfoQryVo || data?.response?.body?.items || data;
-  const items: any[] = Array.isArray(root?.cargCsclPrgsInfoDtlVo)
-    ? root.cargCsclPrgsInfoDtlVo
-    : Array.isArray(root) ? root : (root ? [root] : []);
-
-  if (!items.length) return null;
-
-  const first = items[0];
-  const events = items.map((it: any) => ({
-    date: parseKoreanDate(it.prcsDttm || it.prcsYmd || it.prcsDt || ''),
-    status: it.prcsStNm || UNIPASS_STATUS[it.prcsStCd] || it.prcsStCd || '',
-    location: it.dsprNm || it.ldprNm || it.cargClprSttnNm || it.prcsPrtNm || '',
-    containerNo: it.cntrNo || '',
-    statusCode: it.prcsStCd || '',
-  })).filter((e: any) => e.date);
-
-  const latest = items.reduce((prev: any, cur: any) =>
-    (cur.prcsDttm || cur.prcsYmd || cur.prcsDt || '') > (prev.prcsDttm || prev.prcsYmd || prev.prcsDt || '') ? cur : prev, items[0]);
-
-  const containerNos = [...new Set(items.map((it: any) => it.cntrNo).filter(Boolean))];
-
-  // ETD: API 필드 → 출발 이벤트(03=운항중 이전) 날짜 순으로 fallback
-  const etdRaw = first.etdDt || first.etd || first.shpmDt || first.ldDt || first.departureDt || '';
-  const etdFromEvents = events.find(e => ['01', '02', '03'].includes(e.statusCode))?.date || null;
-  const etd = parseKoreanDate(etdRaw) || etdFromEvents;
-
-  // ETA: API 필드 → 입항 이벤트 날짜 순으로 fallback
-  const etaRaw = first.etprDt || first.etaDt || first.eta || first.arrvEstDt || first.prdArvlDt || '';
-  const etaFromEvents = events.find(e => ['04', '05', '06'].includes(e.statusCode))?.date || null;
-  const eta = parseKoreanDate(etaRaw) || etaFromEvents;
-
-  return {
-    vessel: first.vslNm || null,
-    voyage: first.voyNo || null,
-    pol: first.ldprCd || null,
-    pod: first.dsprCd || null,
-    etd,
-    eta,
-    containerNos,
-    containerNo: containerNos[0] || null,
-    statusCode: latest.prcsStCd || null,
-    statusName: latest.prcsStNm || UNIPASS_STATUS[latest.prcsStCd] || null,
-    mblNo: first.mblNo || null,
-    events: events.slice(0, 10),
-    _firstKeys: Object.keys(first),  // 실제 응답 필드명 확인용 (디버그)
-  };
-}
-
-// ── 2) 컨테이너내역조회 ────────────────────────────────────────────────────
-async function queryContainer(cntrNo: string, apiKey: string) {
-  try {
-    const text = await unipassFetch('cntrInfoQry/retrieveCntrInfo', {
-      cntrNo, pageIndex: '1', perPage: '5',
-    }, apiKey);
-
-    let data: any;
-    try { data = JSON.parse(text); } catch {
-      return {
-        sealNo: xmlTag(text, 'sealNo'),
-        cntrSzTpCd: xmlTag(text, 'cntrSzTpCd'),
-        grossWeight: xmlTag(text, 'wght'),
-      };
-    }
-
-    const root = data?.cntrInfoQryVo || data?.response?.body?.items || data;
-    const items: any[] = Array.isArray(root?.cntrInfoDtlVo)
-      ? root.cntrInfoDtlVo
-      : Array.isArray(root) ? root : (root ? [root] : []);
-
-    if (!items.length) return null;
-    const c = items[0];
-    return {
-      sealNo: c.sealNo || null,
-      cntrSzTpCd: c.cntrSzTpCd || c.cntrTpCd || null,
-      grossWeight: c.wght || c.grssWght || null,
-    };
-  } catch { return null; }
-}
-
-// ── 3) 입항보고내역조회(해상) — vessel + voyage 기준 ─────────────────────
-async function queryArrivalReport(vessel: string, voyage: string, apiKey: string): Promise<{
-  eta: string | null; ata: string | null; pod: string | null; _debug?: any
-} | null> {
+// ── API001: 화물통관 진행정보 (mblNo + blYy 기준) ────────────────────────────
+async function queryCargoProgress(blNo: string, blYy: string, apiKey: string) {
+  // MBL로 먼저 시도, 실패 시 HBL로 재시도
   const tryQuery = async (params: Record<string, string>) => {
-    const text = await unipassFetch('arrivRptInfoQry/retrieveArrivRptInfo', {
-      ...params, pageIndex: '1', perPage: '5',
-    }, apiKey);
+    const xml = await unipassFetch('cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo', params, apiKey);
 
-    let data: any;
-    try { data = JSON.parse(text); } catch {
-      return {
-        eta: parseKoreanDate(xmlTag(text, 'etprDt') || xmlTag(text, 'etaDt')),
-        ata: parseKoreanDate(xmlTag(text, 'atvDt') || xmlTag(text, 'ata') || xmlTag(text, 'arrDt')),
-        pod: xmlTag(text, 'dsprCd') || xmlTag(text, 'arrPrtCd'),
-        _debug: { raw: text.slice(0, 300) },
-      };
-    }
+    // 응답 필드: 공식 문서 기준
+    const vessel  = xmlTag(xml, 'shipNm');     // 선박명
+    const voyage  = xmlTag(xml, 'vydf');       // 항차
+    const pol     = xmlTag(xml, 'ldprCd');     // 적재항코드 (POL)
+    const pod     = xmlTag(xml, 'dsprCd');     // 양륙항코드 (POD)
+    const eta     = parseDate(xmlTag(xml, 'etprDt'));  // 입항일자 (ETA)
+    const cntrNo  = xmlTag(xml, 'cntrNo');     // 컨테이너번호
+    const cargMtNo = xmlTag(xml, 'cargMtNo'); // 화물관리번호 (API020에 필요)
+    const status  = xmlTag(xml, 'prgsStts') || xmlTag(xml, 'csclPrgsStts');
+    const carrierCode = xmlTag(xml, 'shcoFlcoSgn');
+    const carrierName = xmlTag(xml, 'shcoFlco');
 
-    const root = data?.arrivRptInfoQryVo || data?.response?.body?.items || data;
-    const items: any[] = Array.isArray(root?.arrivRptInfoDtlVo)
-      ? root.arrivRptInfoDtlVo
-      : Array.isArray(root) ? root : (root ? [root] : []);
-
-    if (!items.length) return { eta: null, ata: null, pod: null, _debug: { empty: true, rawKeys: Object.keys(root || {}) } };
-    const r = items[0];
-    return {
-      eta: parseKoreanDate(r.etprDt || r.etaDt || ''),
-      ata: parseKoreanDate(r.atvDt || r.ata || r.arrDt || r.arrDttm || ''),
-      pod: r.dsprCd || r.prtCd || r.arrPrtCd || null,
-      _debug: { keys: Object.keys(r), count: items.length },
-    };
+    if (!vessel && !cargMtNo && !eta) return null;
+    return { vessel, voyage, pol, pod, eta, cntrNo, cargMtNo, status, carrierCode, carrierName };
   };
 
+  // 1차: MBL로 조회
   try {
-    // 1차: vessel + voyage
-    const r1 = await tryQuery({ vslNm: vessel, voyNo: voyage });
-    if (r1?.eta || r1?.ata) return r1;
-    // 2차: vessel만으로 재시도 (voyage 형식 불일치 대비)
-    const r2 = await tryQuery({ vslNm: vessel });
-    if (r2?.eta || r2?.ata) return r2;
-    return r1; // 디버그 정보는 유지
-  } catch (e) {
-    return { eta: null, ata: null, pod: null, _debug: { error: String(e) } };
-  }
+    const r = await tryQuery({ mblNo: blNo, blYy });
+    if (r) return r;
+  } catch { /* fallthrough to HBL */ }
+
+  // 2차: HBL로 조회
+  try {
+    const r = await tryQuery({ hblNo: blNo, blYy });
+    if (r) return r;
+  } catch { /* ignore */ }
+
+  return null;
+}
+
+// ── API020: 컨테이너내역조회 (cargMtNo 기준) ────────────────────────────────
+// 공식 엔드포인트: cntrQryBrkdQry/retrieveCntrQryBrkd, 파라미터: cargMtNo
+async function queryContainerDetail(cargMtNo: string, apiKey: string) {
+  try {
+    const xml = await unipassFetch('cntrQryBrkdQry/retrieveCntrQryBrkd', { cargMtNo }, apiKey);
+    const cntrNos = xmlAllTags(xml, 'cntrNo').filter(Boolean);
+    const cntrStszCd = xmlTag(xml, 'cntrStszCd');  // 컨테이너규격코드
+    const sealNo = xmlTag(xml, 'cntrSelgNo1') || xmlTag(xml, 'cntrSelgNo2') || xmlTag(xml, 'cntrSelgNo3');
+    return { cntrNos, cntrStszCd, sealNo };
+  } catch { return null; }
 }
 
 export async function GET(req: NextRequest) {
@@ -230,8 +119,7 @@ export async function GET(req: NextRequest) {
   const carrier = CARRIERS[scac] || null;
 
   const result: Record<string, unknown> = {
-    bl,
-    scac,
+    bl, scac,
     carrierName: carrier?.name || null,
     trackingUrl: carrier?.trackingUrl(bl) || null,
     source: null,
@@ -240,36 +128,40 @@ export async function GET(req: NextRequest) {
   const settings = getSettings();
   const unipassKey1 = process.env.UNIPASS_API_KEY || settings.unipassApiKey || '';
   const unipassKey2 = settings.unipassApiKey2 || unipassKey1;
-  const unipassKey3 = settings.unipassApiKey3 || unipassKey1;
   const ship24Key = process.env.SHIP24_API_KEY || settings.ship24ApiKey || '';
 
-  // ── 1순위: 관세청 유니패스 (무료, 한국 수입 화물 전체) ─────────────────────
+  // BL 년도: 현재 연도 사용 (전년도도 fallback으로 시도)
+  const thisYear = new Date().getFullYear().toString();
+
+  // ── 1순위: 관세청 유니패스 ───────────────────────────────────────────────────
   if (unipassKey1) {
     try {
-      // Step 1: 화물통관진행정보조회 (B/L 기준) — 키①
-      const cargo = await queryCargoProgress(bl, unipassKey1);
+      let cargo = await queryCargoProgress(bl, thisYear, unipassKey1);
+      // 년도 불일치 대비: 전년도로 재시도
+      if (!cargo) {
+        cargo = await queryCargoProgress(bl, String(Number(thisYear) - 1), unipassKey1);
+      }
+
       if (cargo) {
-        Object.assign(result, cargo);
-        result.source = 'unipass';
+        result.vessel      = cargo.vessel || null;
+        result.voyage      = cargo.voyage || null;
+        result.pol         = cargo.pol || null;
+        result.pod         = cargo.pod || null;
+        result.eta         = cargo.eta || null;
+        result.containerNo = cargo.cntrNo || null;
+        result.statusName  = cargo.status || null;
+        result.source      = 'unipass';
         result.sourceLabel = '관세청 유니패스';
 
-        // Step 2: 컨테이너(키②) + 입항보고(키③) 병렬 조회
-        const [cntrResult, arrResult] = await Promise.allSettled([
-          cargo.containerNo ? queryContainer(cargo.containerNo, unipassKey2) : Promise.resolve(null),
-          cargo.vessel && cargo.voyage ? queryArrivalReport(cargo.vessel, cargo.voyage, unipassKey3) : Promise.resolve(null),
-        ]);
-
-        if (cntrResult.status === 'fulfilled' && cntrResult.value) {
-          result.containerDetail = cntrResult.value;
-        }
-        if (arrResult.status === 'fulfilled' && arrResult.value) {
-          const arr = arrResult.value;
-          if (arr.eta && !result.eta) result.eta = arr.eta;
-          if (arr.ata) result.ata = arr.ata;
-          if (arr.pod && !result.pod) result.pod = arr.pod;
-          result._arrivalDebug = (arr as any)._debug; // 디버그용
-        } else {
-          result._arrivalDebug = arrResult.status === 'rejected' ? String((arrResult as any).reason) : 'skipped';
+        // API020: 컨테이너 상세 (cargMtNo 필요)
+        if (cargo.cargMtNo) {
+          const cntrDetail = await queryContainerDetail(cargo.cargMtNo, unipassKey2).catch(() => null);
+          if (cntrDetail) {
+            result.containerDetail = cntrDetail;
+            if (!result.containerNo && cntrDetail.cntrNos?.length > 0) {
+              result.containerNo = cntrDetail.cntrNos[0];
+            }
+          }
         }
       }
     } catch (e) {
@@ -279,7 +171,7 @@ export async function GET(req: NextRequest) {
     result.unipassMissing = true;
   }
 
-  // ── 2순위: Ship24 (유료, 글로벌) ──────────────────────────────────────────
+  // ── 2순위: Ship24 (유료, 글로벌) ─────────────────────────────────────────────
   if (!result.source && ship24Key) {
     try {
       const s24Res = await fetch('https://api.ship24.com/public/v1/trackers', {
@@ -290,34 +182,32 @@ export async function GET(req: NextRequest) {
       });
       if (s24Res.ok) {
         const data = await s24Res.json();
-        const tracker = data?.data?.tracker;
-        const shipment = tracker?.shipment;
+        const shipment = data?.data?.tracker?.shipment;
         if (shipment) {
           if (!result.vessel) result.vessel = shipment.vessel?.name || null;
           if (!result.voyage) result.voyage = shipment.voyage || null;
           if (!result.pol) result.pol = shipment.pol?.location?.locationCode || null;
           if (!result.pod) result.pod = shipment.pod?.location?.locationCode || null;
-          if (!result.etd) result.etd = shipment.etd ? String(shipment.etd).slice(0, 10) : null;
           if (!result.eta) result.eta = shipment.estimatedTimeOfArrival ? String(shipment.estimatedTimeOfArrival).slice(0, 10) : null;
           result.source = 'ship24';
           result.sourceLabel = 'Ship24';
-          const evts = (tracker.events || []).slice(0, 8);
+          const evts = (data?.data?.tracker?.events || []).slice(0, 8);
           result.events = evts.map((e: any) => ({
             date: String(e.occurrenceDatetime || '').slice(0, 10),
             location: e.location?.locationName || '',
-            status: e.description || e.statusCode || '',
+            desc: e.description || e.statusCode || '',
           }));
         }
       }
     } catch { /* ignore */ }
   }
 
-  // ── 3순위: Searates 무료 엔드포인트 ────────────────────────────────────────
+  // ── 3순위: Searates 무료 ──────────────────────────────────────────────────────
   if (!result.source) {
     try {
       const sRes = await fetch(
         `https://tracking.searates.com/api/tracking?number=${encodeURIComponent(bl)}&type=BL`,
-        { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(4000) }
+        { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) }
       );
       if (sRes.ok) {
         const d = await sRes.json();
@@ -326,7 +216,6 @@ export async function GET(req: NextRequest) {
           result.voyage = d.data.voyage || null;
           result.pol = d.data.pol || null;
           result.pod = d.data.pod || null;
-          result.etd = d.data.etd ? String(d.data.etd).slice(0, 10) : null;
           result.eta = d.data.eta ? String(d.data.eta).slice(0, 10) : null;
           result.source = 'searates';
           result.sourceLabel = 'Searates';
