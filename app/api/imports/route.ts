@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
 import type { Import } from '@/types';
 
@@ -60,15 +61,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
     const id = newId();
     const ts = now();
-
-    const lastRow = db.prepare(`SELECT business_id FROM imports WHERE business_id LIKE 'IMP-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
-    const year = new Date().getFullYear();
-    const bizId = `IMP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = nextBizId('IMP');
 
     db.prepare(`INSERT INTO imports
       (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
@@ -133,6 +131,7 @@ export async function POST(req: NextRequest) {
       brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
       warehouseFee: body.warehouseFee, detentionFee: body.detentionFee,
       inlandFreight: body.inlandFreight, customCosts: body.customCosts,
+      createdBy: user?.id || 'unknown',
     });
 
     const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;

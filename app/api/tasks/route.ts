@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionTasks, createNotionTask } from '@/lib/notion/mapper';
 import { DEMO_TASKS } from '@/lib/demo-data';
 
@@ -46,19 +47,22 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
     const id = newId();
     const ts = now();
+    const ownerId = user?.id || 'unknown';
+    const ownerName = user?.name || '알 수 없음';
 
     db.prepare(`INSERT INTO tasks (id,title,description,owner_id,owner_name,due_date,priority,status,related_type,related_id,related_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id,body.title,body.description??null,'user-1','김대표',body.dueDate??null,body.priority||'medium',body.status||'해야 함',body.relatedType??null,body.relatedId??null,body.relatedName??null,ts,ts);
+      .run(id,body.title,body.description??null,ownerId,ownerName,body.dueDate??null,body.priority||'medium',body.status||'해야 함',body.relatedType??null,body.relatedId??null,body.relatedName??null,ts,ts);
 
     createNotionTask({ ...body }).then(notionId => {
       if (notionId) db.prepare('UPDATE tasks SET notion_id=? WHERE id=?').run(notionId, id);
     }).catch(() => {});
 
-    return NextResponse.json({ data: { id, ...body, ownerId:'user-1', ownerName:'김대표', createdAt:ts, updatedAt:ts } }, { status: 201 });
+    return NextResponse.json({ data: { id, ...body, ownerId, ownerName, createdAt:ts, updatedAt:ts } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
   }

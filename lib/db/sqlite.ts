@@ -419,6 +419,12 @@ function initSchema(db: Database.Database) {
       error_msg TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS biz_sequences (
+      prefix TEXT PRIMARY KEY,
+      year INTEGER NOT NULL,
+      last_num INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }
 
@@ -562,4 +568,27 @@ export function newId(): string {
 
 export function now(): string {
   return new Date().toISOString();
+}
+
+// Thread-safe sequential business ID generator using DB sequences table.
+// Uses a transaction so concurrent requests never produce duplicate IDs.
+// withYear=false: generates PREFIX-0001 (for companies); default true: PREFIX-YYYY-0001
+export function nextBizId(prefix: string, withYear = true): string {
+  const db = getDb();
+  const year = new Date().getFullYear();
+  const gen = db.transaction(() => {
+    const row = db.prepare('SELECT last_num, year FROM biz_sequences WHERE prefix=?').get(prefix) as { last_num: number; year: number } | undefined;
+    let num: number;
+    if (!row || (withYear && row.year !== year)) {
+      num = 1;
+      db.prepare('INSERT OR REPLACE INTO biz_sequences (prefix, year, last_num) VALUES (?,?,?)').run(prefix, year, 1);
+    } else {
+      num = (row.last_num || 0) + 1;
+      db.prepare('UPDATE biz_sequences SET last_num=? WHERE prefix=?').run(num, prefix);
+    }
+    return withYear
+      ? `${prefix}-${year}-${String(num).padStart(4, '0')}`
+      : `${prefix}-${String(num).padStart(4, '0')}`;
+  });
+  return gen() as string;
 }

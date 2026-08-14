@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/notion/mapper';
 import type { PurchaseOrder } from '@/types';
 
@@ -93,15 +94,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
     const id = newId();
     const ts = now();
-
-    const lastRow = db.prepare(`SELECT business_id FROM purchase_orders WHERE business_id LIKE 'PO-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
-    const year = new Date().getFullYear();
-    const bizId = body.businessId || `PO-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = body.businessId || nextBizId('PO');
 
     const items = body.items || [];
     const total = items.reduce((s: number, i: { amount: number }) => s + (i.amount || 0), 0);
@@ -122,7 +120,7 @@ export async function POST(req: NextRequest) {
       status: body.status || 'draft',
       incoterm: body.incoterm,
       remark: body.remark,
-      createdBy: 'user-1',
+      createdBy: user?.id || 'unknown',
       createdAt: ts, updatedAt: ts,
       imagesJson: body.imagesJson ?? null,
       depositRatio: body.depositRatio ?? '30',

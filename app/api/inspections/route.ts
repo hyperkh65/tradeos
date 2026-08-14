@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { DEMO_INSPECTIONS } from '@/lib/demo-data';
 
@@ -87,10 +87,7 @@ export async function POST(req: NextRequest) {
     const id = newId();
     const ts = now();
 
-    const lastRow = db.prepare(`SELECT business_id FROM inspections WHERE business_id LIKE 'QC-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
-    const year = new Date().getFullYear();
-    const bizId = body.businessId || `QC-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = body.businessId || nextBizId('QC');
 
     const checkedQty = body.checkedQty != null ? Number(body.checkedQty) : null;
     const failedQty = body.failedQty != null ? Number(body.failedQty) : null;

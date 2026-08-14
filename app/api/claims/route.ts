@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -79,19 +80,16 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
     const id = newId();
     const ts = now();
-
-    const lastRow = db.prepare(`SELECT business_id FROM claims WHERE business_id LIKE 'CLM-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
-    const year = new Date().getFullYear();
-    const bizId = body.businessId || `CLM-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = body.businessId || nextBizId('CLM');
 
     db.prepare(`INSERT INTO claims (id,business_id,customer_id,customer_name,supplier_id,supplier_name,product_id,product_name,po_id,po_business_id,sale_id,sale_business_id,shipment_id,issue_type,description,claim_amount,currency,compensation_type,compensation_amount,status,image_files,report_files,created_by,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, bizId, body.customerId ?? null, body.customerName ?? null, body.supplierId ?? null, body.supplierName ?? null, body.productId ?? null, body.productName ?? null, body.poId ?? null, body.poBusinessId ?? null, body.saleId ?? null, body.saleBusinessId ?? null, body.shipmentId ?? null, body.issueType, body.description, body.claimAmount ?? null, body.currency ?? null, body.compensationType ?? null, body.compensationAmount ?? null, body.status || '접수', JSON.stringify(body.imageFiles || []), JSON.stringify(body.reportFiles || []), 'user-1', ts, ts);
+      .run(id, bizId, body.customerId ?? null, body.customerName ?? null, body.supplierId ?? null, body.supplierName ?? null, body.productId ?? null, body.productName ?? null, body.poId ?? null, body.poBusinessId ?? null, body.saleId ?? null, body.saleBusinessId ?? null, body.shipmentId ?? null, body.issueType, body.description, body.claimAmount ?? null, body.currency ?? null, body.compensationType ?? null, body.compensationAmount ?? null, body.status || '접수', JSON.stringify(body.imageFiles || []), JSON.stringify(body.reportFiles || []), user?.id || 'unknown', ts, ts);
 
     const saved = dbToClaim(db.prepare('SELECT * FROM claims WHERE id=?').get(id) as Record<string, unknown>);
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionQuotes, createNotionQuote } from '@/lib/notion/mapper';
 import type { Quote } from '@/types';
 
@@ -81,11 +82,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
     const id = newId();
     const ts = now();
 
+    // legacy: keep maxNum for backward compat if businessId is provided externally
     const year = new Date().getFullYear();
     const allQtRows = db.prepare(`SELECT business_id FROM quotes WHERE business_id LIKE 'QT-${year}-%'`).all() as { business_id: string }[];
     const maxNum = allQtRows.reduce((max, r) => {
@@ -101,7 +104,8 @@ export async function POST(req: NextRequest) {
     }));
     const totalAmount = items.reduce((s: number, it: any) => s + (it.amount || 0), 0);
     const quoteDate = body.quoteDate || ts.slice(0, 10);
-    const historyEntry = { at: ts, by: body.createdByName || 'user-1', action: '생성' };
+    const actorName = user?.name || body.createdByName || '알 수 없음';
+    const historyEntry = { at: ts, by: actorName, action: '생성' };
 
     const q: Quote = {
       id, businessId: bizId,
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
       validity: body.validity,
       status: body.status || 'draft',
       remark: body.remark,
-      createdBy: 'user-1',
+      createdBy: user?.id || 'unknown',
       createdAt: ts,
     };
 
@@ -125,7 +129,7 @@ export async function POST(req: NextRequest) {
       id, bizId, body.type || 'customer', body.companyId ?? null, body.companyName,
       JSON.stringify(items), body.currency || 'KRW', body.incoterm ?? null, body.paymentTerms ?? null,
       body.validity ?? null, body.status || 'draft', body.remark ?? null,
-      'user-1', body.createdByName ?? null, notionId ?? null, ts,
+      user?.id || 'unknown', actorName, notionId ?? null, ts,
       quoteDate, totalAmount, body.imagesJson ?? null, JSON.stringify([historyEntry]),
       body.docType ?? 'QUOTE', body.specialNotes ?? null, body.generalInfo ?? null,
     );

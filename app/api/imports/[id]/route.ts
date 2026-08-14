@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 import { dbToImport } from '../route';
 import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await getSessionUser();
     const { id } = await params;
     const body = await req.json();
     const db = getDb();
@@ -76,6 +78,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
       inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
       customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
+      createdBy: user?.id || 'unknown',
     });
 
     return NextResponse.json({ data: dbToImport(updated) });

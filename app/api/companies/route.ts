@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { fetchNotionCompanies, createNotionCompany } from '@/lib/notion/mapper';
 import { DEMO_COMPANIES } from '@/lib/demo-data';
 
@@ -35,11 +35,8 @@ export async function GET(req: NextRequest) {
       const prefixMap: Record<string, string> = { '고객사':'CUS','공급업체':'SUP','포워더':'FWD','관세사':'BRK','기타':'ETC' };
       db.transaction(() => {
         for (const c of notionData) {
-          // Generate short code (CUS-XXXX) instead of UUID/business_no
           const prefix = prefixMap[c.type] ?? 'ETC';
-          const lastRow = db.prepare(`SELECT business_id FROM companies WHERE business_id LIKE '${prefix}-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-          const last = lastRow ? parseInt(lastRow.business_id.split('-')[1] || '0') : 0;
-          const bizId = `${prefix}-${String(last + 1).padStart(4, '0')}`;
+          const bizId = nextBizId(prefix, false);
           insert.run(c.id, bizId, c.name, c.nameEn ?? null, c.type, c.country,
             c.email ?? null, c.phone ?? null, c.website ?? null, c.wechat ?? null,
             c.memo ?? null, c.ceo ?? null, c.businessNo ?? null, c.address ?? null,
@@ -73,7 +70,9 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const id = body.preId || newId();
     const ts = now();
-    const bizId = body.businessId || await nextBizId(db, 'CUS');
+    const prefixMap: Record<string, string> = { '고객사':'CUS','공급업체':'SUP','포워더':'FWD','관세사':'BRK','기타':'ETC' };
+    const typePrefix = prefixMap[body.type] ?? 'ETC';
+    const bizId = body.businessId || nextBizId(typePrefix, false);
 
     db.prepare(`INSERT OR IGNORE INTO companies
       (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,
@@ -99,8 +98,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function nextBizId(db: ReturnType<typeof import('@/lib/db/sqlite').getDb>, prefix: string): Promise<string> {
-  const row = db.prepare(`SELECT business_id FROM companies WHERE business_id LIKE '${prefix}-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-  const last = row ? parseInt(row.business_id.split('-')[1] || '0') : 0;
-  return `${prefix}-${String(last + 1).padStart(4, '0')}`;
-}

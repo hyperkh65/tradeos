@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { fetchNotionShipments, createNotionShipment } from '@/lib/notion/mapper';
 import type { Shipment } from '@/types';
 
@@ -89,10 +89,7 @@ export async function POST(req: NextRequest) {
     const id = newId();
     const ts = now();
 
-    const lastRow = db.prepare(`SELECT business_id FROM shipments WHERE business_id LIKE 'SHP-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
-    const year = new Date().getFullYear();
-    body.businessId = body.businessId || `SHP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    body.businessId = body.businessId || nextBizId('SHP');
     body.id = id;
 
     const shipment = { ...body, id, createdAt: ts, updatedAt: ts };
