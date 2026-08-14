@@ -155,6 +155,7 @@ function ShipmentModal({
   const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
   const [docUploading, setDocUploading] = useState(false);
   const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 저장 전 대기 파일
   const [savedId, setSavedId] = useState<string | null>(item?.id || null);
   const fileRef = useRef<HTMLInputElement>(null);
   const blPdfRef = useRef<HTMLInputElement>(null);
@@ -324,6 +325,11 @@ function ShipmentModal({
         shpId = d.data?.id || null;
       }
       setSavedId(shpId);
+      // 대기 중인 파일이 있으면 저장 직후 업로드
+      if (shpId && pendingFiles.length > 0) {
+        await uploadDocuments(pendingFiles, shpId);
+        setPendingFiles([]);
+      }
       onSave();
     } finally { setSaving(false); }
   };
@@ -337,8 +343,8 @@ function ShipmentModal({
     co: 'bg-teal-100 text-teal-700', other: 'bg-gray-100 text-gray-600',
   };
 
-  const uploadDocuments = async (files: FileList) => {
-    const shpId = savedId || item?.id;
+  const uploadDocuments = async (files: FileList | File[], shpIdOverride?: string) => {
+    const shpId = shpIdOverride || savedId || item?.id;
     if (!shpId) {
       setDocMsg({ text: '선적을 먼저 저장한 후 서류를 업로드하세요', ok: false });
       return;
@@ -812,7 +818,17 @@ function ShipmentModal({
                   accept=".pdf,.xlsx,.xls,.doc,.docx"
                   className="hidden"
                   disabled={docUploading}
-                  onChange={e => { if (e.target.files?.length) uploadDocuments(e.target.files); e.target.value = ''; }}
+                  onChange={e => {
+                    if (!e.target.files?.length) return;
+                    const shpId = savedId || item?.id;
+                    if (shpId) {
+                      uploadDocuments(e.target.files);
+                    } else {
+                      setPendingFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                      setDocMsg({ text: `${e.target.files.length}개 파일 선택됨 — 저장 시 자동 업로드됩니다`, ok: true });
+                    }
+                    e.target.value = '';
+                  }}
                 />
                 {docUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                 서류 업로드 (여러 파일 가능)
@@ -826,9 +842,21 @@ function ShipmentModal({
               </div>
             )}
 
-            {!savedId && !item?.id && (
-              <div className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-                서류는 선적 저장 후 업로드 가능합니다. 저장 먼저 진행 후 수정에서 업로드하세요.
+            {pendingFiles.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs text-blue-600 font-medium px-1">저장 시 함께 업로드 ({pendingFiles.length}개)</div>
+                {pendingFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                    {f.name.endsWith('.pdf')
+                      ? <FileText className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                      : <File className="w-3.5 h-3.5 text-green-500 shrink-0" />}
+                    <span className="flex-1 truncate">{f.name}</span>
+                    <span className="text-muted-foreground shrink-0">{(f.size / 1024).toFixed(0)}KB</span>
+                    <button type="button" onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
