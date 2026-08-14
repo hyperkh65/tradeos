@@ -96,15 +96,18 @@ function ShipmentModal({
     }).catch(() => {});
   }, []);
 
-  // 공급사 선택 시 해당 PO 목록 로드 (전체 데이터)
-  const loadPOsForSupplier = async (supplierName: string) => {
-    if (!supplierName || posBySupplier[supplierName]) return;
+  // 공급사 선택 시 해당 PO 목록 로드 — 로드된 목록 반환
+  const loadPOsForSupplier = async (supplierName: string): Promise<PurchaseOrder[]> => {
+    if (!supplierName) return [];
+    if (posBySupplier[supplierName]?.length) return posBySupplier[supplierName];
     try {
       const d = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}`).then(r => r.json());
-      if (Array.isArray(d.data)) {
+      if (Array.isArray(d.data) && d.data.length > 0) {
         setPosBySupplier(prev => ({ ...prev, [supplierName]: d.data as PurchaseOrder[] }));
+        return d.data as PurchaseOrder[];
       }
     } catch { /* ignore */ }
+    return [];
   };
 
   // PO 번호 입력 시 해당 PO 미리보기
@@ -252,6 +255,28 @@ function ShipmentModal({
         const sheetInfo = d.parsedSheet ? ` [${d.parsedSheet.name}]` : '';
         const extra = d.containerNo ? ` · 컨테이너 ${d.containerNo}` : '';
         setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)${extra}${sheetInfo}`, ok: true });
+
+        // 파싱된 공급사별로 PO 자동 로드 및 매칭 미리보기
+        const uniqueSuppliers = [...new Set<string>(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (d.items as any[]).map(i => i.supplierName).filter((s: unknown) => typeof s === 'string' && s)
+        )];
+        (async () => {
+          for (const supplier of uniqueSuppliers) {
+            const pos = await loadPOsForSupplier(supplier);
+            if (pos.length > 0) {
+              // 파싱된 PO 번호와 일치하는 발주서 자동 미리보기
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const matchedItem = (d.items as any[]).find(item =>
+                item.supplierName === supplier && pos.some((p: PurchaseOrder) => p.businessId === item.poBusinessId)
+              );
+              if (matchedItem) {
+                const matchedPO = pos.find((p: PurchaseOrder) => p.businessId === matchedItem.poBusinessId);
+                if (matchedPO) setPoPreview(matchedPO);
+              }
+            }
+          }
+        })();
       } else {
         setPlMsg({ text: '자동 추출 실패 — 직접 입력해주세요', ok: false });
       }

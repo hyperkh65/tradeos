@@ -76,7 +76,11 @@ export async function GET(req: NextRequest) {
   if (supplierId) {
     rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_id = ? ORDER BY created_at DESC').all(supplierId) as Record<string, unknown>[];
   } else if (supplierName) {
+    // 정확 일치 먼저, 없으면 부분 일치
     rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_name = ? ORDER BY created_at DESC').all(supplierName) as Record<string, unknown>[];
+    if (rows.length === 0) {
+      rows = db.prepare("SELECT * FROM purchase_orders WHERE supplier_name LIKE ? ORDER BY created_at DESC").all(`%${supplierName}%`) as Record<string, unknown>[];
+    }
   } else {
     rows = db.prepare('SELECT * FROM purchase_orders ORDER BY created_at DESC').all() as Record<string, unknown>[];
   }
