@@ -67,6 +67,9 @@ export async function GET() {
     if (notionShipments.length > 0) {
       db.transaction(() => {
         for (const s of notionShipments) {
+          // Skip if local version already exists (by id OR business_id)
+          const existing = db.prepare('SELECT id FROM shipments WHERE id=? OR business_id=?').get(s.id, (s as any).businessId);
+          if (existing) continue;
           syncShipmentToDb(db, { ...s, cargoItems: (s as any).cargoItems || [] }, s.id, ts, s.createdAt);
         }
       })();

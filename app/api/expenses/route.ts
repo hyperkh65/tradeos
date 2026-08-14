@@ -24,9 +24,13 @@ function dbToExpense(row: Record<string, unknown>): Expense {
   };
 }
 
-function syncExpenseToDb(db: ReturnType<typeof getDb>, e: Expense, ts: string) {
+function syncExpenseToDb(db: ReturnType<typeof getDb>, e: Expense, ts: string, fromNotion = false) {
+  if (fromNotion) {
+    const existing = db.prepare('SELECT id FROM expenses WHERE id=? OR business_id=?').get(e.id, e.businessId);
+    if (existing) return;
+  }
   const amountKrw = e.currency === 'KRW' ? e.amount : (e.amount * (e.exchangeRate || 1380));
-  db.prepare(`INSERT OR REPLACE INTO expenses
+  db.prepare(`INSERT OR IGNORE INTO expenses
     (id,business_id,category,description,amount,currency,exchange_rate,amount_krw,related_type,related_id,related_name,paid_date,invoice_no,status,created_by,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(e.id, e.businessId, e.category, e.description, e.amount, e.currency,
@@ -43,7 +47,7 @@ export async function GET() {
     const notionExpenses = await fetchNotionExpenses();
     if (notionExpenses.length > 0) {
       db.transaction(() => {
-        for (const e of notionExpenses) syncExpenseToDb(db, e, ts);
+        for (const e of notionExpenses) syncExpenseToDb(db, e, ts, true);
       })();
       return NextResponse.json({ data: notionExpenses });
     }
