@@ -13,7 +13,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     db.prepare(`UPDATE imports SET
       shipment_business_id=?, broker_name=?, declaration_no=?,
       arrival_date=?, declaration_date=?, tax_payment_date=?, release_date=?,
-      invoice_value=?, invoice_currency=?, exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?,
+      invoice_value=?, invoice_currency=?, exchange_rate=?,
+      freight_usd=?, freight_exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?, inspection_fee=?,
       hs_code=?, duty_rate=?, duty=?, vat=?, broker_fee=?, items_json=?,
       fta_applicable=?, fta_type=?, co_status=?, co_no=?,
       inspection_type=?, remark=?, status=?, updated_at=?
@@ -29,9 +30,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.invoiceValue ?? row.invoice_value,
         body.invoiceCurrency ?? row.invoice_currency,
         body.exchangeRate ?? row.exchange_rate,
+        body.freightUsd ?? row.freight_usd,
+        body.freightExchangeRate ?? row.freight_exchange_rate,
         body.freightKrw ?? row.freight_krw,
         body.insuranceKrw ?? row.insurance_krw,
         body.customsValue ?? row.customs_value,
+        body.inspectionFee ?? row.inspection_fee,
         body.hsCode ?? row.hs_code,
         body.dutyRate ?? row.duty_rate,
         body.duty ?? row.duty,

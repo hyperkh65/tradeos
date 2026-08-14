@@ -515,6 +515,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN items_json TEXT DEFAULT '[]'`,
     `ALTER TABLE imports ADD COLUMN documents_json TEXT DEFAULT '[]'`,
     `ALTER TABLE imports ADD COLUMN remark TEXT`,
+    `ALTER TABLE imports ADD COLUMN freight_usd REAL`,
+    `ALTER TABLE imports ADD COLUMN freight_exchange_rate REAL`,
+    `ALTER TABLE imports ADD COLUMN inspection_fee REAL`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

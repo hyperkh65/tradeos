@@ -17,9 +17,12 @@ export function dbToImport(row: Record<string, unknown>): Import {
     invoiceValue: (row.invoice_value as number) || undefined,
     invoiceCurrency: (row.invoice_currency as string) || 'USD',
     exchangeRate: (row.exchange_rate as number) || undefined,
+    freightUsd: (row.freight_usd as number) || undefined,
+    freightExchangeRate: (row.freight_exchange_rate as number) || undefined,
     freightKrw: (row.freight_krw as number) || undefined,
     insuranceKrw: (row.insurance_krw as number) || undefined,
     customsValue: (row.customs_value as number) || undefined,
+    inspectionFee: (row.inspection_fee as number) || undefined,
     hsCode: (row.hs_code as string) || undefined,
     dutyRate: (row.duty_rate as number) || undefined,
     duty: (row.duty as number) || undefined,
@@ -62,11 +65,11 @@ export async function POST(req: NextRequest) {
     db.prepare(`INSERT INTO imports
       (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
        arrival_date,declaration_date,tax_payment_date,release_date,
-       invoice_value,invoice_currency,exchange_rate,freight_krw,insurance_krw,customs_value,
+       invoice_value,invoice_currency,exchange_rate,freight_usd,freight_exchange_rate,freight_krw,insurance_krw,customs_value,inspection_fee,
        hs_code,duty_rate,duty,vat,broker_fee,items_json,
        fta_applicable,fta_type,co_status,co_no,inspection_type,
        documents_json,remark,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.shipmentId || '',
@@ -80,9 +83,12 @@ export async function POST(req: NextRequest) {
         body.invoiceValue ?? null,
         body.invoiceCurrency || 'USD',
         body.exchangeRate ?? null,
+        body.freightUsd ?? null,
+        body.freightExchangeRate ?? null,
         body.freightKrw ?? null,
         body.insuranceKrw ?? null,
         body.customsValue ?? null,
+        body.inspectionFee ?? null,
         body.hsCode ?? null,
         body.dutyRate ?? null,
         body.duty ?? null,

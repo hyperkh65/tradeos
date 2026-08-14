@@ -313,9 +313,12 @@ export interface Import {
   invoiceValue?: number;
   invoiceCurrency?: string;
   exchangeRate?: number;
+  freightUsd?: number;
+  freightExchangeRate?: number;
   freightKrw?: number;
   insuranceKrw?: number;
   customsValue?: number;
+  inspectionFee?: number;
   hsCode?: string;
   dutyRate?: number;
   duty?: number;
