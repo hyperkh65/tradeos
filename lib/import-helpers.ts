@@ -7,8 +7,9 @@ interface ImportExpenseFields {
   vat?: number;
   brokerFee?: number;
   inspectionFee?: number;
-  warehouseFee?: number;
-  detentionFee?: number;
+  warehouseFee?: number;   // Terminal Storage
+  detentionFee?: number;   // DET
+  demurrage?: number;      // DEM
   inlandFreight?: number;
   customCosts?: { name: string; amount: number }[];
   createdBy?: string;
@@ -23,13 +24,14 @@ export function syncImportExpenses(
   db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
 
   const entries: { cat: string; amt: number | undefined }[] = [
-    { cat: '관세',       amt: fields.duty },
-    { cat: '수입부가세', amt: fields.vat },
-    { cat: '통관비',     amt: fields.brokerFee },
-    { cat: '세관검사비', amt: fields.inspectionFee },
-    { cat: '창고비',     amt: fields.warehouseFee },
-    { cat: '억류비',     amt: fields.detentionFee },
-    { cat: '내륙운송비', amt: fields.inlandFreight },
+    { cat: '관세',                    amt: fields.duty },
+    { cat: '수입부가세',              amt: fields.vat },
+    { cat: '통관비',                  amt: fields.brokerFee },
+    { cat: '세관검사비',              amt: fields.inspectionFee },
+    { cat: 'Terminal Storage(장치료)', amt: fields.warehouseFee },
+    { cat: 'Demurrage/DEM(체화료)',   amt: fields.demurrage },
+    { cat: 'Detention/DET(지체료)',   amt: fields.detentionFee },
+    { cat: '내륙운송비',              amt: fields.inlandFreight },
     ...(fields.customCosts || []).filter(c => c.name && c.amount > 0).map(c => ({ cat: c.name, amt: c.amount })),
   ];
 

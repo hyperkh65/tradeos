@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '@/lib/sidebar-context';
 
-export function AppHeader({ title, icon }: { title?: string; icon?: React.ReactNode }) {
+export function AppHeader({ title, icon, actions }: { title?: string; icon?: React.ReactNode; actions?: React.ReactNode }) {
   const router = useRouter();
   const { toggle } = useSidebar();
 
@@ -33,6 +33,7 @@ export function AppHeader({ title, icon }: { title?: string; icon?: React.ReactN
       {title && <h1 className="text-sm font-semibold text-foreground truncate">{title}</h1>}
 
       <div className="ml-auto flex items-center gap-1">
+        {actions && <div className="flex items-center gap-1 mr-1">{actions}</div>}
         <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             <Plus className="w-3.5 h-3.5" />

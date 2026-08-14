@@ -13,15 +13,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
 
+    // 마감된 건은 관리자만 수정 가능
+    if (row.settlement_status === 'closed' && user?.role !== 'admin') {
+      return NextResponse.json({ error: '마감된 통관건은 관리자만 수정할 수 있습니다.' }, { status: 403 });
+    }
+
     db.prepare(`UPDATE imports SET
       shipment_business_id=?, broker_name=?, declaration_no=?,
       arrival_date=?, declaration_date=?, tax_payment_date=?, release_date=?,
       invoice_value=?, invoice_currency=?, exchange_rate=?,
       freight_usd=?, freight_exchange_rate=?, freight_krw=?, insurance_krw=?, customs_value=?,
-      inspection_fee=?, warehouse_fee=?, detention_fee=?, inland_freight=?, inland_freight_region=?, custom_costs_json=?,
+      inspection_fee=?, inspection_refund=?, warehouse_fee=?, detention_fee=?, demurrage=?,
+      inland_freight=?, inland_freight_region=?, inland_carrier_id=?, inland_carrier_name=?, custom_costs_json=?,
       hs_code=?, duty_rate=?, duty=?, vat=?, broker_fee=?, items_json=?,
       fta_applicable=?, fta_type=?, co_status=?, co_no=?,
-      inspection_type=?, refund_amount=?, refund_status=?, remark=?, status=?, updated_at=?
+      inspection_type=?, refund_amount=?, refund_status=?, bl_no=?,
+      settlement_json=?, remark=?, status=?, updated_at=?
       WHERE id=?`)
       .run(
         body.shipmentBusinessId ?? row.shipment_business_id,
@@ -40,10 +47,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.insuranceKrw ?? row.insurance_krw,
         body.customsValue ?? row.customs_value,
         body.inspectionFee ?? row.inspection_fee,
+        body.inspectionRefund !== undefined ? body.inspectionRefund : row.inspection_refund,
         body.warehouseFee ?? row.warehouse_fee,
         body.detentionFee ?? row.detention_fee,
+        body.demurrage ?? row.demurrage,
         body.inlandFreight ?? row.inland_freight,
         body.inlandFreightRegion ?? row.inland_freight_region,
+        body.inlandCarrierId ?? row.inland_carrier_id,
+        body.inlandCarrierName ?? row.inland_carrier_name,
         body.customCosts !== undefined ? JSON.stringify(body.customCosts) : (row.custom_costs_json ?? '[]'),
         body.hsCode ?? row.hs_code,
         body.dutyRate ?? row.duty_rate,
@@ -58,6 +69,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.inspectionType ?? row.inspection_type,
         body.refundAmount ?? row.refund_amount,
         body.refundStatus ?? row.refund_status,
+        body.blNo ?? row.bl_no,
+        body.settlementItems !== undefined ? JSON.stringify(body.settlementItems) : (row.settlement_json ?? '[]'),
         body.remark ?? row.remark,
         body.status ?? row.status,
         now(), id,
@@ -76,6 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       inspectionFee: (body.inspectionFee ?? updated.inspection_fee) as number | undefined,
       warehouseFee: (body.warehouseFee ?? updated.warehouse_fee) as number | undefined,
       detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
+      demurrage: (body.demurrage ?? updated.demurrage) as number | undefined,
       inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
       customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
       createdBy: user?.id || 'unknown',

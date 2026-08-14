@@ -291,6 +291,20 @@ export interface ImportCustomCost {
   amount: number;
 }
 
+export interface SettlementItem {
+  category: string;
+  calculated: number;
+  adjusted?: number;
+  reason?: string;
+}
+
+export interface SettlementHistoryEntry {
+  at: string;
+  by: string;
+  action: string;
+  note?: string;
+}
+
 export interface ImportDocument {
   id: string;
   filename: string;
@@ -324,10 +338,14 @@ export interface Import {
   insuranceKrw?: number;
   customsValue?: number;
   inspectionFee?: number;
-  warehouseFee?: number;
-  detentionFee?: number;
+  inspectionRefund?: number;
+  warehouseFee?: number;   // Terminal Storage (터미널 장치료)
+  detentionFee?: number;   // Detention/DET (지체료)
+  demurrage?: number;      // Demurrage/DEM (체화료)
   inlandFreight?: number;
   inlandFreightRegion?: string;
+  inlandCarrierId?: string;
+  inlandCarrierName?: string;
   customCosts?: ImportCustomCost[];
   hsCode?: string;
   dutyRate?: number;
@@ -342,9 +360,17 @@ export interface Import {
   coNo?: string;
   // 세관검사
   inspectionType?: 'none' | 'document' | 'physical';
+  // B/L
+  blNo?: string;
   // 환급
   refundAmount?: number;
   refundStatus?: '없음' | '신청' | '완료';
+  // 정산서
+  settlementStatus?: 'open' | 'closed';
+  settlementItems?: SettlementItem[];
+  settlementHistory?: SettlementHistoryEntry[];
+  closedAt?: string;
+  closedBy?: string;
   // 서류
   documents?: ImportDocument[];
   remark?: string;

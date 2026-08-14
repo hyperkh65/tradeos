@@ -531,6 +531,16 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN detention_fee REAL`,
     `ALTER TABLE imports ADD COLUMN inland_freight_region TEXT`,
     `ALTER TABLE imports ADD COLUMN custom_costs_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN demurrage REAL`,
+    `ALTER TABLE imports ADD COLUMN inland_carrier_id TEXT`,
+    `ALTER TABLE imports ADD COLUMN inland_carrier_name TEXT`,
+    `ALTER TABLE imports ADD COLUMN inspection_refund REAL`,
+    `ALTER TABLE imports ADD COLUMN bl_no TEXT`,
+    `ALTER TABLE imports ADD COLUMN settlement_status TEXT DEFAULT 'open'`,
+    `ALTER TABLE imports ADD COLUMN settlement_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN settlement_history_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN closed_at TEXT`,
+    `ALTER TABLE imports ADD COLUMN closed_by TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
