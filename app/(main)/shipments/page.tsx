@@ -91,7 +91,21 @@ function ShipmentModal({
     fetch('/api/companies?type=포워더').then(r => r.json()).then(d => {
       if (Array.isArray(d.data)) setForwarders(d.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
     }).catch(() => {});
+    fetch('/api/companies?type=공급업체').then(r => r.json()).then(d => {
+      if (Array.isArray(d.data)) setSuppliers(d.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+    }).catch(() => {});
   }, []);
+
+  // 공급사 선택 시 해당 PO 목록 로드
+  const loadPOsForSupplier = async (supplierName: string) => {
+    if (!supplierName || posBySupplier[supplierName]) return;
+    try {
+      const d = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}&slim=1`).then(r => r.json());
+      if (Array.isArray(d.data)) {
+        setPosBySupplier(prev => ({ ...prev, [supplierName]: d.data.map((p: { id: string; businessId: string }) => ({ id: p.id, businessId: p.businessId })) }));
+      }
+    } catch { /* ignore */ }
+  };
 
   const [form, setForm] = useState<ShipForm>({
     type: item?.type || 'LCL',
@@ -120,6 +134,12 @@ function ShipmentModal({
   const [blPdfMsg, setBlPdfMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [plUploading, setPlUploading] = useState(false);
   const [plMsg, setPlMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  // 시트 선택
+  const [plSheets, setPlSheets] = useState<{ index: number; name: string }[]>([]);
+  const [plPendingFile, setPlPendingFile] = useState<File | null>(null);
+  // 공급업체 + PO 데이터
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [posBySupplier, setPosBySupplier] = useState<Record<string, { id: string; businessId: string }[]>>({});
   const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
   const [docUploading, setDocUploading] = useState(false);
   const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -193,15 +213,26 @@ function ShipmentModal({
     }
   };
 
-  const uploadPackingList = async (file: File) => {
+  const uploadPackingList = async (file: File, sheetIndex?: number) => {
     setPlUploading(true);
     setPlMsg(null);
     try {
       const fd = new FormData();
       fd.append('file', file);
+      if (sheetIndex !== undefined) fd.append('sheetIndex', String(sheetIndex));
       const res = await fetch('/api/shipments/parse-packing-list', { method: 'POST', body: fd });
       if (!res.ok) throw new Error(await res.text());
       const d = await res.json();
+
+      // 시트 목록 저장 (시트 선택 UI용)
+      if (d.sheets?.length > 1) {
+        setPlSheets(d.sheets);
+        setPlPendingFile(file);
+      } else {
+        setPlSheets([]);
+        setPlPendingFile(null);
+      }
+
       if (d.items?.length > 0) {
         setForm(f => ({
           ...f,
@@ -210,8 +241,9 @@ function ShipmentModal({
           cbm: d.totalCbm ? String(d.totalCbm) : f.cbm,
           containerNo: d.containerNo || f.containerNo,
         }));
+        const sheetInfo = d.parsedSheet ? ` [${d.parsedSheet.name}]` : '';
         const extra = d.containerNo ? ` · 컨테이너 ${d.containerNo}` : '';
-        setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)${extra}`, ok: true });
+        setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)${extra}${sheetInfo}`, ok: true });
       } else {
         setPlMsg({ text: '자동 추출 실패 — 직접 입력해주세요', ok: false });
       }
@@ -530,6 +562,23 @@ function ShipmentModal({
               </div>
             )}
 
+            {/* 시트 선택 UI */}
+            {plSheets.length > 1 && plPendingFile && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                <span className="text-blue-700 font-medium shrink-0">시트 선택:</span>
+                {plSheets.map(s => (
+                  <button
+                    key={s.index}
+                    type="button"
+                    onClick={() => uploadPackingList(plPendingFile, s.index)}
+                    className="px-2 py-0.5 rounded border border-blue-300 bg-white text-blue-700 hover:bg-blue-100 font-medium"
+                  >
+                    {s.index + 1}. {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
@@ -557,19 +606,33 @@ function ShipmentModal({
                       </td>
                       <td className="px-1 py-1">
                         <input
+                          list={`supplier-list-${idx}`}
                           className="w-full px-2 py-1 border border-input rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="공급사"
+                          placeholder="공급사 검색..."
                           value={ci.supplierName || ''}
-                          onChange={e => updateCargoItem(idx, { supplierName: e.target.value })}
+                          onChange={e => {
+                            updateCargoItem(idx, { supplierName: e.target.value });
+                            loadPOsForSupplier(e.target.value);
+                          }}
+                          onBlur={e => loadPOsForSupplier(e.target.value)}
                         />
+                        <datalist id={`supplier-list-${idx}`}>
+                          {suppliers.map(s => <option key={s.id} value={s.name} />)}
+                        </datalist>
                       </td>
                       <td className="px-1 py-1">
                         <input
+                          list={`po-list-${idx}`}
                           className="w-full px-2 py-1 border border-input rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="PO-2026-0001"
+                          placeholder="PO 번호 선택..."
                           value={ci.poBusinessId || ''}
                           onChange={e => updateCargoItem(idx, { poBusinessId: e.target.value })}
                         />
+                        <datalist id={`po-list-${idx}`}>
+                          {(posBySupplier[ci.supplierName || ''] || []).map(p => (
+                            <option key={p.id} value={p.businessId} />
+                          ))}
+                        </datalist>
                       </td>
                       <td className="px-1 py-1">
                         <input

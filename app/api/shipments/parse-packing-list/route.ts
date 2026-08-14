@@ -75,6 +75,10 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null;
     if (!file) return NextResponse.json({ error: '파일 없음' }, { status: 400 });
 
+    const sheetIndexParam = formData.get('sheetIndex');
+    const sheetIndex = sheetIndexParam !== null ? parseInt(String(sheetIndexParam), 10) : -1; // -1 = 자동선택
+    const listSheetsOnly = formData.get('listSheets') === '1';
+
     const ab = await file.arrayBuffer();
     const buf = Buffer.from(ab) as unknown as Buffer;
 
@@ -83,7 +87,31 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await wb.xlsx.load(buf as any);
 
-    const ws = wb.worksheets[0];
+    // 시트 목록만 반환
+    const sheetNames = wb.worksheets.map((s, i) => ({ index: i, name: s.name }));
+    if (listSheetsOnly || wb.worksheets.length === 0) {
+      return NextResponse.json({ sheets: sheetNames });
+    }
+
+    // 시트 자동 선택: sheetIndex 지정 or 점수 가장 높은 시트 자동 감지
+    let ws = wb.worksheets[0];
+    if (sheetIndex >= 0 && wb.worksheets[sheetIndex]) {
+      ws = wb.worksheets[sheetIndex];
+    } else if (wb.worksheets.length > 1) {
+      // 각 시트의 키워드 매칭 점수로 패킹리스트 시트 자동 감지
+      let bestSheetScore = 0;
+      for (const sheet of wb.worksheets) {
+        let score = 0;
+        sheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+          if (rowNum > 30) return; // 앞 30행만 확인
+          row.eachCell({ includeEmpty: false }, (cell) => {
+            if (matchCol(getCellStr(cell.value))) score++;
+          });
+        });
+        if (score > bestSheetScore) { bestSheetScore = score; ws = sheet; }
+      }
+    }
+
     if (!ws) return NextResponse.json({ error: '시트 없음' }, { status: 400 });
 
     // ── 헤더 행 탐색 (점수 기반: 키워드 가장 많이 일치한 행) ─────────────────
@@ -194,6 +222,8 @@ export async function POST(req: NextRequest) {
       headerRow:        headerRowNum,
       detectedColumns:  colMap,
       containerNo:      containerNo || undefined,
+      sheets:           sheetNames,
+      parsedSheet:      { index: wb.worksheets.indexOf(ws), name: ws.name },
     });
   } catch (e) {
     console.error('[parse-packing-list]', e);

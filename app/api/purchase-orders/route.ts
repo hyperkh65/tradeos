@@ -49,9 +49,13 @@ function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?:
     );
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getDb();
   const ts = now();
+  const url = new URL(req.url);
+  const supplierName = url.searchParams.get('supplierName');
+  const supplierId = url.searchParams.get('supplierId');
+  const slim = url.searchParams.get('slim') === '1'; // ID + businessId + supplierName만 반환
 
   try {
     // Sync Notion (ERP) → SQLite (INSERT OR IGNORE keeps local edits)
@@ -68,7 +72,18 @@ export async function GET() {
   }
 
   // Always return SQLite data (preserves local edits for ETD/status/etc)
-  const rows = db.prepare('SELECT * FROM purchase_orders ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  let rows: Record<string, unknown>[];
+  if (supplierId) {
+    rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_id = ? ORDER BY created_at DESC').all(supplierId) as Record<string, unknown>[];
+  } else if (supplierName) {
+    rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_name = ? ORDER BY created_at DESC').all(supplierName) as Record<string, unknown>[];
+  } else {
+    rows = db.prepare('SELECT * FROM purchase_orders ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  }
+
+  if (slim) {
+    return NextResponse.json({ data: rows.map(r => ({ id: r.id, businessId: r.business_id, supplierName: r.supplier_name })) });
+  }
   return NextResponse.json({ data: rows.map(dbToPO) });
 }
 
