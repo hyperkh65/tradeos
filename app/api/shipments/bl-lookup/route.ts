@@ -75,7 +75,7 @@ async function unipassFetch(endpoint: string, params: Record<string, string>, ap
 
 // ── 1) 화물통관진행정보조회 (B/L 기준) ─────────────────────────────────────
 async function queryCargoProgress(blNo: string, apiKey: string) {
-  const text = await unipassFetch('cargoCsclPrgsInfoQry/retrieveCargoCsclPrgsInfo', {
+  const text = await unipassFetch('cargCsclPrgsInfoQry/retrieveCargCsclPrgsInfo', {
     blNo, cargTp: 'B', pageIndex: '1', perPage: '20',
   }, apiKey);
 
