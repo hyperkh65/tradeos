@@ -13,7 +13,8 @@ interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
   address: string; tel: string; fax: string; email: string;
   bank: string; bankForeign1: string; bankForeign2: string;
-  logoUrl: string; stampUrl: string; ship24ApiKey: string; unipassApiKey: string;
+  logoUrl: string; stampUrl: string; ship24ApiKey: string;
+  unipassApiKey: string; unipassApiKey2: string; unipassApiKey3: string;
 }
 
 export default function SettingsPage() {
@@ -25,7 +26,8 @@ export default function SettingsPage() {
     name: '', ceo: '', bizNo: '', bizType: '', bizItem: '',
     address: '', tel: '', fax: '', email: '',
     bank: '', bankForeign1: '', bankForeign2: '',
-    logoUrl: '', stampUrl: '', ship24ApiKey: '', unipassApiKey: '',
+    logoUrl: '', stampUrl: '', ship24ApiKey: '',
+    unipassApiKey: '', unipassApiKey2: '', unipassApiKey3: '',
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -278,18 +280,37 @@ export default function SettingsPage() {
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">한국 수입 화물 전체 조회</span>
                   </div>
                   <p className="text-xs text-green-700">
-                    선사 무관, 한국으로 들어오는 모든 화물을 B/L 번호로 조회. 선박명·항차·ETA·통관현황 자동완성.{' '}
-                    <a href="https://unipass.customs.go.kr" target="_blank" rel="noopener noreferrer" className="underline font-medium">unipass.customs.go.kr</a>{' '}
-                    회원가입 → 마이페이지 → API 사용 신청 (즉시 발급).
+                    unipass.customs.go.kr → 회원가입 → 마이페이지 → OpenAPI 신청.<br />
+                    <span className="font-medium">서비스별로 키가 다릅니다</span> — 각각 별도 신청 후 발급된 키를 입력하세요.
                   </p>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">관세청 유니패스 API Key (crkyCn)</label>
-                    <Input
-                      type="password"
-                      value={company.unipassApiKey}
-                      onChange={e => setCompany(c => ({ ...c, unipassApiKey: e.target.value }))}
-                      placeholder="발급받은 인증키 입력"
-                    />
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">① 화물통관진행정보조회 API Key</label>
+                      <Input
+                        type="password"
+                        value={company.unipassApiKey}
+                        onChange={e => setCompany(c => ({ ...c, unipassApiKey: e.target.value }))}
+                        placeholder="cargoCsclPrgsInfoQry 서비스 인증키"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">② 컨테이너내역조회 API Key</label>
+                      <Input
+                        type="password"
+                        value={company.unipassApiKey2}
+                        onChange={e => setCompany(c => ({ ...c, unipassApiKey2: e.target.value }))}
+                        placeholder="cntrInfoQry 서비스 인증키 (미입력 시 ①키 사용)"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">③ 입항보고내역조회 API Key</label>
+                      <Input
+                        type="password"
+                        value={company.unipassApiKey3}
+                        onChange={e => setCompany(c => ({ ...c, unipassApiKey3: e.target.value }))}
+                        placeholder="arrivRptInfoQry 서비스 인증키 (미입력 시 ①키 사용)"
+                      />
+                    </div>
                   </div>
                 </div>
 

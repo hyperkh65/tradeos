@@ -222,23 +222,25 @@ export async function GET(req: NextRequest) {
   };
 
   const settings = getSettings();
-  const unipassKey = process.env.UNIPASS_API_KEY || settings.unipassApiKey || '';
+  const unipassKey1 = process.env.UNIPASS_API_KEY || settings.unipassApiKey || '';
+  const unipassKey2 = settings.unipassApiKey2 || unipassKey1;
+  const unipassKey3 = settings.unipassApiKey3 || unipassKey1;
   const ship24Key = process.env.SHIP24_API_KEY || settings.ship24ApiKey || '';
 
   // ── 1순위: 관세청 유니패스 (무료, 한국 수입 화물 전체) ─────────────────────
-  if (unipassKey) {
+  if (unipassKey1) {
     try {
-      // Step 1: 화물통관진행정보조회 (B/L 기준)
-      const cargo = await queryCargoProgress(bl, unipassKey);
+      // Step 1: 화물통관진행정보조회 (B/L 기준) — 키①
+      const cargo = await queryCargoProgress(bl, unipassKey1);
       if (cargo) {
         Object.assign(result, cargo);
         result.source = 'unipass';
         result.sourceLabel = '관세청 유니패스';
 
-        // Step 2: 컨테이너 + 입항보고 병렬 조회 (결과 보완)
+        // Step 2: 컨테이너(키②) + 입항보고(키③) 병렬 조회
         const [cntrResult, arrResult] = await Promise.allSettled([
-          cargo.containerNo ? queryContainer(cargo.containerNo, unipassKey) : Promise.resolve(null),
-          cargo.vessel && cargo.voyage ? queryArrivalReport(cargo.vessel, cargo.voyage, unipassKey) : Promise.resolve(null),
+          cargo.containerNo ? queryContainer(cargo.containerNo, unipassKey2) : Promise.resolve(null),
+          cargo.vessel && cargo.voyage ? queryArrivalReport(cargo.vessel, cargo.voyage, unipassKey3) : Promise.resolve(null),
         ]);
 
         if (cntrResult.status === 'fulfilled' && cntrResult.value) {
