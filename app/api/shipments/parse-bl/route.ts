@@ -207,13 +207,23 @@ function parseBLText(text: string): Record<string, unknown> {
 // ── Route Handler ─────────────────────────────────────────────────────────────
 
 async function extractPdfText(buf: Buffer): Promise<string> {
-  // serverExternalPackages: ['pdfjs-dist'] 로 인해 번들링 없이 node_modules에서 직접 로드
-  // → worker 파일이 실제 경로에 존재함
+  // serverExternalPackages: ['pdfjs-dist'] 로 인해 node_modules에서 직접 로드
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-  // workerSrc를 빈 문자열로 설정 → fake worker(메인 스레드 실행)로 폴백
-  // 패키지가 externalized 되어 있어 worker import가 정상 경로에서 동작
-  pdfjs.GlobalWorkerOptions.workerSrc = '';
+  // worker 파일 경로를 Node.js 모듈 해결 방식으로 찾기
+  // createRequire + process.cwd() → standalone 빌드의 node_modules까지 탐색
+  const { createRequire } = await import('module');
+  const { join } = await import('path');
+  let workerSrc = '';
+  try {
+    const req = createRequire(join(process.cwd(), '_dummy_'));
+    const workerPath = req.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    workerSrc = `file://${workerPath}`;
+  } catch {
+    // 탐색 실패 시 경로 직접 구성 (standalone 기준)
+    workerSrc = `file://${join(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs')}`;
+  }
+  pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buf),
