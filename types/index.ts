@@ -214,13 +214,14 @@ export interface Inspection {
 
 export type ShipmentType = 'FCL' | 'LCL' | 'AIR' | 'COURIER';
 
-export type ShipDocType = 'invoice' | 'packing_list' | 'bl' | 'combined' | 'other';
+export type ShipDocType = 'invoice' | 'packing_list' | 'bl' | 'combined' | 'co' | 'other';
 
 export interface ShipDocument {
   id: string;
   filename: string;
   originalName: string;
   docType: ShipDocType;
+  customName?: string;
   url: string;
   size?: number;
   uploadedAt: string;

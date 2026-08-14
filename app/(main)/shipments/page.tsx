@@ -69,13 +69,15 @@ function BlLookupBadge({ carrierName, trackingUrl }: { carrierName?: string | nu
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
+const CONTAINER_TYPES = ['20GP','40GP','40HQ','45HQ','20RF','40RF','20OT','40OT','20FR','40FR','LCL'];
+
 interface ShipForm {
   type: string; status: string;
   forwarderName: string;
   pol: string; pod: string;
   etd: string; eta: string;
   vessel: string; voyage: string;
-  blNo: string; containerNo: string;
+  blNo: string; containerNo: string; containerType: string;
   cbm: string; grossWeight: string;
   freightCost: string; freightCurrency: string;
   cargoItems: CargoItem[];
@@ -84,6 +86,13 @@ interface ShipForm {
 function ShipmentModal({
   item, onClose, onSave,
 }: { item?: Shipment | null; onClose: () => void; onSave: () => void }) {
+  const [forwarders, setForwarders] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/companies?type=포워더').then(r => r.json()).then(d => {
+      if (Array.isArray(d.data)) setForwarders(d.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+    }).catch(() => {});
+  }, []);
+
   const [form, setForm] = useState<ShipForm>({
     type: item?.type || 'LCL',
     status: item?.status || 'booked',
@@ -96,6 +105,7 @@ function ShipmentModal({
     voyage: item?.voyage || '',
     blNo: item?.blNo || '',
     containerNo: item?.containerNo || '',
+    containerType: item?.containerType || '',
     cbm: item?.cbm?.toString() || '',
     grossWeight: item?.grossWeight?.toString() || '',
     freightCost: item?.freightCost?.toString() || '',
@@ -230,6 +240,7 @@ function ShipmentModal({
         grossWeight: form.grossWeight ? Number(form.grossWeight) : totalGW || undefined,
         freightCost: form.freightCost ? Number(form.freightCost) : undefined,
         cargoItems: form.cargoItems.filter(i => i.productName.trim()),
+        containerType: form.containerType || undefined,
       };
       let shpId = item?.id || null;
       if (item) {
@@ -245,11 +256,12 @@ function ShipmentModal({
   };
 
   const DOC_TYPE_LABEL: Record<ShipDocType, string> = {
-    invoice: 'Invoice', packing_list: 'Packing List', bl: 'B/L', combined: 'Invoice+PL', other: '기타',
+    invoice: 'Invoice', packing_list: 'Packing List', bl: 'B/L', combined: 'Invoice+PL', co: 'C/O', other: '기타',
   };
   const DOC_TYPE_COLOR: Record<ShipDocType, string> = {
     invoice: 'bg-purple-100 text-purple-700', packing_list: 'bg-green-100 text-green-700',
-    bl: 'bg-blue-100 text-blue-700', combined: 'bg-amber-100 text-amber-700', other: 'bg-gray-100 text-gray-600',
+    bl: 'bg-blue-100 text-blue-700', combined: 'bg-amber-100 text-amber-700',
+    co: 'bg-teal-100 text-teal-700', other: 'bg-gray-100 text-gray-600',
   };
 
   const uploadDocuments = async (files: FileList) => {
@@ -297,6 +309,10 @@ function ShipmentModal({
     setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, docType: newType } : d));
   };
 
+  const changeDocCustomName = (doc: ShipDocument, name: string) => {
+    setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, customName: name } : d));
+  };
+
   const inputCls = 'w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring';
   const labelCls = 'text-xs font-medium text-muted-foreground mb-1 block';
 
@@ -326,7 +342,16 @@ function ShipmentModal({
             </div>
             <div>
               <label className={labelCls}>포워더</label>
-              <Input value={form.forwarderName} onChange={e => setForm(f => ({ ...f, forwarderName: e.target.value }))} placeholder="한진해운포워딩" />
+              <input
+                list="forwarder-list"
+                value={form.forwarderName}
+                onChange={e => setForm(f => ({ ...f, forwarderName: e.target.value }))}
+                placeholder="포워더 검색..."
+                className={inputCls}
+              />
+              <datalist id="forwarder-list">
+                {forwarders.map(fw => <option key={fw.id} value={fw.name} />)}
+              </datalist>
             </div>
           </div>
 
@@ -361,6 +386,11 @@ function ShipmentModal({
               </div>
             )}
 
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>B/L 번호 조회 및 PDF 업로드는 <strong>보조 도구</strong>입니다. 자동 완성된 내용은 반드시 실제 서류와 대조 후 확인하세요. 직접 입력이 우선입니다.</span>
+            </div>
+
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className={labelCls}>B/L No</label>
@@ -371,9 +401,22 @@ function ShipmentModal({
                   onBlur={lookupBL}
                 />
               </div>
-              <div className="flex-1">
+              <div className="flex-[1.2]">
                 <label className={labelCls}>컨테이너 번호</label>
                 <Input value={form.containerNo} onChange={e => setForm(f => ({ ...f, containerNo: e.target.value }))} placeholder="TCKU1234567" />
+              </div>
+              <div className="w-28">
+                <label className={labelCls}>컨테이너 종류</label>
+                <input
+                  list="cntr-type-list"
+                  value={form.containerType}
+                  onChange={e => setForm(f => ({ ...f, containerType: e.target.value }))}
+                  placeholder="40HQ"
+                  className={inputCls}
+                />
+                <datalist id="cntr-type-list">
+                  {CONTAINER_TYPES.map(t => <option key={t} value={t} />)}
+                </datalist>
               </div>
               <div className="flex items-end pb-0.5">
                 <Button type="button" variant="outline" size="sm" onClick={lookupBL} disabled={blLoading || !form.blNo} className="h-9 gap-1.5">
@@ -631,20 +674,29 @@ function ShipmentModal({
                     {doc.originalName.endsWith('.pdf')
                       ? <FileText className="w-4 h-4 text-red-500 shrink-0" />
                       : <File className="w-4 h-4 text-green-600 shrink-0" />}
-                    <span className="text-xs text-gray-700 flex-1 truncate">{doc.originalName}</span>
+                    <span className="text-xs text-gray-500 shrink-0 max-w-[120px] truncate" title={doc.originalName}>{doc.originalName}</span>
                     <select
                       value={doc.docType}
                       onChange={e => changeDocType(doc, e.target.value as ShipDocType)}
-                      className="text-xs border border-input rounded px-1.5 py-0.5 bg-background"
+                      className="text-xs border border-input rounded px-1.5 py-0.5 bg-background shrink-0"
                     >
                       <option value="invoice">Invoice</option>
                       <option value="packing_list">Packing List</option>
                       <option value="bl">B/L</option>
                       <option value="combined">Invoice+PL</option>
+                      <option value="co">C/O (원산지증명)</option>
                       <option value="other">기타</option>
                     </select>
+                    {doc.docType === 'other' && (
+                      <input
+                        className="text-xs border border-input rounded px-1.5 py-0.5 bg-background w-28"
+                        placeholder="서류명 입력"
+                        value={doc.customName || ''}
+                        onChange={e => changeDocCustomName(doc, e.target.value)}
+                      />
+                    )}
                     <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', DOC_TYPE_COLOR[doc.docType])}>
-                      {DOC_TYPE_LABEL[doc.docType]}
+                      {doc.docType === 'other' && doc.customName ? doc.customName : DOC_TYPE_LABEL[doc.docType]}
                     </span>
                     <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
                       <Download className="w-3.5 h-3.5" />

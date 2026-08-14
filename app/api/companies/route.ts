@@ -18,7 +18,7 @@ function dbToCompany(row: Record<string, unknown>) {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getDb();
 
   // Sync from Notion (errors must not block SQLite fallback)
@@ -55,7 +55,10 @@ export async function GET() {
 
   // Always read from SQLite
   try {
-    const rows = db.prepare('SELECT * FROM companies ORDER BY created_at DESC').all() as Record<string, unknown>[];
+    const typeFilter = new URL(req.url).searchParams.get('type');
+    const rows = typeFilter
+      ? db.prepare('SELECT * FROM companies WHERE type = ? ORDER BY name ASC').all(typeFilter) as Record<string, unknown>[]
+      : db.prepare('SELECT * FROM companies ORDER BY created_at DESC').all() as Record<string, unknown>[];
     if (rows.length > 0) return NextResponse.json({ data: rows.map(dbToCompany) });
   } catch (e) {
     console.error('[API companies GET] SQLite read error:', e);
