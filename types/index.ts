@@ -233,7 +233,8 @@ export interface CargoItem {
   supplierId?: string;
   supplierName?: string;
   poId?: string;
-  poBusinessId?: string;
+  poBusinessId?: string;        // 패킹리스트에서 파싱된 원본 PO 번호
+  linkedPoBusinessId?: string;  // 내부 발주 DB와 연결된 PO 번호
   qty?: number;
   grossWeight?: number;
   netWeight?: number;

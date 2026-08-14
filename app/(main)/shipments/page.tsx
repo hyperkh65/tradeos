@@ -110,10 +110,11 @@ function ShipmentModal({
     return [];
   };
 
-  // PO 번호 입력 시 해당 PO 미리보기
-  const handlePoSelect = (supplierName: string, poBusinessId: string) => {
+  // 내부 PO 선택 시 미리보기 + cargoItem 업데이트
+  const handleLinkedPoSelect = (idx: number, supplierName: string, linkedPoBusinessId: string) => {
+    updateCargoItem(idx, { linkedPoBusinessId });
     const pos = posBySupplier[supplierName] || [];
-    const found = pos.find(p => p.businessId === poBusinessId);
+    const found = pos.find(p => p.businessId === linkedPoBusinessId);
     setPoPreview(found || null);
   };
 
@@ -256,25 +257,30 @@ function ShipmentModal({
         const extra = d.containerNo ? ` · 컨테이너 ${d.containerNo}` : '';
         setPlMsg({ text: `${d.items.length}개 품목 추출 완료 (총 ${d.totalGrossWeight}kg, ${d.totalCbm}CBM)${extra}${sheetInfo}`, ok: true });
 
-        // 파싱된 공급사별로 PO 자동 로드 및 매칭 미리보기
+        // 파싱된 공급사별로 PO 자동 로드 + 파싱 PO번호와 일치하면 내부 PO 자동 연결
         const uniqueSuppliers = [...new Set<string>(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (d.items as any[]).map(i => i.supplierName).filter((s: unknown) => typeof s === 'string' && s)
         )];
         (async () => {
+          let firstPreview = true;
           for (const supplier of uniqueSuppliers) {
             const pos = await loadPOsForSupplier(supplier);
-            if (pos.length > 0) {
-              // 파싱된 PO 번호와 일치하는 발주서 자동 미리보기
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const matchedItem = (d.items as any[]).find(item =>
-                item.supplierName === supplier && pos.some((p: PurchaseOrder) => p.businessId === item.poBusinessId)
-              );
-              if (matchedItem) {
-                const matchedPO = pos.find((p: PurchaseOrder) => p.businessId === matchedItem.poBusinessId);
-                if (matchedPO) setPoPreview(matchedPO);
-              }
-            }
+            if (pos.length === 0) continue;
+            setForm(f => {
+              let previewSet = false;
+              const updated = f.cargoItems.map(item => {
+                if (item.supplierName !== supplier || item.linkedPoBusinessId) return item;
+                const matched = pos.find((p: PurchaseOrder) => p.businessId === item.poBusinessId);
+                if (matched) {
+                  if (firstPreview && !previewSet) { setPoPreview(matched); previewSet = true; }
+                  return { ...item, linkedPoBusinessId: matched.businessId };
+                }
+                return item;
+              });
+              if (previewSet) firstPreview = false;
+              return { ...f, cargoItems: updated };
+            });
           }
         })();
       } else {
@@ -616,13 +622,17 @@ function ShipmentModal({
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[25%]">제품명 *</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[18%]">공급사</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[15%]">PO 번호</th>
-                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[8%]">수량</th>
-                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[10%]">중량(kg)</th>
-                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[8%]">CBM</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[12%]">비고</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[22%]">제품명 *</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[14%]">공급사</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[11%]">PO 번호</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[12%]">
+                      <span>내부 PO</span>
+                      <span className="ml-1 text-[10px] text-blue-500 font-normal">DB 연결</span>
+                    </th>
+                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[7%]">수량</th>
+                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[9%]">중량(kg)</th>
+                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[7%]">CBM</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[10%]">비고</th>
                     <th className="px-2 py-2 w-[4%]"></th>
                   </tr>
                 </thead>
@@ -655,19 +665,25 @@ function ShipmentModal({
                       </td>
                       <td className="px-1 py-1">
                         <input
-                          list={`po-list-${idx}`}
                           className="w-full px-2 py-1 border border-input rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="PO 번호 선택..."
+                          placeholder="PO 번호"
                           value={ci.poBusinessId || ''}
-                          onChange={e => {
-                            updateCargoItem(idx, { poBusinessId: e.target.value });
-                            handlePoSelect(ci.supplierName || '', e.target.value);
-                          }}
-                          onBlur={e => handlePoSelect(ci.supplierName || '', e.target.value)}
+                          onChange={e => updateCargoItem(idx, { poBusinessId: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input
+                          list={`po-list-${idx}`}
+                          className={`w-full px-2 py-1 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring ${ci.linkedPoBusinessId ? 'border-blue-400 bg-blue-50' : 'border-input'}`}
+                          placeholder="내부 PO 선택..."
+                          value={ci.linkedPoBusinessId || ''}
+                          onChange={e => handleLinkedPoSelect(idx, ci.supplierName || '', e.target.value)}
+                          onBlur={e => handleLinkedPoSelect(idx, ci.supplierName || '', e.target.value)}
+                          onFocus={() => loadPOsForSupplier(ci.supplierName || '')}
                         />
                         <datalist id={`po-list-${idx}`}>
                           {(posBySupplier[ci.supplierName || ''] || []).map(p => (
-                            <option key={p.id} value={p.businessId} />
+                            <option key={p.id} value={p.businessId}>{p.businessId} — {p.supplierName}</option>
                           ))}
                         </datalist>
                       </td>
@@ -720,7 +736,7 @@ function ShipmentModal({
                 {form.cargoItems.length > 1 && (
                   <tfoot className="bg-muted/30 border-t border-border">
                     <tr>
-                      <td colSpan={4} className="px-2 py-1.5 text-xs text-muted-foreground font-medium text-right">합계</td>
+                      <td colSpan={5} className="px-2 py-1.5 text-xs text-muted-foreground font-medium text-right">합계</td>
                       <td className="px-2 py-1.5 text-xs font-semibold text-right">{totalGW > 0 ? `${totalGW.toLocaleString()}kg` : '-'}</td>
                       <td className="px-2 py-1.5 text-xs font-semibold text-right">{totalCBM > 0 ? totalCBM.toFixed(3) : '-'}</td>
                       <td colSpan={2}></td>
