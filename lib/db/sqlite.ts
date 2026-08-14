@@ -497,6 +497,24 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE shipments ADD COLUMN packing_list_url TEXT`,
     `ALTER TABLE shipments ADD COLUMN documents_json TEXT DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN local_deleted INTEGER NOT NULL DEFAULT 0`,
+    // imports 확장
+    `ALTER TABLE imports ADD COLUMN updated_at TEXT`,
+    `ALTER TABLE imports ADD COLUMN local_deleted INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE imports ADD COLUMN arrival_date TEXT`,
+    `ALTER TABLE imports ADD COLUMN declaration_date TEXT`,
+    `ALTER TABLE imports ADD COLUMN tax_payment_date TEXT`,
+    `ALTER TABLE imports ADD COLUMN invoice_value REAL`,
+    `ALTER TABLE imports ADD COLUMN invoice_currency TEXT DEFAULT 'USD'`,
+    `ALTER TABLE imports ADD COLUMN exchange_rate REAL`,
+    `ALTER TABLE imports ADD COLUMN freight_krw REAL`,
+    `ALTER TABLE imports ADD COLUMN insurance_krw REAL`,
+    `ALTER TABLE imports ADD COLUMN customs_value REAL`,
+    `ALTER TABLE imports ADD COLUMN fta_type TEXT`,
+    `ALTER TABLE imports ADD COLUMN co_no TEXT`,
+    `ALTER TABLE imports ADD COLUMN inspection_type TEXT DEFAULT 'none'`,
+    `ALTER TABLE imports ADD COLUMN items_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN documents_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN remark TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

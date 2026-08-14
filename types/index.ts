@@ -273,24 +273,68 @@ export interface Shipment {
 
 // ─── Imports ──────────────────────────────────────────────────────────────────
 
+export interface ImportItem {
+  id: string;
+  productName: string;
+  hsCode?: string;
+  dutyRate?: number;
+  customsValue?: number;
+  duty?: number;
+  vat?: number;
+  qty?: number;
+}
+
+export type ImportDocType = 'clearance_cert' | 'tax_bill' | 'co' | 'inspection' | 'other';
+
+export interface ImportDocument {
+  id: string;
+  filename: string;
+  originalName: string;
+  docType: ImportDocType;
+  customName?: string;
+  url: string;
+  size?: number;
+  uploadedAt: string;
+}
+
 export interface Import {
   id: string;
-  businessId: string; // IMP-2026-0001
+  businessId: string;
   shipmentId: string;
   shipmentBusinessId: string;
-  brokerId?: string;
   brokerName?: string;
   declarationNo?: string;
+  // 단계별 날짜
+  arrivalDate?: string;
+  declarationDate?: string;
+  taxPaymentDate?: string;
   releaseDate?: string;
+  // 세금 계산
+  invoiceValue?: number;
+  invoiceCurrency?: string;
+  exchangeRate?: number;
+  freightKrw?: number;
+  insuranceKrw?: number;
+  customsValue?: number;
   hsCode?: string;
   dutyRate?: number;
   duty?: number;
   vat?: number;
   brokerFee?: number;
+  items?: ImportItem[];
+  // FTA / C/O
   ftaApplicable: boolean;
+  ftaType?: string;
   coStatus?: '미수령' | '수령' | '불필요';
+  coNo?: string;
+  // 세관검사
+  inspectionType?: 'none' | 'document' | 'physical';
+  // 서류
+  documents?: ImportDocument[];
+  remark?: string;
   status: 'in_progress' | 'declared' | 'released' | 'completed';
   createdAt: string;
+  updatedAt?: string;
 }
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────

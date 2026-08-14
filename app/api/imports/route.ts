@@ -1,56 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
-import { fetchNotionImports } from '@/lib/notion/mapper';
 import type { Import } from '@/types';
 
-function dbToImport(row: Record<string, unknown>): Import {
+export function dbToImport(row: Record<string, unknown>): Import {
   return {
     id: row.id as string,
     businessId: row.business_id as string,
-    shipmentId: row.shipment_id as string,
-    shipmentBusinessId: row.shipment_business_id as string,
+    shipmentId: (row.shipment_id as string) || '',
+    shipmentBusinessId: (row.shipment_business_id as string) || '',
     brokerName: (row.broker_name as string) || undefined,
     declarationNo: (row.declaration_no as string) || undefined,
+    arrivalDate: (row.arrival_date as string) || undefined,
+    declarationDate: (row.declaration_date as string) || undefined,
+    taxPaymentDate: (row.tax_payment_date as string) || undefined,
     releaseDate: (row.release_date as string) || undefined,
+    invoiceValue: (row.invoice_value as number) || undefined,
+    invoiceCurrency: (row.invoice_currency as string) || 'USD',
+    exchangeRate: (row.exchange_rate as number) || undefined,
+    freightKrw: (row.freight_krw as number) || undefined,
+    insuranceKrw: (row.insurance_krw as number) || undefined,
+    customsValue: (row.customs_value as number) || undefined,
     hsCode: (row.hs_code as string) || undefined,
     dutyRate: (row.duty_rate as number) || undefined,
     duty: (row.duty as number) || undefined,
     vat: (row.vat as number) || undefined,
     brokerFee: (row.broker_fee as number) || undefined,
+    items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
     ftaApplicable: Boolean(row.fta_applicable),
+    ftaType: (row.fta_type as string) || undefined,
     coStatus: (row.co_status as Import['coStatus']) || undefined,
+    coNo: (row.co_no as string) || undefined,
+    inspectionType: (row.inspection_type as Import['inspectionType']) || 'none',
+    documents: (() => { try { return JSON.parse((row.documents_json as string) || '[]'); } catch { return []; } })(),
+    remark: (row.remark as string) || undefined,
     status: (row.status as Import['status']) || 'in_progress',
     createdAt: row.created_at as string,
+    updatedAt: (row.updated_at as string) || undefined,
   };
-}
-
-function syncImportToDb(db: ReturnType<typeof getDb>, imp: Import) {
-  db.prepare(`INSERT OR REPLACE INTO imports
-    (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,release_date,hs_code,duty_rate,duty,vat,broker_fee,fta_applicable,co_status,status,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(imp.id, imp.businessId, imp.shipmentId, imp.shipmentBusinessId,
-      imp.brokerName ?? null, imp.declarationNo ?? null, imp.releaseDate ?? null,
-      imp.hsCode ?? null, imp.dutyRate ?? null, imp.duty ?? null, imp.vat ?? null,
-      imp.brokerFee ?? null, imp.ftaApplicable ? 1 : 0, imp.coStatus ?? null,
-      imp.status, imp.createdAt);
 }
 
 export async function GET() {
   const db = getDb();
-
-  try {
-    const notionImports = await fetchNotionImports();
-    if (notionImports.length > 0) {
-      db.transaction(() => {
-        for (const imp of notionImports) syncImportToDb(db, imp);
-      })();
-      return NextResponse.json({ data: notionImports });
-    }
-  } catch (e) {
-    console.error('[Imports] Notion fetch error:', e);
-  }
-
-  const rows = db.prepare('SELECT * FROM imports ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  const rows = db.prepare(
+    "SELECT * FROM imports WHERE local_deleted=0 OR local_deleted IS NULL ORDER BY created_at DESC"
+  ).all() as Record<string, unknown>[];
   return NextResponse.json({ data: rows.map(dbToImport) });
 }
 
@@ -64,24 +57,53 @@ export async function POST(req: NextRequest) {
     const lastRow = db.prepare(`SELECT business_id FROM imports WHERE business_id LIKE 'IMP-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
     const lastNum = lastRow ? parseInt(lastRow.business_id.replace(/[^0-9]/g, '') || '0') : 0;
     const year = new Date().getFullYear();
-    const bizId = body.businessId || `IMP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = `IMP-${year}-${String(lastNum + 1).padStart(4, '0')}`;
 
-    const imp: Import = {
-      id, businessId: bizId,
-      shipmentId: body.shipmentId || '',
-      shipmentBusinessId: body.shipmentBusinessId || '',
-      brokerName: body.brokerName, declarationNo: body.declarationNo,
-      releaseDate: body.releaseDate, hsCode: body.hsCode,
-      dutyRate: body.dutyRate, duty: body.duty, vat: body.vat,
-      brokerFee: body.brokerFee, ftaApplicable: body.ftaApplicable || false,
-      coStatus: body.coStatus,
-      status: body.status || 'in_progress',
-      createdAt: ts,
-    };
+    db.prepare(`INSERT INTO imports
+      (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
+       arrival_date,declaration_date,tax_payment_date,release_date,
+       invoice_value,invoice_currency,exchange_rate,freight_krw,insurance_krw,customs_value,
+       hs_code,duty_rate,duty,vat,broker_fee,items_json,
+       fta_applicable,fta_type,co_status,co_no,inspection_type,
+       documents_json,remark,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        id, bizId,
+        body.shipmentId || '',
+        body.shipmentBusinessId || '',
+        body.brokerName ?? null,
+        body.declarationNo ?? null,
+        body.arrivalDate ?? null,
+        body.declarationDate ?? null,
+        body.taxPaymentDate ?? null,
+        body.releaseDate ?? null,
+        body.invoiceValue ?? null,
+        body.invoiceCurrency || 'USD',
+        body.exchangeRate ?? null,
+        body.freightKrw ?? null,
+        body.insuranceKrw ?? null,
+        body.customsValue ?? null,
+        body.hsCode ?? null,
+        body.dutyRate ?? null,
+        body.duty ?? null,
+        body.vat ?? null,
+        body.brokerFee ?? null,
+        JSON.stringify(body.items || []),
+        body.ftaApplicable ? 1 : 0,
+        body.ftaType ?? null,
+        body.coStatus ?? null,
+        body.coNo ?? null,
+        body.inspectionType || 'none',
+        '[]',
+        body.remark ?? null,
+        body.status || 'in_progress',
+        ts, ts,
+      );
 
-    syncImportToDb(db, imp);
-    return NextResponse.json({ data: imp }, { status: 201 });
-  } catch {
+    const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
+    return NextResponse.json({ data: dbToImport(row) }, { status: 201 });
+  } catch (e) {
+    console.error('[imports POST]', e);
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
   }
 }
