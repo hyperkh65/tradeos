@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { fetchNotionProducts, createNotionProduct } from '@/lib/notion/mapper';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
 
@@ -86,9 +86,7 @@ export async function POST(req: NextRequest) {
     const id = body.preId || newId();
     const ts = now();
 
-    const lastRow = db.prepare(`SELECT business_id FROM products WHERE business_id LIKE 'PRD-%' ORDER BY business_id DESC LIMIT 1`).get() as { business_id: string } | undefined;
-    const lastNum = lastRow ? parseInt(lastRow.business_id.split('-')[1] || '0') : 0;
-    const bizId = body.businessId || `PRD-${String(lastNum + 1).padStart(4, '0')}`;
+    const bizId = body.businessId || nextBizId('PRD', false);
 
     const images: string[] = body.images || [];
     const imagesJson = images.length > 0 ? JSON.stringify(images) : null;

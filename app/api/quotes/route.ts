@@ -88,15 +88,7 @@ export async function POST(req: NextRequest) {
     const id = newId();
     const ts = now();
 
-    // legacy: keep maxNum for backward compat if businessId is provided externally
-    const year = new Date().getFullYear();
-    const allQtRows = db.prepare(`SELECT business_id FROM quotes WHERE business_id LIKE 'QT-${year}-%'`).all() as { business_id: string }[];
-    const maxNum = allQtRows.reduce((max, r) => {
-      const parts = r.business_id.split('-');
-      const n = parseInt(parts[parts.length - 1]) || 0;
-      return (n > 0 && n < 100000) ? Math.max(max, n) : max;
-    }, 0);
-    const bizId = body.businessId || `QT-${year}-${String(maxNum + 1).padStart(4, '0')}`;
+    const bizId = body.businessId || nextBizId('QT');
 
     const items = (body.items || []).map((it: any) => ({
       ...it,

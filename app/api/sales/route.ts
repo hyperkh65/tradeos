@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 
 function dbToSale(row: Record<string, unknown>) {
@@ -114,14 +114,7 @@ export async function POST(req: NextRequest) {
   const id = newId();
   const ts = now();
 
-  const year = new Date().getFullYear();
-  const allSaRows = db.prepare(`SELECT business_id FROM sales WHERE business_id LIKE 'SA-${year}-%'`).all() as { business_id: string }[];
-  const maxNum = allSaRows.reduce((max, r) => {
-    const parts = r.business_id.split('-');
-    const n = parseInt(parts[parts.length - 1]) || 0;
-    return (n > 0 && n < 100000) ? Math.max(max, n) : max;
-  }, 0);
-  const bizId = body.businessId || `SA-${year}-${String(maxNum + 1).padStart(4, '0')}`;
+  const bizId = body.businessId || nextBizId('SA');
 
   const items = body.items || [];
   const rate = Number(body.exchangeRate) || 1;
