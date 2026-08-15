@@ -1253,8 +1253,10 @@ function ImportModal({
                                   const d = await res.json();
                                   if (d.sheets?.length === 1) {
                                     // 시트 1개면 바로 파싱
+                                    setTab('tax');
                                     setSheetModal({ shipmentId: linkedShipment.id, filename: doc.filename, docName: doc.originalName, sheets: d.sheets });
                                   } else if (d.sheets?.length > 1) {
+                                    setTab('tax');
                                     setSheetModal({ shipmentId: linkedShipment.id, filename: doc.filename, docName: doc.originalName, sheets: d.sheets });
                                   } else {
                                     setParseMsg('시트 목록을 읽을 수 없습니다');

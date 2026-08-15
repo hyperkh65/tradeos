@@ -30,7 +30,8 @@ function detectColumns(headerRow: (string | number | null | undefined)[]): Recor
 function coerceNum(v: unknown): number | undefined {
   if (v == null || v === '') return undefined;
   if (typeof v === 'number') return v;
-  const n = parseFloat(String(v).replace(/,/g, ''));
+  // 통화기호($,€,¥,₩,CNY,USD 등) 및 공백 제거 후 파싱
+  const n = parseFloat(String(v).replace(/[$€¥₩,\s]|USD|CNY|EUR|KRW/gi, ''));
   return isNaN(n) ? undefined : n;
 }
 
@@ -66,11 +67,12 @@ async function parseCSV(buf: Buffer): Promise<ParsedItem[]> {
     const cv = cols.customsValue !== undefined ? coerceNum(row[cols.customsValue]) : undefined;
     const up = cols.unitPrice !== undefined ? coerceNum(row[cols.unitPrice]) : undefined;
     const qty = cols.qty !== undefined ? coerceNum(row[cols.qty]) : undefined;
+    const finalCv = (cv && cv > 0) ? cv : (up && qty ? Math.round(up * qty * 100) / 100 : cv);
     items.push({
       productName: name,
       hsCode: cols.hsCode !== undefined ? coerceStr(row[cols.hsCode]) || undefined : undefined,
       qty,
-      customsValue: cv ?? (up && qty ? Math.round(up * qty) : undefined),
+      customsValue: finalCv,
       dutyRate: cols.dutyRate !== undefined ? coerceNum(row[cols.dutyRate]) : undefined,
     });
   }
@@ -112,11 +114,13 @@ async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]
     const cv = cols.customsValue !== undefined ? coerceNum(row[cols.customsValue]) : undefined;
     const up = cols.unitPrice !== undefined ? coerceNum(row[cols.unitPrice]) : undefined;
     const qty = cols.qty !== undefined ? coerceNum(row[cols.qty]) : undefined;
+    // cv가 0이거나 없을 때 unit_price × qty로 보완
+    const finalCv = (cv && cv > 0) ? cv : (up && qty ? Math.round(up * qty * 100) / 100 : cv);
     items.push({
       productName: name,
       hsCode: cols.hsCode !== undefined ? coerceStr(row[cols.hsCode]) || undefined : undefined,
       qty,
-      customsValue: cv ?? (up && qty ? Math.round(up * qty) : undefined),
+      customsValue: finalCv,
       dutyRate: cols.dutyRate !== undefined ? coerceNum(row[cols.dutyRate]) : undefined,
     });
   }
