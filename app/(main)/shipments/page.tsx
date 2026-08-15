@@ -385,11 +385,29 @@ function ShipmentModal({
   };
 
   const changeDocType = async (doc: ShipDocument, newType: ShipDocType) => {
+    // 로컬 상태 즉시 업데이트
     setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, docType: newType } : d));
+    // 저장된 선적이 있으면 즉시 API 반영
+    const shpId = savedId || item?.id;
+    if (shpId) {
+      await fetch(`/api/shipments/${shpId}/documents`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docId: doc.id, docType: newType }),
+      }).catch(e => console.error('[changeDocType]', e));
+    }
   };
 
-  const changeDocCustomName = (doc: ShipDocument, name: string) => {
+  const changeDocCustomName = async (doc: ShipDocument, name: string) => {
     setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, customName: name } : d));
+    const shpId = savedId || item?.id;
+    if (shpId) {
+      await fetch(`/api/shipments/${shpId}/documents`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docId: doc.id, docType: doc.docType, customName: name }),
+      }).catch(e => console.error('[changeDocCustomName]', e));
+    }
   };
 
   const inputCls = 'w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring';

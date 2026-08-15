@@ -90,6 +90,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
+// PATCH { docId, docType, customName? } → 문서 타입/이름 업데이트
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const { docId, docType, customName } = await req.json() as { docId: string; docType: string; customName?: string };
+    if (!docId || !docType) return NextResponse.json({ error: 'docId, docType 필요' }, { status: 400 });
+
+    const db = getDb();
+    const row = db.prepare('SELECT documents_json FROM shipments WHERE id=?').get(id) as { documents_json: string } | undefined;
+    if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+
+    const docs: ShipDocument[] = (() => { try { return JSON.parse(row.documents_json || '[]'); } catch { return []; } })();
+    const updated = docs.map(d => d.id === docId
+      ? { ...d, docType: docType as ShipDocument['docType'], ...(customName !== undefined ? { customName } : {}) }
+      : d
+    );
+
+    db.prepare('UPDATE shipments SET documents_json=?, updated_at=? WHERE id=?')
+      .run(JSON.stringify(updated), now(), id);
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
