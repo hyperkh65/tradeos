@@ -12,19 +12,34 @@ import {
   Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature,
 } from 'lucide-react';
 
+// Coros 로고마크 — 파란 둥근사각형 + 흰색 굵은 C + 중심 dot
 function CorosLogoMark({ size = 16 }: { size?: number }) {
   const s = size;
-  const cx = s / 2, cy = s / 2;
-  const r1 = s * 0.42, r2 = s * 0.22, rc = s * 0.10;
-  const circ1 = 2 * Math.PI * r1, circ2 = 2 * Math.PI * r2;
+  // C 호: 중심 (s/2, s/2), 반지름 s*0.32, 두께 s*0.165
+  // 오른쪽이 열린 C (약 300°)
+  const cx = s / 2, cy = s / 2, r = s * 0.32;
+  // path: 오른쪽 위 → 왼쪽 반원 → 오른쪽 아래
+  const gap = 50; // degrees (opening angle, both sides)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const startAngle = toRad(gap / 2);      // top-right
+  const endAngle   = toRad(360 - gap / 2); // bottom-right
+  const x1 = cx + r * Math.cos(startAngle - Math.PI / 2);
+  const y1 = cy + r * Math.sin(startAngle - Math.PI / 2);
+  const x2 = cx + r * Math.cos(endAngle - Math.PI / 2);
+  const y2 = cy + r * Math.sin(endAngle - Math.PI / 2);
+  const sw = s * 0.165; // stroke width
   return (
     <svg viewBox={`0 0 ${s} ${s}`} width={s} height={s} fill="none">
-      <circle cx={cx} cy={cy} r={r1} stroke="currentColor" strokeWidth={s * 0.08} strokeLinecap="round"
-        strokeDasharray={`${circ1 * 0.74} ${circ1 * 0.26}`} strokeDashoffset={circ1 * 0.065} />
-      <circle cx={cx} cy={cy} r={r2} stroke="currentColor" strokeWidth={s * 0.055} strokeLinecap="round"
-        strokeDasharray={`${circ2 * 0.64} ${circ2 * 0.36}`} strokeDashoffset={circ2 * 0.055} strokeOpacity="0.55" />
-      <circle cx={cx} cy={cy} r={rc} fill="currentColor" />
-      <circle cx={cx} cy={cy - r1} r={s * 0.055} fill="currentColor" fillOpacity="0.85" />
+      {/* C arc */}
+      <path
+        d={`M ${x1} ${y1} A ${r} ${r} 0 1 0 ${x2} ${y2}`}
+        stroke="white"
+        strokeWidth={sw}
+        strokeLinecap="round"
+        fill="none"
+      />
+      {/* Center dot */}
+      <circle cx={cx} cy={cy} r={s * 0.085} fill="white" />
     </svg>
   );
 }

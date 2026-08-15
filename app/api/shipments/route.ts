@@ -58,28 +58,44 @@ function syncShipmentToDb(db: ReturnType<typeof getDb>, body: Record<string, unk
     );
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const db = getDb();
-  const ts = now();
+  const { searchParams } = req.nextUrl;
+  const bizId = searchParams.get('bizId');
+  const skipNotion = searchParams.get('skipNotion') === '1' || !!bizId;
 
-  try {
-    const notionShipments = await fetchNotionShipments();
-    if (notionShipments.length > 0) {
-      db.transaction(() => {
-        for (const s of notionShipments) {
-          // 로컬 삭제된 항목은 재삽입 금지
-          const existing = db.prepare('SELECT id, local_deleted FROM shipments WHERE id=? OR business_id=?').get(s.id, (s as any).businessId) as { id: string; local_deleted: number } | undefined;
-          if (existing) continue; // 존재하면 (삭제됐어도) 재삽입 안 함
-          syncShipmentToDb(db, { ...s, cargoItems: (s as any).cargoItems || [] }, s.id, ts, s.createdAt);
-        }
-      })();
+  // bizId 단일 조회: Notion 건너뛰고 로컬만 (빠른 경로)
+  if (bizId) {
+    const row = db.prepare(
+      'SELECT * FROM shipments WHERE (local_deleted=0 OR local_deleted IS NULL) AND business_id=? LIMIT 1'
+    ).get(bizId) as Record<string, unknown> | undefined;
+    return NextResponse.json({ data: row ? [dbToShipment(row)] : [] });
+  }
+
+  // 전체 목록: Notion 동기화 포함 (명시적으로 skipNotion=1이 아닌 경우)
+  if (!skipNotion) {
+    const ts = now();
+    try {
+      const notionShipments = await fetchNotionShipments();
+      if (notionShipments.length > 0) {
+        db.transaction(() => {
+          for (const s of notionShipments) {
+            const existing = db.prepare('SELECT id, local_deleted FROM shipments WHERE id=? OR business_id=?').get(s.id, (s as any).businessId) as { id: string; local_deleted: number } | undefined;
+            if (existing) continue;
+            syncShipmentToDb(db, { ...s, cargoItems: (s as any).cargoItems || [] }, s.id, ts, s.createdAt);
+          }
+        })();
+      }
+    } catch (e) {
+      console.error('[Shipments] Notion fetch error:', e);
     }
-  } catch (e) {
-    console.error('[Shipments] Notion fetch error:', e);
   }
 
   const rows = db.prepare('SELECT * FROM shipments WHERE local_deleted=0 OR local_deleted IS NULL ORDER BY created_at DESC').all() as Record<string, unknown>[];
-  return NextResponse.json({ data: rows.map(dbToShipment) });
+  const res = NextResponse.json({ data: rows.map(dbToShipment) });
+  // 목록은 30초 stale-while-revalidate 캐시
+  res.headers.set('Cache-Control', 'private, max-age=0, stale-while-revalidate=30');
+  return res;
 }
 
 export async function POST(req: NextRequest) {

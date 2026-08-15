@@ -52,32 +52,39 @@ function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?:
 
 export async function GET(req: NextRequest) {
   const db = getDb();
-  const ts = now();
   const url = new URL(req.url);
   const supplierName = url.searchParams.get('supplierName');
   const supplierId = url.searchParams.get('supplierId');
-  const slim = url.searchParams.get('slim') === '1'; // ID + businessId + supplierName만 반환
+  const poId = url.searchParams.get('id'); // 단일 PO 빠른 조회
+  const slim = url.searchParams.get('slim') === '1';
+  const skipNotion = url.searchParams.get('skipNotion') === '1' || !!poId;
 
-  try {
-    // Sync Notion (ERP) → SQLite (INSERT OR IGNORE keeps local edits)
-    const notionPOs = await fetchNotionPurchaseOrders();
-    if (notionPOs.length > 0) {
-      db.transaction(() => {
-        for (const po of notionPOs) {
-          poToDb(db, po, po.id, ts, po.id);
-        }
-      })();
-    }
-  } catch (e) {
-    console.error('[PO] Notion fetch error:', e);
+  // 단일 PO 빠른 조회: Notion 건너뜀
+  if (poId) {
+    const row = db.prepare('SELECT * FROM purchase_orders WHERE id=? LIMIT 1').get(poId) as Record<string, unknown> | undefined;
+    return NextResponse.json({ data: row ? [dbToPO(row)] : [] });
   }
 
-  // Always return SQLite data (preserves local edits for ETD/status/etc)
+  if (!skipNotion) {
+    const ts = now();
+    try {
+      const notionPOs = await fetchNotionPurchaseOrders();
+      if (notionPOs.length > 0) {
+        db.transaction(() => {
+          for (const po of notionPOs) {
+            poToDb(db, po, po.id, ts, po.id);
+          }
+        })();
+      }
+    } catch (e) {
+      console.error('[PO] Notion fetch error:', e);
+    }
+  }
+
   let rows: Record<string, unknown>[];
   if (supplierId) {
     rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_id = ? ORDER BY created_at DESC').all(supplierId) as Record<string, unknown>[];
   } else if (supplierName) {
-    // 정확 일치 먼저, 없으면 부분 일치
     rows = db.prepare('SELECT * FROM purchase_orders WHERE supplier_name = ? ORDER BY created_at DESC').all(supplierName) as Record<string, unknown>[];
     if (rows.length === 0) {
       rows = db.prepare("SELECT * FROM purchase_orders WHERE supplier_name LIKE ? ORDER BY created_at DESC").all(`%${supplierName}%`) as Record<string, unknown>[];

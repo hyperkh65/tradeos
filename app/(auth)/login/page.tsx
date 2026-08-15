@@ -9,20 +9,19 @@ import { Loader2 } from 'lucide-react';
 import { loginAction } from './actions';
 
 function CorosLogoMark({ className }: { className?: string }) {
+  // 굵은 C (300° 호) + 중심 dot — 36×36 기준
+  const cx = 18, cy = 18, r = 11.5, sw = 6;
+  const gap = 50;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const x1 = cx + r * Math.cos(toRad(gap / 2 - 90));
+  const y1 = cy + r * Math.sin(toRad(gap / 2 - 90));
+  const x2 = cx + r * Math.cos(toRad(360 - gap / 2 - 90));
+  const y2 = cy + r * Math.sin(toRad(360 - gap / 2 - 90));
   return (
     <svg viewBox="0 0 36 36" fill="none" className={className}>
-      {/* Outer orbit ring — open on right = C shape */}
-      <circle cx="18" cy="18" r="13" stroke="white" strokeWidth="2.8" strokeLinecap="round"
-        strokeDasharray="60 22" strokeDashoffset="10" />
-      {/* Inner ring */}
-      <circle cx="18" cy="18" r="7" stroke="white" strokeWidth="2" strokeLinecap="round"
-        strokeDasharray="28 16" strokeDashoffset="5" strokeOpacity="0.6" />
-      {/* Center dot */}
-      <circle cx="18" cy="18" r="3" fill="white" />
-      {/* Node dots on outer ring */}
-      <circle cx="18" cy="5" r="2" fill="white" fillOpacity="0.9" />
-      <circle cx="4.7" cy="26" r="1.5" fill="white" fillOpacity="0.7" />
-      <circle cx="31.3" cy="26" r="1.5" fill="white" fillOpacity="0.7" />
+      <path d={`M ${x1} ${y1} A ${r} ${r} 0 1 0 ${x2} ${y2}`}
+        stroke="white" strokeWidth={sw} strokeLinecap="round" fill="none" />
+      <circle cx={cx} cy={cy} r="3" fill="white" />
     </svg>
   );
 }

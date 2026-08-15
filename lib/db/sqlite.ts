@@ -16,8 +16,14 @@ export function getDb(): Database.Database {
   _db = new Database(DB_PATH);
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
+  _db.pragma('synchronous = NORMAL');   // WAL 모드에서 충분한 내구성 유지하며 속도 향상
+  _db.pragma('cache_size = -32000');    // 32MB 페이지 캐시 (기본 2MB)
+  _db.pragma('mmap_size = 268435456'); // 256MB mmap I/O
+  _db.pragma('temp_store = MEMORY');   // 임시 테이블 메모리 저장
+  _db.pragma('busy_timeout = 5000');   // 잠금 대기 5초
   initSchema(_db);
   runMigrations(_db);
+  ensureIndexes(_db);
   return _db;
 }
 
@@ -570,6 +576,30 @@ function runMigrations(db: Database.Database) {
       )
     `);
   } catch { /* ignore */ }
+}
+
+function ensureIndexes(db: Database.Database) {
+  const idxList = [
+    // 삭제 필터 (거의 모든 SELECT에 local_deleted=0 조건 있음)
+    `CREATE INDEX IF NOT EXISTS idx_imports_deleted     ON imports(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_shipments_deleted   ON shipments(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_deleted    ON expenses(related_type, related_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_tasks_deleted       ON tasks(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_companies_type      ON companies(local_deleted, type)`,
+    `CREATE INDEX IF NOT EXISTS idx_products_deleted    ON products(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_pos_deleted         ON purchase_orders(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_quotes_deleted      ON quotes(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_claims_deleted      ON claims(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_inspections_deleted ON inspections(local_deleted, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_sales_deleted       ON sales(local_deleted, created_at DESC)`,
+    // bizId 검색 (연동 시 업체명/번호로 조회)
+    `CREATE INDEX IF NOT EXISTS idx_shipments_bizid     ON shipments(business_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_imports_shipment    ON imports(shipment_id, shipment_business_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_related    ON expenses(related_type, related_id)`,
+  ];
+  for (const sql of idxList) {
+    try { db.exec(sql); } catch { /* ignore */ }
+  }
 }
 
 export function newId(): string {

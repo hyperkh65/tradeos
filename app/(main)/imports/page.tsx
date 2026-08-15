@@ -226,18 +226,16 @@ function ImportModal({
     if (!bizId) { setLinkedShipment(null); return; }
     setShipmentLoading(true);
     try {
-      const res = await fetch('/api/shipments');
+      // bizId 단일 조회 — Notion 호출 없이 SQLite 로컬 조회만
+      const res = await fetch(`/api/shipments?bizId=${encodeURIComponent(bizId)}`);
       const d = await res.json();
-      const found: Shipment | undefined = (d.data as Shipment[])?.find(s => s.businessId === bizId);
+      const found: Shipment | undefined = (d.data as Shipment[])?.[0];
       setLinkedShipment(found || null);
       if (found) {
-        // B/L 자동 연동
         if (found.blNo && !form.blNo) setForm(f => ({ ...f, blNo: found.blNo || '' }));
-        // 운임 자동입력
         if (found.freightCost && found.freightCurrency === 'USD' && !form.freightUsd) {
           setForm(f => ({ ...f, freightUsd: String(found.freightCost) }));
         }
-        // 품목 자동입력
         if (found.cargoItems?.length && items.length === 0) {
           setItems(found.cargoItems.map((c, idx) => ({
             id: `item-${idx}`, productName: c.productName,
@@ -246,10 +244,10 @@ function ImportModal({
             customsValueStr: '', dutyRateStr: '',
           })));
         }
-        // 연결된 PO 로드 (첫 번째 PO)
+        // 연결된 PO 단일 조회 — 전체 목록 불러오지 않음
         if (found.poIds?.[0]) {
-          const poRes = await fetch(`/api/purchase-orders`).then(r => r.json());
-          const po = poRes.data?.find((p: { id: string }) => p.id === found.poIds[0] || found.poIds?.includes(p.id));
+          const poRes = await fetch(`/api/purchase-orders?id=${encodeURIComponent(found.poIds[0])}&skipNotion=1`).then(r => r.json());
+          const po = poRes.data?.[0];
           if (po) setLinkedPO({ id: po.id, businessId: po.businessId, piFileUrl: po.piFileUrl, imagesJson: po.imagesJson });
         }
       }
