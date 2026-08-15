@@ -9,12 +9,12 @@ interface ParsedItem {
 function detectColumns(headerRow: (string | number | null | undefined)[]): Record<string, number> {
   const map: Record<string, number> = {};
   const PATTERNS: Record<string, RegExp[]> = {
-    productName: [/品名|品目|商品名|제품명|품명|상품명|product|item|description|material|货物/i],
-    hsCode:      [/HS|关税号|税则号|세번/i],
-    qty:         [/数量|qty|quantity|件数|수량|pcs|개수/i],
-    unitPrice:   [/单价|unit\s*price|단가|price/i],
-    customsValue:[/过税价|课税价|과세가격|customs.*value|taxable|invoice.*amount|금액|amount|合计|小计/i],
-    dutyRate:    [/关税率|duty.*rate|세율|tariff/i],
+    productName: [/品名|品目|商品名|제품명|품명|상품명|product\s*name|item\s*name|description\s*of\s*goods|description|commodity|goods|material|货物/i],
+    hsCode:      [/HS\s*code|HS\s*no|H\.S\.|关税号|税则号|세번|tariff\s*code/i],
+    qty:         [/数量|qty|quantity|件数|수량|pcs|pieces|개수|no\.\s*of\s*pcs|total\s*pcs/i],
+    unitPrice:   [/单价|unit\s*price|unit\s*value|단가|price\s*per|u\/p/i],
+    customsValue:[/过税价|课税价|과세가격|customs.*value|taxable|invoice.*amount|total\s*amount|total\s*value|amount|金額|금액|合计|小计/i],
+    dutyRate:    [/关税率|duty.*rate|세율|tariff\s*rate/i],
   };
   headerRow.forEach((cell, i) => {
     const s = String(cell ?? '').trim();
@@ -96,7 +96,7 @@ async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]
 
   let bestHeaderIdx = 0;
   let bestScore = 0;
-  for (let i = 0; i < Math.min(10, allRows.length - 1); i++) {
+  for (let i = 0; i < Math.min(20, allRows.length - 1); i++) {
     const score = Object.keys(detectColumns(allRows[i])).length;
     if (score > bestScore) { bestScore = score; bestHeaderIdx = i; }
   }
@@ -120,6 +120,27 @@ async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]
       dutyRate: cols.dutyRate !== undefined ? coerceNum(row[cols.dutyRate]) : undefined,
     });
   }
+
+  // 헤더를 전혀 못 찾았을 때: 첫 텍스트 컬럼 = 품명, 마지막 숫자 컬럼 = 금액으로 추정
+  if (items.length === 0 && bestScore === 0) {
+    const dataStart = bestHeaderIdx + 1;
+    for (let i = dataStart; i < allRows.length; i++) {
+      const row = allRows[i];
+      if (!row.length) continue;
+      const firstText = row.find(c => typeof c === 'string' && c.trim().length > 1);
+      if (!firstText) continue;
+      const name = coerceStr(firstText);
+      if (SKIP.test(name)) continue;
+      const nums = row.map((c, idx) => ({ v: coerceNum(c), idx })).filter(x => x.v != null && x.v > 0);
+      const lastNum = nums.at(-1);
+      items.push({
+        productName: name,
+        customsValue: lastNum?.v,
+        qty: nums.length > 1 ? nums[0].v : undefined,
+      });
+    }
+  }
+
   return items;
 }
 

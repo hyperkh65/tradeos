@@ -1153,6 +1153,7 @@ function ImportModal({
                             onClick={async () => {
                               const modal = sheetModal!;
                               setSheetModal(null);
+                              setTab('tax');
                               setParseLoading(true); setParseMsg(null);
                               try {
                                 let d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]; message?: string; count?: number };
@@ -1273,14 +1274,6 @@ function ImportModal({
                         </div>
                       );
                     })}
-                    {/* 파싱 결과 메시지 */}
-                    {parseMsg && tab === 'docs' && (
-                      <div className={cn('text-xs px-2 py-1.5 rounded flex items-center gap-1.5 mt-1',
-                        parseMsg.includes('완료') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700')}>
-                        {parseMsg.includes('완료') ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
-                        {parseMsg}
-                      </div>
-                    )}
                   </div>
                 ) : null}
 
