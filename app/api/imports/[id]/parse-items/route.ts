@@ -4,9 +4,11 @@ import { parseItemsFromFile } from '@/lib/import-parse-items';
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await params; // route param required
+  await params;
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
   if (!file) return Response.json({ error: '파일 없음' }, { status: 400 });
-  return parseItemsFromFile(file);
+  const mode = (formData.get('mode') as 'sheets' | 'parse') || 'parse';
+  const sheet = formData.get('sheet') as string | undefined || undefined;
+  return parseItemsFromFile(file, sheet, mode);
 }

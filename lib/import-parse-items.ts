@@ -123,7 +123,21 @@ async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]
   return items;
 }
 
-export async function parseItemsFromFile(file: File, sheetName?: string): Promise<Response> {
+// Excel 시트 목록만 반환
+export async function getSheetsFromBuffer(buf: Buffer): Promise<string[]> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  return wb.worksheets.map((ws: { name: string }) => ws.name);
+}
+
+// mode='sheets': 시트 목록 반환 / mode='parse'(default): 항목 파싱
+export async function parseItemsFromFile(
+  file: File,
+  sheetName?: string,
+  mode: 'sheets' | 'parse' = 'parse',
+): Promise<Response> {
   try {
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!ext || !['xlsx', 'xls', 'csv'].includes(ext)) {
@@ -131,11 +145,19 @@ export async function parseItemsFromFile(file: File, sheetName?: string): Promis
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
+
+    // 시트 목록만 요청
+    if (mode === 'sheets' && ext !== 'csv') {
+      const sheets = await getSheetsFromBuffer(buf);
+      return Response.json({ sheets });
+    }
+
     const items = ext === 'csv' ? await parseCSV(buf) : await parseExcel(buf, sheetName);
 
     return Response.json({
       data: items,
       count: items.length,
+      sheets: [], // 항상 포함 (클라이언트 분기용)
       message: items.length > 0
         ? `${items.length}개 품목 파싱 완료`
         : '인식된 품목 없음 — 헤더명(品名/Qty/Amount 등)을 확인하세요',

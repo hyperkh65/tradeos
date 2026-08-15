@@ -117,6 +117,7 @@ function ImportModal({
   const [sheetLoading, setSheetLoading] = useState<string | null>(null); // filename being loaded
   const docFileRef = useRef<HTMLInputElement>(null);
   const parseFileRef = useRef<HTMLInputElement>(null);
+  const pendingExcelFileRef = useRef<File | null>(null); // 시트 선택 대기 중인 업로드 파일
   const savedIdRef = useRef<string | null>(item?.id || null);
 
   const [brokers, setBrokers] = useState<Company[]>([]);
@@ -460,6 +461,27 @@ function ImportModal({
     })));
   };
 
+  // 파싱 결과를 품목 테이블에 적용 (공통)
+  const applyParsedItems = (d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]; message?: string; count?: number }) => {
+    if (d.data?.length) {
+      setItems(prev => {
+        const parsed = d.data!.map(it => ({
+          id: `parsed-${Date.now()}-${Math.random()}`,
+          productName: it.productName, hsCode: it.hsCode,
+          dutyRate: it.dutyRate, customsValue: it.customsValue,
+          duty: undefined, vat: undefined, qty: it.qty,
+          customsValueStr: it.customsValue?.toString() || '',
+          dutyRateStr: it.dutyRate?.toString() || '',
+        }));
+        const hasData = prev.some(p => p.productName || (p.customsValue ?? 0) > 0);
+        return hasData ? [...prev, ...parsed] : parsed;
+      });
+      setParseMsg(d.message || `${d.count ?? d.data!.length}개 파싱 완료`);
+    } else {
+      setParseMsg(d.message || '인식된 품목 없음');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
@@ -692,7 +714,34 @@ function ImportModal({
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">④ 품목별 관세</div>
                     {canEdit && (
                       <div className="flex items-center gap-2">
-                        {/* 엑셀 파싱 버튼 */}
+                        {/* 연결된 선적 Excel 파일 바로가기 */}
+                        {linkedShipment?.documents?.filter(d => /\.(xlsx|xls)$/i.test(d.originalName)).map(doc => (
+                          <button key={doc.id} type="button"
+                            disabled={sheetLoading === doc.filename}
+                            title={doc.originalName}
+                            className="flex items-center gap-1 text-xs px-2 py-1 rounded border text-blue-600 border-blue-300 hover:bg-blue-50 transition-colors max-w-[140px]"
+                            onClick={async () => {
+                              setSheetLoading(doc.filename);
+                              try {
+                                const res = await fetch(`/api/shipments/${linkedShipment.id}/documents/sheets`, {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ filename: doc.filename }),
+                                });
+                                const d = await res.json();
+                                if (d.sheets?.length > 0) {
+                                  setSheetModal({ shipmentId: linkedShipment.id, filename: doc.filename, docName: doc.originalName, sheets: d.sheets });
+                                } else {
+                                  setParseMsg('시트를 읽을 수 없습니다');
+                                  setTimeout(() => setParseMsg(null), 4000);
+                                }
+                              } catch { setParseMsg('파일 읽기 실패'); setTimeout(() => setParseMsg(null), 4000); }
+                              finally { setSheetLoading(null); }
+                            }}>
+                            {sheetLoading === doc.filename ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3 shrink-0" />}
+                            <span className="truncate">{doc.originalName.replace(/\.[^/.]+$/, '')}</span>
+                          </button>
+                        ))}
+                        {/* 새 엑셀 업로드 → 시트 선택 후 파싱 */}
                         <label className={cn('flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded border transition-colors',
                           parseLoading ? 'text-muted-foreground border-muted' : 'text-green-600 border-green-300 hover:bg-green-50')}>
                           <input ref={parseFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
@@ -700,48 +749,37 @@ function ImportModal({
                               const file = e.target.files?.[0];
                               if (!file) return;
                               e.target.value = '';
-                              const id = savedIdRef.current;
-                              setParseLoading(true);
-                              setParseMsg(null);
+                              setParseLoading(true); setParseMsg(null);
                               try {
-                                const fd = new FormData();
-                                fd.append('file', file);
-                                const endpoint = id
-                                  ? `/api/imports/${id}/parse-items`
-                                  : '/api/imports/parse-items-temp';
-                                const res = await fetch(endpoint, { method: 'POST', body: fd });
-                                const d = await res.json();
-                                if (d.data?.length > 0) {
-                                  setItems(prev => {
-                                    const parsed = (d.data as { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]).map(it => ({
-                                      id: `parsed-${Date.now()}-${Math.random()}`,
-                                      productName: it.productName,
-                                      hsCode: it.hsCode,
-                                      dutyRate: it.dutyRate,
-                                      customsValue: it.customsValue,
-                                      duty: undefined,
-                                      vat: undefined,
-                                      qty: it.qty,
-                                      customsValueStr: it.customsValue?.toString() || '',
-                                      dutyRateStr: it.dutyRate?.toString() || '',
-                                    }));
-                                    // 기존 빈 행만 있으면 교체, 아니면 추가
-                                    const hasData = prev.some(p => p.productName || (p.customsValue ?? 0) > 0);
-                                    return hasData ? [...prev, ...parsed] : parsed;
-                                  });
-                                  setParseMsg(d.message || `${d.data.length}개 파싱 완료`);
-                                } else {
-                                  setParseMsg(d.message || '인식된 품목 없음 — 헤더명(품명/Qty/금액 등)을 확인하세요');
+                                const ext = file.name.split('.').pop()?.toLowerCase();
+                                // CSV는 시트 없으므로 바로 파싱
+                                if (ext === 'csv') {
+                                  const fd = new FormData(); fd.append('file', file);
+                                  const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
+                                  const d = await res.json();
+                                  applyParsedItems(d);
+                                  return;
                                 }
-                              } catch (ex) {
-                                setParseMsg(`파싱 실패: ${ex}`);
-                              } finally {
-                                setParseLoading(false);
-                                setTimeout(() => setParseMsg(null), 5000);
-                              }
+                                // Excel: 먼저 시트 목록 조회
+                                const fd = new FormData(); fd.append('file', file); fd.append('mode', 'sheets');
+                                const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
+                                const d = await res.json();
+                                if (d.sheets?.length > 1) {
+                                  // 여러 시트 → 모달에서 선택 (파일은 ref에 보관)
+                                  pendingExcelFileRef.current = file;
+                                  setSheetModal({ shipmentId: '', filename: '__upload__', docName: file.name, sheets: d.sheets });
+                                } else {
+                                  // 시트 1개 → 바로 파싱
+                                  const fd2 = new FormData(); fd2.append('file', file);
+                                  if (d.sheets?.[0]) fd2.append('sheet', d.sheets[0]);
+                                  const res2 = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd2 });
+                                  applyParsedItems(await res2.json());
+                                }
+                              } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
+                              finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
                             }} />
                           {parseLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                          엑셀 가져오기
+                          엑셀 업로드
                         </label>
                         <button type="button" className="text-xs text-blue-500 hover:text-blue-700"
                           onClick={() => setItems(prev => [...prev, { id: `new-${Date.now()}`, productName: '', hsCode: '', dutyRate: undefined, customsValue: undefined, duty: undefined, vat: undefined, qty: undefined, customsValueStr: '', dutyRateStr: '' }])}>
@@ -1113,35 +1151,33 @@ function ImportModal({
                           <button key={sheet} type="button"
                             className="w-full text-left px-3 py-2 rounded-lg border border-border hover:bg-primary hover:text-primary-foreground text-sm transition-colors"
                             onClick={async () => {
+                              const modal = sheetModal!;
                               setSheetModal(null);
                               setParseLoading(true); setParseMsg(null);
                               try {
-                                const res = await fetch(`/api/shipments/${sheetModal.shipmentId}/documents/parse-items`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ filename: sheetModal.filename, sheet }),
-                                });
-                                const d = await res.json();
-                                if (d.data?.length > 0) {
-                                  setItems(prev => {
-                                    const parsed = (d.data as { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]).map(it => ({
-                                      id: `parsed-${Date.now()}-${Math.random()}`,
-                                      productName: it.productName,
-                                      hsCode: it.hsCode,
-                                      dutyRate: it.dutyRate,
-                                      customsValue: it.customsValue,
-                                      duty: undefined, vat: undefined, qty: it.qty,
-                                      customsValueStr: it.customsValue?.toString() || '',
-                                      dutyRateStr: it.dutyRate?.toString() || '',
-                                    }));
-                                    const hasData = prev.some(p => p.productName || (p.customsValue ?? 0) > 0);
-                                    return hasData ? [...prev, ...parsed] : parsed;
-                                  });
-                                  setParseMsg(`[${sheet}] ${d.count}개 품목 파싱 완료 → 세금계산 탭에서 확인`);
-                                  setTab('tax');
+                                let d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]; message?: string; count?: number };
+
+                                if (modal.filename === '__upload__' && pendingExcelFileRef.current) {
+                                  // 업로드한 새 파일 파싱 (서버에 없음)
+                                  const fd = new FormData();
+                                  fd.append('file', pendingExcelFileRef.current);
+                                  fd.append('mode', 'parse');
+                                  fd.append('sheet', sheet);
+                                  const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
+                                  d = await res.json();
+                                  pendingExcelFileRef.current = null;
                                 } else {
-                                  setParseMsg(d.message || `[${sheet}] 인식된 품목 없음`);
+                                  // 선적 서류 파일 파싱
+                                  const res = await fetch(`/api/shipments/${modal.shipmentId}/documents/parse-items`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ filename: modal.filename, sheet }),
+                                  });
+                                  d = await res.json();
                                 }
+
+                                applyParsedItems({ ...d, message: `[${sheet}] ${d.message || (d.data?.length ? `${d.data.length}개 파싱 완료` : '인식된 품목 없음')}` });
+                                if (d.data?.length) setTab('tax');
                               } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
                               finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
                             }}>
