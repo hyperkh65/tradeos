@@ -9,7 +9,7 @@ const notoSansKR = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: { default: 'NEXPORT', template: '%s | NEXPORT' },
+  title: { default: 'Coros', template: '%s | Coros' },
   description: '무역회사 전용 통합 그룹웨어',
 };
 

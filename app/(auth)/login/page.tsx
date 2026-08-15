@@ -5,8 +5,27 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Compass, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { loginAction } from './actions';
+
+function CorosLogoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 36 36" fill="none" className={className}>
+      {/* Outer orbit ring — open on right = C shape */}
+      <circle cx="18" cy="18" r="13" stroke="white" strokeWidth="2.8" strokeLinecap="round"
+        strokeDasharray="60 22" strokeDashoffset="10" />
+      {/* Inner ring */}
+      <circle cx="18" cy="18" r="7" stroke="white" strokeWidth="2" strokeLinecap="round"
+        strokeDasharray="28 16" strokeDashoffset="5" strokeOpacity="0.6" />
+      {/* Center dot */}
+      <circle cx="18" cy="18" r="3" fill="white" />
+      {/* Node dots on outer ring */}
+      <circle cx="18" cy="5" r="2" fill="white" fillOpacity="0.9" />
+      <circle cx="4.7" cy="26" r="1.5" fill="white" fillOpacity="0.7" />
+      <circle cx="31.3" cy="26" r="1.5" fill="white" fillOpacity="0.7" />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, { error: '' });
@@ -15,10 +34,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50/30 px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
-            <Compass className="w-7 h-7 text-primary-foreground" />
+          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
+            <CorosLogoMark className="w-9 h-9" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">NEXPORT</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Coros</h1>
           <p className="text-sm text-muted-foreground mt-1">무역회사 통합 그룹웨어</p>
         </div>
 
@@ -61,7 +80,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © 2026 NEXPORT. All rights reserved.
+          © 2026 Coros. All rights reserved.
         </p>
       </div>
     </div>

@@ -77,12 +77,14 @@ async function parseCSV(buf: Buffer): Promise<ParsedItem[]> {
   return items;
 }
 
-async function parseExcel(buf: Buffer): Promise<ParsedItem[]> {
+async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf);
-  const ws = wb.worksheets[0];
+  const ws = sheetName
+    ? (wb.getWorksheet(sheetName) ?? wb.worksheets[0])
+    : wb.worksheets[0];
   if (!ws) return [];
 
   const allRows: (string | number | null | undefined)[][] = [];
@@ -121,7 +123,7 @@ async function parseExcel(buf: Buffer): Promise<ParsedItem[]> {
   return items;
 }
 
-export async function parseItemsFromFile(file: File): Promise<Response> {
+export async function parseItemsFromFile(file: File, sheetName?: string): Promise<Response> {
   try {
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (!ext || !['xlsx', 'xls', 'csv'].includes(ext)) {
@@ -129,7 +131,7 @@ export async function parseItemsFromFile(file: File): Promise<Response> {
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
-    const items = ext === 'csv' ? await parseCSV(buf) : await parseExcel(buf);
+    const items = ext === 'csv' ? await parseCSV(buf) : await parseExcel(buf, sheetName);
 
     return Response.json({
       data: items,

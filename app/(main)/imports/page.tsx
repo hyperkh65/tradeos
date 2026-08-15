@@ -113,6 +113,8 @@ function ImportModal({
   const [uploadDocType, setUploadDocType] = useState<ImportDocType>('clearance_cert');
   const [parseLoading, setParseLoading] = useState(false);
   const [parseMsg, setParseMsg] = useState<string | null>(null);
+  const [sheetModal, setSheetModal] = useState<{ shipmentId: string; filename: string; docName: string; sheets: string[] } | null>(null);
+  const [sheetLoading, setSheetLoading] = useState<string | null>(null); // filename being loaded
   const docFileRef = useRef<HTMLInputElement>(null);
   const parseFileRef = useRef<HTMLInputElement>(null);
   const savedIdRef = useRef<string | null>(item?.id || null);
@@ -1102,50 +1104,149 @@ function ImportModal({
             {/* ── 서류 탭 ── */}
             {tab === 'docs' && (
               <div className="space-y-4">
-                {/* 발주서(PO) / PI 파일 자동 표시 */}
-                {linkedPO && (linkedPO.piFileUrl || linkedPO.imagesJson) && (
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />연결 발주서 서류 ({linkedPO.businessId}) — 참조</div>
-                    <div className="space-y-1">
-                      {linkedPO.piFileUrl && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-lg text-xs">
-                          <FileText className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span className="flex-1 truncate text-orange-800">PI / Proforma Invoice</span>
-                          <a href={linkedPO.piFileUrl} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0"><Download className="w-3.5 h-3.5" /></a>
-                        </div>
-                      )}
-                      {(() => {
-                        try {
-                          const imgs: string[] = JSON.parse(linkedPO.imagesJson || '[]');
-                          return imgs.map((url, i) => (
-                            <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-lg text-xs">
-                              <File className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                              <span className="flex-1 truncate text-orange-800">발주서 첨부 {i + 1}</span>
-                              <a href={url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0"><Download className="w-3.5 h-3.5" /></a>
-                            </div>
-                          ));
-                        } catch { return null; }
-                      })()}
+                {/* ── 시트 선택 모달 ── */}
+                {sheetModal && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => setSheetModal(null)}>
+                    <div className="bg-card border border-border rounded-xl shadow-xl p-5 w-80" onClick={e => e.stopPropagation()}>
+                      <div className="text-sm font-semibold mb-1">인보이스 시트 선택</div>
+                      <div className="text-xs text-muted-foreground mb-3 truncate">{sheetModal.docName}</div>
+                      <div className="space-y-1.5">
+                        {sheetModal.sheets.map(sheet => (
+                          <button key={sheet} type="button"
+                            className="w-full text-left px-3 py-2 rounded-lg border border-border hover:bg-primary hover:text-primary-foreground text-sm transition-colors"
+                            onClick={async () => {
+                              setSheetModal(null);
+                              setParseLoading(true); setParseMsg(null);
+                              try {
+                                const res = await fetch(`/api/shipments/${sheetModal.shipmentId}/documents/parse-items`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ filename: sheetModal.filename, sheet }),
+                                });
+                                const d = await res.json();
+                                if (d.data?.length > 0) {
+                                  setItems(prev => {
+                                    const parsed = (d.data as { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]).map(it => ({
+                                      id: `parsed-${Date.now()}-${Math.random()}`,
+                                      productName: it.productName,
+                                      hsCode: it.hsCode,
+                                      dutyRate: it.dutyRate,
+                                      customsValue: it.customsValue,
+                                      duty: undefined, vat: undefined, qty: it.qty,
+                                      customsValueStr: it.customsValue?.toString() || '',
+                                      dutyRateStr: it.dutyRate?.toString() || '',
+                                    }));
+                                    const hasData = prev.some(p => p.productName || (p.customsValue ?? 0) > 0);
+                                    return hasData ? [...prev, ...parsed] : parsed;
+                                  });
+                                  setParseMsg(`[${sheet}] ${d.count}개 품목 파싱 완료 → 세금계산 탭에서 확인`);
+                                  setTab('tax');
+                                } else {
+                                  setParseMsg(d.message || `[${sheet}] 인식된 품목 없음`);
+                                }
+                              } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
+                              finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
+                            }}>
+                            {sheet}
+                          </button>
+                        ))}
+                      </div>
+                      <button type="button" className="mt-3 w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setSheetModal(null)}>취소</button>
                     </div>
                   </div>
                 )}
 
-                {/* 선적 서류 자동 표시 */}
-                {linkedShipment?.documents?.length ? (
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5"><Info className="w-3.5 h-3.5" />선적 서류 ({linkedShipment.businessId}) — 참조</div>
+                {/* ── PO / PI 서류 ── */}
+                {linkedPO && (linkedPO.piFileUrl || linkedPO.imagesJson) && (() => {
+                  const imgs: string[] = (() => { try { return JSON.parse(linkedPO.imagesJson || '[]'); } catch { return []; } })();
+                  const allFiles = [
+                    ...(linkedPO.piFileUrl ? [{ url: linkedPO.piFileUrl, name: 'PI / Proforma Invoice', icon: 'pdf' }] : []),
+                    ...imgs.map((url, i) => ({ url, name: `발주서 첨부 ${i + 1}`, icon: 'file' })),
+                  ];
+                  return (
                     <div className="space-y-1">
-                      {linkedShipment.documents.map(doc => (
-                        <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs">
-                          <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          <span className="flex-1 truncate text-blue-800">{doc.originalName}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 shrink-0">
-                            {doc.docType === 'invoice' ? '인보이스' : doc.docType === 'packing_list' ? '패킹리스트' : doc.docType === 'bl' ? 'B/L' : doc.docType === 'co' ? 'C/O' : '기타'}
-                          </span>
-                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></a>
+                      <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                        <FileText className="w-3.5 h-3.5 text-orange-500" />
+                        <span>PO/PI 서류</span>
+                        <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{linkedPO.businessId}</span>
+                      </div>
+                      {allFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs">
+                          <FileText className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                          <span className="flex-1 truncate text-orange-900 font-medium">{f.name}</span>
+                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0 flex items-center gap-1">
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
                         </div>
                       ))}
                     </div>
+                  );
+                })()}
+
+                {/* ── 선적 서류 ── */}
+                {linkedShipment?.documents?.length ? (
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                      <Info className="w-3.5 h-3.5 text-blue-500" />
+                      <span>선적 서류</span>
+                      <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">{linkedShipment.businessId}</span>
+                    </div>
+                    {linkedShipment.documents.map(doc => {
+                      const isExcel = /\.(xlsx|xls)$/i.test(doc.originalName);
+                      const isBL = doc.docType === 'bl';
+                      const typeLabel = doc.docType === 'invoice' ? '인보이스' : doc.docType === 'packing_list' ? '패킹리스트' : isBL ? 'B/L' : doc.docType === 'co' ? 'C/O' : '기타';
+                      const typeColor = isBL ? 'bg-indigo-100 text-indigo-700' : doc.docType === 'invoice' || doc.docType === 'packing_list' ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-600';
+                      return (
+                        <div key={doc.id} className={cn('flex items-center gap-2 px-3 py-2 border rounded-lg text-xs',
+                          isBL ? 'bg-indigo-50 border-indigo-100' : 'bg-blue-50 border-blue-100')}>
+                          <FileText className={cn('w-3.5 h-3.5 shrink-0', isBL ? 'text-indigo-400' : 'text-blue-400')} />
+                          <span className={cn('flex-1 truncate font-medium', isBL ? 'text-indigo-900' : 'text-blue-900')}>{doc.originalName}</span>
+                          <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full shrink-0', typeColor)}>{typeLabel}</span>
+                          {/* Excel CI/PL → 파싱 버튼 */}
+                          {isExcel && (doc.docType === 'invoice' || doc.docType === 'packing_list' || doc.docType === 'other') && (
+                            <button type="button" title="시트 선택 후 품목 파싱"
+                              className="text-teal-600 hover:text-teal-800 shrink-0 flex items-center gap-0.5"
+                              disabled={sheetLoading === doc.filename}
+                              onClick={async () => {
+                                setSheetLoading(doc.filename);
+                                try {
+                                  const res = await fetch(`/api/shipments/${linkedShipment.id}/documents/sheets`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ filename: doc.filename }),
+                                  });
+                                  const d = await res.json();
+                                  if (d.sheets?.length === 1) {
+                                    // 시트 1개면 바로 파싱
+                                    setSheetModal({ shipmentId: linkedShipment.id, filename: doc.filename, docName: doc.originalName, sheets: d.sheets });
+                                  } else if (d.sheets?.length > 1) {
+                                    setSheetModal({ shipmentId: linkedShipment.id, filename: doc.filename, docName: doc.originalName, sheets: d.sheets });
+                                  } else {
+                                    setParseMsg('시트 목록을 읽을 수 없습니다');
+                                    setTimeout(() => setParseMsg(null), 4000);
+                                  }
+                                } catch { setParseMsg('파일 읽기 실패'); setTimeout(() => setParseMsg(null), 4000); }
+                                finally { setSheetLoading(null); }
+                              }}>
+                              {sheetLoading === doc.filename ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                              <span className="text-[10px]">파싱</span>
+                            </button>
+                          )}
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                            className={cn('shrink-0', isBL ? 'text-indigo-500 hover:text-indigo-700' : 'text-blue-500 hover:text-blue-700')}>
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      );
+                    })}
+                    {/* 파싱 결과 메시지 */}
+                    {parseMsg && tab === 'docs' && (
+                      <div className={cn('text-xs px-2 py-1.5 rounded flex items-center gap-1.5 mt-1',
+                        parseMsg.includes('완료') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700')}>
+                        {parseMsg.includes('완료') ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                        {parseMsg}
+                      </div>
+                    )}
                   </div>
                 ) : null}
 

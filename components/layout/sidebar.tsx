@@ -8,9 +8,26 @@ import {
   LayoutDashboard, Building2, Package, ClipboardList, FileText,
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
-  Compass, Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
+  Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
   Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature,
 } from 'lucide-react';
+
+function CorosLogoMark({ size = 16 }: { size?: number }) {
+  const s = size;
+  const cx = s / 2, cy = s / 2;
+  const r1 = s * 0.42, r2 = s * 0.22, rc = s * 0.10;
+  const circ1 = 2 * Math.PI * r1, circ2 = 2 * Math.PI * r2;
+  return (
+    <svg viewBox={`0 0 ${s} ${s}`} width={s} height={s} fill="none">
+      <circle cx={cx} cy={cy} r={r1} stroke="currentColor" strokeWidth={s * 0.08} strokeLinecap="round"
+        strokeDasharray={`${circ1 * 0.74} ${circ1 * 0.26}`} strokeDashoffset={circ1 * 0.065} />
+      <circle cx={cx} cy={cy} r={r2} stroke="currentColor" strokeWidth={s * 0.055} strokeLinecap="round"
+        strokeDasharray={`${circ2 * 0.64} ${circ2 * 0.36}`} strokeDashoffset={circ2 * 0.055} strokeOpacity="0.55" />
+      <circle cx={cx} cy={cy} r={rc} fill="currentColor" />
+      <circle cx={cx} cy={cy - r1} r={s * 0.055} fill="currentColor" fillOpacity="0.85" />
+    </svg>
+  );
+}
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -114,7 +131,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
         {/* Logo icon */}
         <div className="h-12 flex items-center justify-center border-b border-sidebar-border shrink-0">
           <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
-            <Compass className="w-4 h-4 text-primary-foreground" />
+            <CorosLogoMark size={16} />
           </div>
         </div>
 
@@ -165,9 +182,9 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
       {/* Logo */}
       <div className="h-12 flex items-center gap-2 px-4 border-b border-sidebar-border shrink-0">
         <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
-          <Compass className="w-4 h-4 text-primary-foreground" />
+          <CorosLogoMark size={16} />
         </div>
-        <span className="font-bold text-sidebar-foreground tracking-tight text-sm">NEXPORT</span>
+        <span className="font-bold text-sidebar-foreground tracking-tight text-sm">Coros</span>
         <button
           onClick={toggleCollapsed}
           title="사이드바 접기"
