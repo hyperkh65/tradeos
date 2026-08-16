@@ -134,6 +134,8 @@ function ImportModal({
       ...i,
       customsValueStr: i.customsValue?.toString() || '',
       dutyRateStr: i.dutyRate?.toString() || '',
+      qtyStr: i.qty?.toString() || '',
+      unitPriceStr: i.unitPrice?.toString() || '',
     }))
   );
 
@@ -539,6 +541,55 @@ function ImportModal({
               }}>{t.label}</button>
           ))}
         </div>
+
+        {/* ── 시트 선택 모달 (탭과 무관하게 항상 렌더링) ── */}
+        {sheetModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => setSheetModal(null)}>
+            <div className="bg-card border border-border rounded-xl shadow-xl p-5 w-80" onClick={e => e.stopPropagation()}>
+              <div className="text-sm font-semibold mb-1">인보이스 시트 선택</div>
+              <div className="text-xs text-muted-foreground mb-3 truncate">{sheetModal.docName}</div>
+              <div className="space-y-1.5">
+                {sheetModal.sheets.map(sheet => (
+                  <button key={sheet} type="button"
+                    className="w-full text-left px-3 py-2 rounded-lg border border-border hover:bg-primary hover:text-primary-foreground text-sm transition-colors"
+                    onClick={async () => {
+                      const modal = sheetModal!;
+                      setSheetModal(null);
+                      setTab('tax');
+                      setParseLoading(true); setParseMsg(null);
+                      try {
+                        let d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number; unitPrice?: number }[]; message?: string; count?: number };
+
+                        if (modal.filename === '__upload__' && pendingExcelFileRef.current) {
+                          const fd = new FormData();
+                          fd.append('file', pendingExcelFileRef.current);
+                          fd.append('mode', 'parse');
+                          fd.append('sheet', sheet);
+                          const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
+                          d = await res.json();
+                          pendingExcelFileRef.current = null;
+                        } else {
+                          const res = await fetch(`/api/shipments/${modal.shipmentId}/documents/parse-items`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: modal.filename, sheet }),
+                          });
+                          d = await res.json();
+                        }
+
+                        applyParsedItems({ ...d, message: `[${sheet}] ${d.message || (d.data?.length ? `${d.data.length}개 파싱 완료` : '인식된 품목 없음')}` });
+                        if (d.data?.length) setTab('tax');
+                      } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
+                      finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
+                    }}>
+                    {sheet}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="mt-3 w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setSheetModal(null)}>취소</button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1166,57 +1217,6 @@ function ImportModal({
             {/* ── 서류 탭 ── */}
             {tab === 'docs' && (
               <div className="space-y-4">
-                {/* ── 시트 선택 모달 ── */}
-                {sheetModal && (
-                  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => setSheetModal(null)}>
-                    <div className="bg-card border border-border rounded-xl shadow-xl p-5 w-80" onClick={e => e.stopPropagation()}>
-                      <div className="text-sm font-semibold mb-1">인보이스 시트 선택</div>
-                      <div className="text-xs text-muted-foreground mb-3 truncate">{sheetModal.docName}</div>
-                      <div className="space-y-1.5">
-                        {sheetModal.sheets.map(sheet => (
-                          <button key={sheet} type="button"
-                            className="w-full text-left px-3 py-2 rounded-lg border border-border hover:bg-primary hover:text-primary-foreground text-sm transition-colors"
-                            onClick={async () => {
-                              const modal = sheetModal!;
-                              setSheetModal(null);
-                              setTab('tax');
-                              setParseLoading(true); setParseMsg(null);
-                              try {
-                                let d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]; message?: string; count?: number };
-
-                                if (modal.filename === '__upload__' && pendingExcelFileRef.current) {
-                                  // 업로드한 새 파일 파싱 (서버에 없음)
-                                  const fd = new FormData();
-                                  fd.append('file', pendingExcelFileRef.current);
-                                  fd.append('mode', 'parse');
-                                  fd.append('sheet', sheet);
-                                  const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
-                                  d = await res.json();
-                                  pendingExcelFileRef.current = null;
-                                } else {
-                                  // 선적 서류 파일 파싱
-                                  const res = await fetch(`/api/shipments/${modal.shipmentId}/documents/parse-items`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ filename: modal.filename, sheet }),
-                                  });
-                                  d = await res.json();
-                                }
-
-                                applyParsedItems({ ...d, message: `[${sheet}] ${d.message || (d.data?.length ? `${d.data.length}개 파싱 완료` : '인식된 품목 없음')}` });
-                                if (d.data?.length) setTab('tax');
-                              } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
-                              finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
-                            }}>
-                            {sheet}
-                          </button>
-                        ))}
-                      </div>
-                      <button type="button" className="mt-3 w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setSheetModal(null)}>취소</button>
-                    </div>
-                  </div>
-                )}
-
                 {/* ── PO / PI 서류 ── */}
                 {linkedPO && (() => {
                   const imgs: string[] = (() => { try { return JSON.parse(linkedPO.imagesJson || '[]'); } catch { return []; } })();
