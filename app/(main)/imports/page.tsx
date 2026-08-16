@@ -293,13 +293,16 @@ function ImportModal({
   const freightKrwCalc = form.freightUsd ? Math.round(parseFloat(form.freightUsd) * freightExRate) : 0;
   const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : (freightKrwCalc || 0);
   const exRate = parseFloat(form.exchangeRate || '0');
-  // 품목이 파싱된 경우 items 합계를 인보이스 금액으로 사용, 아니면 form.invoiceValue
   const itemsWithCalc = items.map(it => {
-    const cv = parseFloat(it.customsValueStr || '0');        // 인보이스 화폐 (CNY 등)
-    const cvKrw = exRate > 0 ? Math.round(cv * exRate) : cv; // KRW 환산
+    const cvManual = parseFloat(it.customsValueStr || '0');
+    const qty = parseFloat(it.qtyStr || '0');
+    const up = parseFloat(it.unitPriceStr || '0');
+    // 금액: 직접 입력 > 수량×단가 자동계산 > 0
+    const cv = cvManual > 0 ? cvManual : (qty > 0 && up > 0 ? Math.round(qty * up * 100) / 100 : 0);
+    const cvKrw = exRate > 0 ? Math.round(cv * exRate) : cv;
     const dr = parseFloat(it.dutyRateStr || '0');
-    const d = Math.round(cvKrw * dr / 100);                  // 관세(원)
-    const v = Math.round((cvKrw + d) * 0.1);                 // 부가세(원)
+    const d = Math.round(cvKrw * dr / 100);
+    const v = Math.round((cvKrw + d) * 0.1);
     return { ...it, customsValue: cv || undefined, customsValueKrw: cvKrw, dutyRate: dr || undefined, duty: d || undefined, vat: v || undefined };
   });
   const itemsHaveData = itemsWithCalc.some(i => (i.customsValue || 0) > 0);
@@ -970,16 +973,46 @@ function ImportModal({
                 </div>
 
                 {/* 관세/부가세 확정 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>관세 (원){!form.duty && dutyCalc > 0 && <span className="text-blue-500 ml-1">≈{dutyCalc.toLocaleString()}</span>}</label>
-                    <Input type="number" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder={dutyCalc ? String(dutyCalc) : '0'} disabled={!canEdit} />
+                {itemsHaveData ? (
+                  /* 품목별 계산 시: 합계를 자동 표시 (읽기전용), 수동 보정 가능 */
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>
+                        관세 (원) <span className="text-blue-500 font-normal">품목합계 자동</span>
+                        {form.duty && <span className="text-amber-500 ml-1">(수동 보정 중)</span>}
+                      </label>
+                      <div className="flex gap-1">
+                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm flex items-center font-medium text-blue-900">
+                          {totalItemDuty.toLocaleString()}원
+                        </div>
+                        <Input type="number" className="w-28" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder="보정값" disabled={!canEdit} title="다를 경우에만 입력" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        부가세 (원) <span className="text-blue-500 font-normal">품목합계 자동</span>
+                        {form.vat && <span className="text-amber-500 ml-1">(수동 보정 중)</span>}
+                      </label>
+                      <div className="flex gap-1">
+                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm flex items-center font-medium text-blue-900">
+                          {totalItemVat.toLocaleString()}원
+                        </div>
+                        <Input type="number" className="w-28" value={form.vat} onChange={e => setForm(f => ({ ...f, vat: e.target.value }))} placeholder="보정값" disabled={!canEdit} title="다를 경우에만 입력" />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelCls}>부가세 (원){!form.vat && vatCalc > 0 && <span className="text-blue-500 ml-1">≈{vatCalc.toLocaleString()}</span>}</label>
-                    <Input type="number" value={form.vat} onChange={e => setForm(f => ({ ...f, vat: e.target.value }))} placeholder={vatCalc ? String(vatCalc) : '0'} disabled={!canEdit} />
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>관세 (원){!form.duty && dutyCalc > 0 && <span className="text-blue-500 ml-1">≈{dutyCalc.toLocaleString()}</span>}</label>
+                      <Input type="number" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder={dutyCalc ? String(dutyCalc) : '0'} disabled={!canEdit} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>부가세 (원){!form.vat && vatCalc > 0 && <span className="text-blue-500 ml-1">≈{vatCalc.toLocaleString()}</span>}</label>
+                      <Input type="number" value={form.vat} onChange={e => setForm(f => ({ ...f, vat: e.target.value }))} placeholder={vatCalc ? String(vatCalc) : '0'} disabled={!canEdit} />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* 세관검사비 + 환급 */}
                 {form.inspectionType !== 'none' && (
