@@ -822,43 +822,44 @@ function ImportModal({
                   )}
 
                   {items.length > 0 && (
-                    <div className="rounded-lg border border-border overflow-hidden text-xs">
-                      <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
-                        {['품목명', 'HS코드', '수량', '단가', '관세율%', '과세가격(원)', '관세(자동)', '부가세(자동)', ''].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
-                      </div>
-                      {items.map((it, idx) => {
-                        const qty = parseFloat(it.qtyStr || '0');
-                        const up = parseFloat(it.unitPriceStr || '0');
-                        // 과세가격: 직접 입력값 우선, 없으면 단가×수량
-                        const cvRaw = parseFloat(it.customsValueStr || '0');
-                        const cv = cvRaw > 0 ? cvRaw : (up > 0 && qty > 0 ? Math.round(up * qty) : 0);
-                        const dr = parseFloat(it.dutyRateStr || '0');
-                        const d = cv > 0 && dr > 0 ? Math.round(cv * dr / 100) : 0;
-                        const v = cv > 0 ? Math.round((cv + d) * 0.1) : 0;
-                        const cvDisplay = cvRaw > 0 ? it.customsValueStr : (cv > 0 ? String(cv) : '');
-                        return (
-                          <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
-                            <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center">{d > 0 ? d.toLocaleString() : '-'}</div>
-                            <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center">{v > 0 ? v.toLocaleString() : '-'}</div>
-                            <div className="px-2 py-1.5 flex items-center">{canEdit && <button type="button" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}><X className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>}</div>
-                          </div>
-                        );
-                      })}
-                      {items.length > 1 && (
-                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
-                          <div className="px-2 py-2 col-span-5 text-muted-foreground">합계</div>
-                          <div className="px-2 py-2 text-blue-700">{totalItemCv > 0 ? totalItemCv.toLocaleString() : '-'}</div>
-                          <div className="px-2 py-2 text-orange-700">{totalItemDuty > 0 ? totalItemDuty.toLocaleString() : '-'}</div>
-                          <div className="px-2 py-2 text-purple-700">{totalItemVat > 0 ? totalItemVat.toLocaleString() : '-'}</div>
-                          <div />
+                    <div className="rounded-lg border border-border overflow-x-auto text-xs">
+                      <div style={{ minWidth: 820 }}>
+                        <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
+                          {['품목명', 'HS코드', '수량', '단가', '관세율%', '과세가격(원)', '관세(자동)', '부가세(자동)', ''].map(h => <div key={h} className="px-2 py-2 whitespace-nowrap">{h}</div>)}
                         </div>
-                      )}
+                        {items.map((it, idx) => {
+                          const qty = parseFloat(it.qtyStr || '0');
+                          const up = parseFloat(it.unitPriceStr || '0');
+                          const cvRaw = parseFloat(it.customsValueStr || '0');
+                          const cv = cvRaw > 0 ? cvRaw : (up > 0 && qty > 0 ? Math.round(up * qty) : 0);
+                          const dr = parseFloat(it.dutyRateStr || '0');
+                          const d = cv > 0 && dr > 0 ? Math.round(cv * dr / 100) : 0;
+                          const v = cv > 0 ? Math.round((cv + d) * 0.1) : 0;
+                          const cvDisplay = cvRaw > 0 ? it.customsValueStr : (cv > 0 ? String(cv) : '');
+                          return (
+                            <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
+                              <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center">{d > 0 ? d.toLocaleString() : '-'}</div>
+                              <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center">{v > 0 ? v.toLocaleString() : '-'}</div>
+                              <div className="px-1 py-1.5 flex items-center">{canEdit && <button type="button" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}><X className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>}</div>
+                            </div>
+                          );
+                        })}
+                        {items.length > 1 && (
+                          <div className="grid border-t-2 border-border bg-muted/30 font-semibold" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
+                            <div className="px-2 py-2 col-span-5 text-muted-foreground">합계</div>
+                            <div className="px-2 py-2 text-blue-700">{totalItemCv > 0 ? totalItemCv.toLocaleString() : '-'}</div>
+                            <div className="px-2 py-2 text-orange-700">{totalItemDuty > 0 ? totalItemDuty.toLocaleString() : '-'}</div>
+                            <div className="px-2 py-2 text-purple-700">{totalItemVat > 0 ? totalItemVat.toLocaleString() : '-'}</div>
+                            <div />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -1204,11 +1205,11 @@ function ImportModal({
                 )}
 
                 {/* ── PO / PI 서류 ── */}
-                {linkedPO && (linkedPO.piFileUrl || linkedPO.imagesJson) && (() => {
+                {linkedPO && (() => {
                   const imgs: string[] = (() => { try { return JSON.parse(linkedPO.imagesJson || '[]'); } catch { return []; } })();
-                  const allFiles = [
-                    ...(linkedPO.piFileUrl ? [{ url: linkedPO.piFileUrl, name: 'PI / Proforma Invoice', icon: 'pdf' }] : []),
-                    ...imgs.map((url, i) => ({ url, name: `발주서 첨부 ${i + 1}`, icon: 'file' })),
+                  const allFiles: { url: string; name: string }[] = [
+                    ...(linkedPO.piFileUrl ? [{ url: linkedPO.piFileUrl, name: 'PI / Proforma Invoice' }] : []),
+                    ...imgs.map((url, i) => ({ url, name: `발주서 첨부 ${i + 1}` })),
                   ];
                   return (
                     <div className="space-y-1">
@@ -1217,15 +1218,22 @@ function ImportModal({
                         <span>PO/PI 서류</span>
                         <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{linkedPO.businessId}</span>
                       </div>
-                      {allFiles.map((f, i) => (
+                      {allFiles.length > 0 ? allFiles.map((f, i) => (
                         <div key={i} className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs">
                           <FileText className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                           <span className="flex-1 truncate text-orange-900 font-medium">{f.name}</span>
-                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0 flex items-center gap-1">
+                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0">
                             <Download className="w-3.5 h-3.5" />
                           </a>
                         </div>
-                      ))}
+                      )) : (
+                        <div className="px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs text-orange-700 flex items-center gap-2">
+                          <Info className="w-3.5 h-3.5 shrink-0 text-orange-400" />
+                          <span>PO에 첨부된 PI/서류 파일이 없습니다.</span>
+                          <a href={`/dashboard/purchase-orders`} target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-orange-500 underline hover:text-orange-700 whitespace-nowrap">PO에서 추가 →</a>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
