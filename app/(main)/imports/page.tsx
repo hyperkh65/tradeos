@@ -268,20 +268,26 @@ function ImportModal({
   const freightExRate = parseFloat(form.freightExchangeRate || form.exchangeRate || '0');
   const freightKrwCalc = form.freightUsd ? Math.round(parseFloat(form.freightUsd) * freightExRate) : 0;
   const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : (freightKrwCalc || 0);
-  const invoiceKrw = parseFloat(form.invoiceValue || '0') * parseFloat(form.exchangeRate || '0');
-  const customsValueCalc = Math.round(invoiceKrw + effectiveFreightKrw + parseFloat(form.insuranceKrw || '0'));
-
+  const exRate = parseFloat(form.exchangeRate || '0');
+  // 품목이 파싱된 경우 items 합계를 인보이스 금액으로 사용, 아니면 form.invoiceValue
   const itemsWithCalc = items.map(it => {
-    const cv = parseFloat(it.customsValueStr || '0');
+    const cv = parseFloat(it.customsValueStr || '0');        // 인보이스 화폐 (CNY 등)
+    const cvKrw = exRate > 0 ? Math.round(cv * exRate) : cv; // KRW 환산
     const dr = parseFloat(it.dutyRateStr || '0');
-    const d = Math.round(cv * dr / 100);
-    const v = Math.round((cv + d) * 0.1);
-    return { ...it, customsValue: cv || undefined, dutyRate: dr || undefined, duty: d || undefined, vat: v || undefined };
+    const d = Math.round(cvKrw * dr / 100);                  // 관세(원)
+    const v = Math.round((cvKrw + d) * 0.1);                 // 부가세(원)
+    return { ...it, customsValue: cv || undefined, customsValueKrw: cvKrw, dutyRate: dr || undefined, duty: d || undefined, vat: v || undefined };
   });
   const itemsHaveData = itemsWithCalc.some(i => (i.customsValue || 0) > 0);
-  const totalItemDuty = itemsWithCalc.reduce((s, i) => s + (i.duty || 0), 0);
-  const totalItemVat = itemsWithCalc.reduce((s, i) => s + (i.vat || 0), 0);
-  const totalItemCv = itemsWithCalc.reduce((s, i) => s + (i.customsValue || 0), 0);
+  const totalItemCv    = itemsWithCalc.reduce((s, i) => s + (i.customsValue || 0), 0);    // 외화 합계
+  const totalItemCvKrw = itemsWithCalc.reduce((s, i) => s + (i.customsValueKrw || 0), 0); // KRW 합계
+  const totalItemDuty  = itemsWithCalc.reduce((s, i) => s + (i.duty || 0), 0);
+  const totalItemVat   = itemsWithCalc.reduce((s, i) => s + (i.vat || 0), 0);
+
+  const invoiceKrw = itemsHaveData
+    ? totalItemCvKrw
+    : parseFloat(form.invoiceValue || '0') * exRate;
+  const customsValueCalc = Math.round(invoiceKrw + effectiveFreightKrw + parseFloat(form.insuranceKrw || '0'));
 
   const dutyCalc = itemsHaveData ? totalItemDuty : Math.round(customsValueCalc * (parseFloat(form.dutyRate || '0') / 100));
   const vatCalc  = itemsHaveData ? totalItemVat  : Math.round((customsValueCalc + dutyCalc) * 0.1);
@@ -705,7 +711,10 @@ function ImportModal({
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs space-y-1">
                     <div className="font-medium text-blue-800">과세가격 (CIF) 자동계산</div>
                     <div className="text-blue-700 space-y-0.5">
-                      <div>인보이스: {parseFloat(form.invoiceValue||'0').toLocaleString()} {form.invoiceCurrency} × {parseFloat(form.exchangeRate||'0').toLocaleString()}원 = {Math.round(invoiceKrw).toLocaleString()}원</div>
+                      {itemsHaveData
+                        ? <div>품목합계: {totalItemCv.toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {totalItemCvKrw.toLocaleString()}원</div>
+                        : <div>인보이스: {parseFloat(form.invoiceValue||'0').toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {Math.round(invoiceKrw).toLocaleString()}원</div>
+                      }
                       {effectiveFreightKrw > 0 && <div>운임: {effectiveFreightKrw.toLocaleString()}원</div>}
                       {parseFloat(form.insuranceKrw||'0') > 0 && <div>보험료: {parseFloat(form.insuranceKrw).toLocaleString()}원</div>}
                     </div>
@@ -825,27 +834,27 @@ function ImportModal({
                     <div className="rounded-lg border border-border overflow-x-auto text-xs">
                       <div style={{ minWidth: 820 }}>
                         <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
-                          {['품목명', 'HS코드', '수량', '단가', '관세율%', '과세가격(원)', '관세(자동)', '부가세(자동)', ''].map(h => <div key={h} className="px-2 py-2 whitespace-nowrap">{h}</div>)}
+                          {['품목명', 'HS코드', '수량', '단가', '관세율%', `금액(${form.invoiceCurrency||'외화'})`, '관세(원)', '부가세(원)', ''].map(h => <div key={h} className="px-2 py-2 whitespace-nowrap">{h}</div>)}
                         </div>
-                        {items.map((it, idx) => {
+                        {itemsWithCalc.map((it, idx) => {
+                          // itemsWithCalc에서 이미 계산된 값 사용 (duty/vat은 KRW)
                           const qty = parseFloat(it.qtyStr || '0');
                           const up = parseFloat(it.unitPriceStr || '0');
                           const cvRaw = parseFloat(it.customsValueStr || '0');
-                          const cv = cvRaw > 0 ? cvRaw : (up > 0 && qty > 0 ? Math.round(up * qty) : 0);
-                          const dr = parseFloat(it.dutyRateStr || '0');
-                          const d = cv > 0 && dr > 0 ? Math.round(cv * dr / 100) : 0;
-                          const v = cv > 0 ? Math.round((cv + d) * 0.1) : 0;
-                          const cvDisplay = cvRaw > 0 ? it.customsValueStr : (cv > 0 ? String(cv) : '');
+                          const cvAuto = up > 0 && qty > 0 ? Math.round(up * qty) : 0;
+                          const cvDisplay = cvRaw > 0 ? it.customsValueStr : (cvAuto > 0 ? String(cvAuto) : '');
+                          const d = it.duty || 0;
+                          const v = it.vat || 0;
                           return (
                             <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
-                              <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center">{d > 0 ? d.toLocaleString() : '-'}</div>
-                              <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center">{v > 0 ? v.toLocaleString() : '-'}</div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center text-xs">{d > 0 ? d.toLocaleString() : '-'}</div>
+                              <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center text-xs">{v > 0 ? v.toLocaleString() : '-'}</div>
                               <div className="px-1 py-1.5 flex items-center">{canEdit && <button type="button" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}><X className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>}</div>
                             </div>
                           );
