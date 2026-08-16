@@ -726,14 +726,26 @@ function ImportModal({
                       <a href={linkedShipment.documents.find(d => d.docType === 'invoice')?.url} target="_blank" rel="noopener noreferrer" className="underline">보기</a>
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2"><label className={labelCls}>인보이스 금액</label><Input type="number" value={form.invoiceValue} onChange={e => setForm(f => ({ ...f, invoiceValue: e.target.value }))} placeholder="10000" disabled={!canEdit} /></div>
-                    <div><label className={labelCls}>통화</label>
-                      <select value={form.invoiceCurrency} onChange={e => setForm(f => ({ ...f, invoiceCurrency: e.target.value }))} className={inputCls} disabled={!canEdit}>
+                  {itemsHaveData ? (
+                    /* 품목 파싱된 경우: 합계 자동표시, 통화만 선택 */
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-9 rounded-md border border-input bg-muted px-3 text-sm flex items-center text-muted-foreground">
+                        품목 합계: <span className="ml-2 font-medium text-foreground">{totalItemCv.toLocaleString()}</span>
+                      </div>
+                      <select value={form.invoiceCurrency} onChange={e => setForm(f => ({ ...f, invoiceCurrency: e.target.value }))} className={cn(inputCls, 'w-24')} disabled={!canEdit}>
                         {['USD','CNY','EUR','JPY','KRW'].map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2"><label className={labelCls}>인보이스 금액</label><Input type="number" value={form.invoiceValue} onChange={e => setForm(f => ({ ...f, invoiceValue: e.target.value }))} placeholder="10000" disabled={!canEdit} /></div>
+                      <div><label className={labelCls}>통화</label>
+                        <select value={form.invoiceCurrency} onChange={e => setForm(f => ({ ...f, invoiceCurrency: e.target.value }))} className={inputCls} disabled={!canEdit}>
+                          {['USD','CNY','EUR','JPY','KRW'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 환율 */}
