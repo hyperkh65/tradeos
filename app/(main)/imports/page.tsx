@@ -125,7 +125,7 @@ function ImportModal({
   const [carriers, setCarriers] = useState<Company[]>([]);
   const [carrierMode, setCarrierMode] = useState<'select' | 'manual'>('select');
   const [linkedShipment, setLinkedShipment] = useState<Shipment | null>(null);
-  const [linkedPO, setLinkedPO] = useState<{ id: string; businessId: string; piFileUrl?: string; imagesJson?: string } | null>(null);
+  const [linkedPO, setLinkedPO] = useState<{ id: string; businessId: string; piFileUrl?: string; piStampedUrl?: string; imagesJson?: string; totalAmount?: number; currency?: string } | null>(null);
   const [shipmentLoading, setShipmentLoading] = useState(false);
 
   // 품목 테이블 state
@@ -250,11 +250,33 @@ function ImportModal({
             customsValueStr: '', dutyRateStr: '',
           })));
         }
-        // 연결된 PO 단일 조회 — 전체 목록 불러오지 않음
-        if (found.poIds?.[0]) {
-          const poRes = await fetch(`/api/purchase-orders?id=${encodeURIComponent(found.poIds[0])}&skipNotion=1`).then(r => r.json());
-          const po = poRes.data?.[0];
-          if (po) setLinkedPO({ id: po.id, businessId: po.businessId, piFileUrl: po.piFileUrl, imagesJson: po.imagesJson });
+        // 연결된 PO 조회: id → bizId 순으로 fallback
+        const poId = found.poIds?.[0];
+        const poBizId = found.cargoItems?.find(c => c.linkedPoBusinessId)?.linkedPoBusinessId;
+        let po: (typeof found & { piFileUrl?: string; piStampedUrl?: string; imagesJson?: string; totalAmount?: number; currency?: string }) | undefined;
+        if (poId) {
+          const r = await fetch(`/api/purchase-orders?id=${encodeURIComponent(poId)}&skipNotion=1`).then(r2 => r2.json());
+          po = r.data?.[0];
+        }
+        if (!po && poBizId) {
+          const r = await fetch(`/api/purchase-orders?bizId=${encodeURIComponent(poBizId)}&skipNotion=1`).then(r2 => r2.json());
+          po = r.data?.[0];
+        }
+        if (po) {
+          setLinkedPO({
+            id: po.id, businessId: po.businessId,
+            piFileUrl: po.piFileUrl, piStampedUrl: po.piStampedUrl,
+            imagesJson: po.imagesJson,
+            totalAmount: po.totalAmount, currency: po.currency,
+          });
+          // 인보이스 금액 자동 적용 (아직 미입력 + 품목 없는 경우)
+          if (po.totalAmount && !form.invoiceValue && items.length === 0) {
+            setForm(f => ({
+              ...f,
+              invoiceValue: String(po!.totalAmount),
+              invoiceCurrency: po!.currency || 'USD',
+            }));
+          }
         }
       }
     } finally { setShipmentLoading(false); }
@@ -1232,7 +1254,8 @@ function ImportModal({
                 {/* ── PO / PI 서류 ── */}
                 {linkedPO && (() => {
                   const imgs: string[] = (() => { try { return JSON.parse(linkedPO.imagesJson || '[]'); } catch { return []; } })();
-                  const allFiles: { url: string; name: string }[] = [
+                  const allFiles: { url: string; name: string; isStamped?: boolean }[] = [
+                    ...(linkedPO.piStampedUrl ? [{ url: linkedPO.piStampedUrl, name: 'PI (스탬프본)', isStamped: true }] : []),
                     ...(linkedPO.piFileUrl ? [{ url: linkedPO.piFileUrl, name: 'PI / Proforma Invoice' }] : []),
                     ...imgs.map((url, i) => ({ url, name: `발주서 첨부 ${i + 1}` })),
                   ];
@@ -1240,14 +1263,24 @@ function ImportModal({
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
                         <FileText className="w-3.5 h-3.5 text-orange-500" />
-                        <span>PO/PI 서류</span>
-                        <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{linkedPO.businessId}</span>
+                        <span>발주서 (PO) 연결 서류</span>
+                        <a href={`/purchase-orders`} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full hover:bg-orange-200">
+                          {linkedPO.businessId} →
+                        </a>
+                        {linkedPO.totalAmount && linkedPO.currency && (
+                          <span className="text-[10px] text-muted-foreground">
+                            발주금액: {linkedPO.totalAmount.toLocaleString()} {linkedPO.currency}
+                          </span>
+                        )}
                       </div>
                       {allFiles.length > 0 ? allFiles.map((f, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs">
-                          <FileText className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span className="flex-1 truncate text-orange-900 font-medium">{f.name}</span>
-                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-700 shrink-0">
+                        <div key={i} className={cn('flex items-center gap-2 px-3 py-2 border rounded-lg text-xs',
+                          f.isStamped ? 'bg-teal-50 border-teal-100' : 'bg-orange-50 border-orange-100')}>
+                          <FileText className={cn('w-3.5 h-3.5 shrink-0', f.isStamped ? 'text-teal-400' : 'text-orange-400')} />
+                          <span className={cn('flex-1 truncate font-medium', f.isStamped ? 'text-teal-900' : 'text-orange-900')}>{f.name}</span>
+                          <a href={f.url} target="_blank" rel="noopener noreferrer"
+                            className={cn('shrink-0', f.isStamped ? 'text-teal-500 hover:text-teal-700' : 'text-orange-500 hover:text-orange-700')}>
                             <Download className="w-3.5 h-3.5" />
                           </a>
                         </div>
@@ -1255,7 +1288,7 @@ function ImportModal({
                         <div className="px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs text-orange-700 flex items-center gap-2">
                           <Info className="w-3.5 h-3.5 shrink-0 text-orange-400" />
                           <span>PO에 첨부된 PI/서류 파일이 없습니다.</span>
-                          <a href={`/dashboard/purchase-orders`} target="_blank" rel="noopener noreferrer"
+                          <a href={`/purchase-orders`} target="_blank" rel="noopener noreferrer"
                             className="ml-auto text-orange-500 underline hover:text-orange-700 whitespace-nowrap">PO에서 추가 →</a>
                         </div>
                       )}

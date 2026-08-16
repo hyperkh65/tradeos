@@ -65,6 +65,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: row ? [dbToPO(row)] : [] });
   }
 
+  // bizId 조회
+  const bizId = url.searchParams.get('bizId');
+  if (bizId) {
+    const row = db.prepare('SELECT * FROM purchase_orders WHERE business_id=? LIMIT 1').get(bizId) as Record<string, unknown> | undefined;
+    return NextResponse.json({ data: row ? [dbToPO(row)] : [] });
+  }
+
   if (!skipNotion) {
     const ts = now();
     try {
