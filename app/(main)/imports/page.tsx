@@ -387,20 +387,21 @@ function ImportModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.shipmentBusinessId || !canEdit) return;
+    if (!form.shipmentBusinessId) { alert('선적 건을 선택해주세요.'); return; }
+    if (!canEdit) return;
     setSaving(true);
     try {
       const linkedShp = shipments.find(s => s.businessId === form.shipmentBusinessId);
       const body = {
         ...form,
         shipmentId: linkedShp?.id || form.shipmentId || '',
-        invoiceValue: form.invoiceValue ? Number(form.invoiceValue) : undefined,
+        invoiceValue: itemsHaveData ? totalItemCv : (form.invoiceValue ? Number(form.invoiceValue) : undefined),
         exchangeRate: form.exchangeRate ? Number(form.exchangeRate) : undefined,
         freightUsd: form.freightUsd ? Number(form.freightUsd) : undefined,
         freightExchangeRate: form.freightExchangeRate ? Number(form.freightExchangeRate) : undefined,
         freightKrw: form.freightKrw ? Number(form.freightKrw) : (freightKrwCalc || undefined),
         insuranceKrw: form.insuranceKrw ? Number(form.insuranceKrw) : undefined,
-        customsValue: itemsHaveData ? totalItemCv : (customsValueCalc || undefined),
+        customsValue: customsValueCalc || undefined,  // 항상 KRW CIF 값
         dutyRate: form.dutyRate ? Number(form.dutyRate) : undefined,
         duty: form.duty ? Number(form.duty) : (dutyCalc || undefined),
         vat: form.vat ? Number(form.vat) : (vatCalc || undefined),
@@ -417,15 +418,22 @@ function ImportModal({
         refundAmount: form.refundAmount ? Number(form.refundAmount) : undefined,
         refundStatus: form.refundStatus,
         blNo: form.blNo || undefined,
-        items: itemsWithCalc.map(({ customsValueStr: _cv, dutyRateStr: _dr, ...rest }) => rest),
+        items: itemsWithCalc.map(it => ({
+          id: it.id, productName: it.productName, hsCode: it.hsCode,
+          qty: it.qty, unitPrice: it.unitPrice,
+          customsValue: it.customsValue, customsValueKrw: it.customsValueKrw,
+          dutyRate: it.dutyRate, duty: it.duty, vat: it.vat,
+        })),
         customCosts: customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).map(c => ({ name: c.name, amount: parseFloat(c.amount) })),
         settlementItems,
       };
       let savedId = item?.id || null;
       if (item) {
-        await fetch(`/api/imports/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch(`/api/imports/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || `저장 실패 (${res.status})`); }
       } else {
         const res = await fetch('/api/imports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || `등록 실패 (${res.status})`); }
         const d = await res.json();
         savedId = d.data?.id || null;
       }
@@ -434,6 +442,8 @@ function ImportModal({
         if (pendingFiles.length > 0) { await uploadDocs(savedId, pendingFiles); setPendingFiles([]); }
       }
       onSave();
+    } catch (err) {
+      alert(`저장 오류: ${err instanceof Error ? err.message : String(err)}`);
     } finally { setSaving(false); }
   };
 
@@ -778,16 +788,10 @@ function ImportModal({
                                 const fd = new FormData(); fd.append('file', file); fd.append('mode', 'sheets');
                                 const res = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd });
                                 const d = await res.json();
-                                if (d.sheets?.length > 1) {
-                                  // 여러 시트 → 모달에서 선택 (파일은 ref에 보관)
+                                if (d.sheets?.length > 0) {
+                                  // 시트 수 관계없이 항상 모달에서 선택
                                   pendingExcelFileRef.current = file;
                                   setSheetModal({ shipmentId: '', filename: '__upload__', docName: file.name, sheets: d.sheets });
-                                } else {
-                                  // 시트 1개 → 바로 파싱
-                                  const fd2 = new FormData(); fd2.append('file', file);
-                                  if (d.sheets?.[0]) fd2.append('sheet', d.sheets[0]);
-                                  const res2 = await fetch('/api/imports/parse-items-temp', { method: 'POST', body: fd2 });
-                                  applyParsedItems(await res2.json());
                                 }
                               } catch (ex) { setParseMsg(`파싱 실패: ${ex}`); }
                               finally { setParseLoading(false); setTimeout(() => setParseMsg(null), 6000); }
