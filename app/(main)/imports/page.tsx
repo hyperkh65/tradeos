@@ -203,6 +203,9 @@ function ImportModal({
   });
 
   // 관세사 + 운송업체 로드
+  // sheetModal이 열리면 무조건 세금계산 탭으로 이동
+  useEffect(() => { if (sheetModal) setTab('tax'); }, [sheetModal]);
+
   useEffect(() => {
     fetch('/api/companies?type=관세사').then(r => r.json()).then(d => {
       if (d.data?.length) {
@@ -462,14 +465,16 @@ function ImportModal({
   };
 
   // 파싱 결과를 품목 테이블에 적용 (공통)
-  const applyParsedItems = (d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number }[]; message?: string; count?: number }) => {
+  const applyParsedItems = (d: { data?: { productName: string; hsCode?: string; dutyRate?: number; customsValue?: number; qty?: number; unitPrice?: number }[]; message?: string; count?: number }) => {
     if (d.data?.length) {
       setItems(prev => {
         const parsed = d.data!.map(it => ({
           id: `parsed-${Date.now()}-${Math.random()}`,
           productName: it.productName, hsCode: it.hsCode,
           dutyRate: it.dutyRate, customsValue: it.customsValue,
-          duty: undefined, vat: undefined, qty: it.qty,
+          duty: undefined, vat: undefined,
+          qty: it.qty, qtyStr: it.qty?.toString() || '',
+          unitPrice: it.unitPrice, unitPriceStr: it.unitPrice?.toString() || '',
           customsValueStr: it.customsValue?.toString() || '',
           dutyRateStr: it.dutyRate?.toString() || '',
         }));
@@ -818,20 +823,27 @@ function ImportModal({
 
                   {items.length > 0 && (
                     <div className="rounded-lg border border-border overflow-hidden text-xs">
-                      <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '2fr 1.2fr 0.8fr 1.2fr 1fr 1fr auto' }}>
-                        {['품목명', 'HS코드', '관세율%', '과세가격(원)', '관세(자동)', '부가세(자동)', ''].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                      <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
+                        {['품목명', 'HS코드', '수량', '단가', '관세율%', '과세가격(원)', '관세(자동)', '부가세(자동)', ''].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
                       </div>
                       {items.map((it, idx) => {
-                        const cv = parseFloat(it.customsValueStr || '0');
+                        const qty = parseFloat(it.qtyStr || '0');
+                        const up = parseFloat(it.unitPriceStr || '0');
+                        // 과세가격: 직접 입력값 우선, 없으면 단가×수량
+                        const cvRaw = parseFloat(it.customsValueStr || '0');
+                        const cv = cvRaw > 0 ? cvRaw : (up > 0 && qty > 0 ? Math.round(up * qty) : 0);
                         const dr = parseFloat(it.dutyRateStr || '0');
                         const d = cv > 0 && dr > 0 ? Math.round(cv * dr / 100) : 0;
                         const v = cv > 0 ? Math.round((cv + d) * 0.1) : 0;
+                        const cvDisplay = cvRaw > 0 ? it.customsValueStr : (cv > 0 ? String(cv) : '');
                         return (
-                          <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '2fr 1.2fr 0.8fr 1.2fr 1fr 1fr auto' }}>
+                          <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
                             <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
                             <div className="px-2 py-1.5"><input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
+                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
                             <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
-                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.customsValueStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                            <div className="px-2 py-1.5"><input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
                             <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center">{d > 0 ? d.toLocaleString() : '-'}</div>
                             <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center">{v > 0 ? v.toLocaleString() : '-'}</div>
                             <div className="px-2 py-1.5 flex items-center">{canEdit && <button type="button" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}><X className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>}</div>
@@ -839,8 +851,8 @@ function ImportModal({
                         );
                       })}
                       {items.length > 1 && (
-                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold" style={{ gridTemplateColumns: '2fr 1.2fr 0.8fr 1.2fr 1fr 1fr auto' }}>
-                          <div className="px-2 py-2 col-span-3 text-muted-foreground">합계</div>
+                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 0.7fr 0.7fr 1.1fr 0.9fr 0.9fr auto' }}>
+                          <div className="px-2 py-2 col-span-5 text-muted-foreground">합계</div>
                           <div className="px-2 py-2 text-blue-700">{totalItemCv > 0 ? totalItemCv.toLocaleString() : '-'}</div>
                           <div className="px-2 py-2 text-orange-700">{totalItemDuty > 0 ? totalItemDuty.toLocaleString() : '-'}</div>
                           <div className="px-2 py-2 text-purple-700">{totalItemVat > 0 ? totalItemVat.toLocaleString() : '-'}</div>

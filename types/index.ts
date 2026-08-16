@@ -282,6 +282,9 @@ export interface ImportItem {
   duty?: number;
   vat?: number;
   qty?: number;
+  unitPrice?: number;
+  unitPriceStr?: string;
+  qtyStr?: string;
 }
 
 export type ImportDocType = 'clearance_cert' | 'tax_bill' | 'co' | 'inspection' | 'freight_invoice' | 'warehouse_bill' | 'broker_invoice' | 'other';

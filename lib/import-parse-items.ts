@@ -4,6 +4,7 @@ interface ParsedItem {
   dutyRate?: number;
   customsValue?: number;
   qty?: number;
+  unitPrice?: number;
 }
 
 function detectColumns(headerRow: (string | number | null | undefined)[]): Record<string, number> {
@@ -72,6 +73,7 @@ async function parseCSV(buf: Buffer): Promise<ParsedItem[]> {
       productName: name,
       hsCode: cols.hsCode !== undefined ? coerceStr(row[cols.hsCode]) || undefined : undefined,
       qty,
+      unitPrice: up,
       customsValue: finalCv,
       dutyRate: cols.dutyRate !== undefined ? coerceNum(row[cols.dutyRate]) : undefined,
     });
@@ -120,6 +122,7 @@ async function parseExcel(buf: Buffer, sheetName?: string): Promise<ParsedItem[]
       productName: name,
       hsCode: cols.hsCode !== undefined ? coerceStr(row[cols.hsCode]) || undefined : undefined,
       qty,
+      unitPrice: up,
       customsValue: finalCv,
       dutyRate: cols.dutyRate !== undefined ? coerceNum(row[cols.dutyRate]) : undefined,
     });
