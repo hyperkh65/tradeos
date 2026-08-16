@@ -12,13 +12,13 @@ function detectColumns(headerRow: (string | number | null | undefined)[]): Recor
   const PATTERNS: Record<string, RegExp[]> = {
     productName: [/品名|品目|商品名|제품명|품명|상품명|product\s*name|item\s*name|description\s*of\s*goods|description|commodity|goods|material|货物/i],
     hsCode:      [/HS\s*code|HS\s*no|H\.S\.|关税号|税则号|세번|tariff\s*code/i],
-    qty:         [/数量|qty|quantity|件数|수량|pcs|pieces|개수|no\.\s*of\s*pcs|total\s*pcs/i],
+    qty:         [/数量|q.{0,2}ty|quantity|件数|수량|^pcs$|pieces|개수|no\.\s*of\s*pcs|total\s*pcs/i],
     unitPrice:   [/单价|unit\s*price|unit\s*value|단가|price\s*per|u\/p/i],
     customsValue:[/过税价|课税价|과세가격|customs.*value|taxable|invoice.*amount|total\s*amount|total\s*value|amount|金額|금액|合计|小计/i],
     dutyRate:    [/关税率|duty.*rate|세율|tariff\s*rate/i],
   };
   headerRow.forEach((cell, i) => {
-    const s = String(cell ?? '').trim();
+    const s = String(unwrapCell(cell) ?? '').trim();
     if (!s) return;
     for (const [field, pats] of Object.entries(PATTERNS)) {
       if (map[field] !== undefined) continue;
@@ -28,15 +28,31 @@ function detectColumns(headerRow: (string | number | null | undefined)[]): Recor
   return map;
 }
 
+// exceljs formula cell: { formula: "...", result: 62425 }
+// exceljs richText cell: { richText: [{text: "..."}, ...] }
+function unwrapCell(v: unknown): unknown {
+  if (v == null) return v;
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if ('result' in o) return o.result;
+    if ('richText' in o) {
+      return (o.richText as Array<{text?: string}>).map(t => t.text || '').join('');
+    }
+  }
+  return v;
+}
+
 function coerceNum(v: unknown): number | undefined {
+  v = unwrapCell(v);
   if (v == null || v === '') return undefined;
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return isNaN(v) ? undefined : v;
   // 통화기호($,€,¥,₩,CNY,USD 등) 및 공백 제거 후 파싱
   const n = parseFloat(String(v).replace(/[$€¥₩,\s]|USD|CNY|EUR|KRW/gi, ''));
   return isNaN(n) ? undefined : n;
 }
 
 function coerceStr(v: unknown): string {
+  v = unwrapCell(v);
   return String(v ?? '').trim();
 }
 
