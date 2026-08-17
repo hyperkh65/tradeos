@@ -638,17 +638,26 @@ function CostModal({ record, onClose, onSave }: {
         setExistingCostTypes(existTypes);
 
         // 통관 데이터에 있지만 비용 레코드가 없는 항목 감지
-        const toCheck: Array<[string, number | undefined]> = [
+        const impAny = imp as unknown as Record<string, unknown>;
+        const customCosts: { name: string; amount: number }[] = (() => {
+          try { return (impAny.customCosts as { name: string; amount: number }[]) || []; } catch { return []; }
+        })();
+        const toCheck: Array<[string, number | undefined, string?]> = [
           ['duty', imp.duty],
           ['vat', imp.vat],
           ['customs_broker', imp.brokerFee],
           ['inspection', imp.inspectionFee],
           ['inland_freight', imp.inlandFreight],
           ['demurrage', imp.demurrage],
-          ['detention', (imp as unknown as Record<string, unknown>).detentionFee as number | undefined],
+          ['detention', impAny.detentionFee as number | undefined],
           ['warehouse', imp.warehouseFee],
-          ['ocean_freight', imp.freightKrw || (imp.freightUsd ? imp.freightUsd * (imp.freightExchangeRate || 1) : undefined)],
+          ['ocean_freight', imp.freightKrw || (imp.freightUsd ? imp.freightUsd * ((impAny.freightExchangeRate as number) || 1) : undefined)],
         ];
+        // 기타비용(customCosts) 합계 추가
+        const customCostsTotal = customCosts.reduce((s, c) => s + (c.amount || 0), 0);
+        if (customCostsTotal > 0 && !existTypes.includes('other')) {
+          toCheck.push(['other', customCostsTotal, '기타비용']);
+        }
         const missing = toCheck
           .filter(([type, amount]) => amount && amount > 0 && !existTypes.includes(type))
           .map(([type]) => type);
@@ -667,47 +676,73 @@ function CostModal({ record, onClose, onSave }: {
   const handleAutoGenerate = async () => {
     if (!linkedImport) return;
     setAutoGenerating(true);
-    const costTypeMap: Array<{ type: string; amount: number | undefined; currency: string }> = [
-      { type: 'duty', amount: linkedImport.duty, currency: 'KRW' },
-      { type: 'vat', amount: linkedImport.vat, currency: 'KRW' },
-      { type: 'customs_broker', amount: linkedImport.brokerFee, currency: 'KRW' },
-      { type: 'inspection', amount: linkedImport.inspectionFee, currency: 'KRW' },
+    const impAny = linkedImport as unknown as Record<string, unknown>;
+    const customCosts: { name: string; amount: number }[] = (() => {
+      try { return (impAny.customCosts as { name: string; amount: number }[]) || []; } catch { return []; }
+    })();
+
+    const costTypeMap: Array<{ type: string; amount: number | undefined; currency: string; description?: string }> = [
+      { type: 'duty',          amount: linkedImport.duty,          currency: 'KRW' },
+      { type: 'vat',           amount: linkedImport.vat,           currency: 'KRW' },
+      { type: 'customs_broker', amount: linkedImport.brokerFee,    currency: 'KRW' },
+      { type: 'inspection',    amount: linkedImport.inspectionFee, currency: 'KRW' },
       { type: 'inland_freight', amount: linkedImport.inlandFreight, currency: 'KRW' },
-      { type: 'demurrage', amount: linkedImport.demurrage, currency: 'KRW' },
-      { type: 'warehouse', amount: linkedImport.warehouseFee, currency: 'KRW' },
-      { type: 'ocean_freight', amount: linkedImport.freightKrw || (linkedImport.freightUsd ? linkedImport.freightUsd * (linkedImport.freightExchangeRate || 1) : undefined), currency: 'KRW' },
+      { type: 'demurrage',     amount: linkedImport.demurrage,     currency: 'KRW' },
+      { type: 'detention',     amount: impAny.detentionFee as number | undefined, currency: 'KRW' },
+      { type: 'warehouse',     amount: linkedImport.warehouseFee,  currency: 'KRW' },
+      { type: 'ocean_freight', amount: linkedImport.freightKrw || (linkedImport.freightUsd ? linkedImport.freightUsd * ((impAny.freightExchangeRate as number) || 1) : undefined), currency: 'KRW' },
     ];
 
     const toCreate = costTypeMap.filter(
       c => c.amount && c.amount > 0 && !existingCostTypes.includes(c.type) && missingCostTypes.includes(c.type)
     );
 
+    const baseBody = {
+      disposition: 'internal',
+      importId: linkedImport.id,
+      importBusinessId: linkedImport.businessId,
+      shipmentId: form.shipmentId || undefined,
+      shipmentBusinessId: form.shipmentBusinessId || undefined,
+      incurredDate: (linkedImport as unknown as Record<string, unknown>).declarationDate as string || (linkedImport as unknown as Record<string, unknown>).arrivalDate as string || new Date().toISOString().slice(0, 10),
+      isAutoAllocated: true,
+    };
+
     for (const cost of toCreate) {
       await fetch('/api/cost-records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...baseBody,
           costType: cost.type,
           description: COST_TYPE_LABELS[cost.type],
           costAmount: cost.amount,
           costCurrency: cost.currency,
-          disposition: 'internal',
-          importId: linkedImport.id,
-          importBusinessId: linkedImport.businessId,
-          shipmentId: form.shipmentId || undefined,
-          shipmentBusinessId: form.shipmentBusinessId || undefined,
-          incurredDate: linkedImport.declarationDate || linkedImport.arrivalDate || new Date().toISOString().slice(0, 10),
-          clientName: linkedImport.brokerName || undefined,
-          isAutoAllocated: true,
+          clientName: (cost.type === 'customs_broker' || cost.type === 'inspection') ? ((linkedImport as unknown as Record<string, unknown>).brokerName as string || undefined) : undefined,
         }),
       });
+    }
+
+    // 기타비용(customCosts) 각각 생성
+    if (missingCostTypes.includes('other') && customCosts.length > 0 && !existingCostTypes.includes('other')) {
+      for (const cc of customCosts.filter(c => c.name && c.amount > 0)) {
+        await fetch('/api/cost-records', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...baseBody,
+            costType: 'other',
+            description: cc.name,
+            costAmount: cc.amount,
+            costCurrency: 'KRW',
+          }),
+        });
+      }
     }
 
     setAutoGenerating(false);
     setAutoGenerated(true);
     setMissingCostTypes([]);
     setExistingCostTypes(prev => [...prev, ...toCreate.map(c => c.type)]);
-    // 부모 목록 갱신
     setTimeout(onSave, 100);
   };
 
