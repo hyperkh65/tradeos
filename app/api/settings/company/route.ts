@@ -30,13 +30,22 @@ function ensureTable(db: ReturnType<typeof getDb>) {
   )`);
 }
 
+// 빈 문자열로 기본값을 덮어쓰지 않아야 할 필드 (설정에서 비워도 기본값 유지)
+const PRESERVE_DEFAULT_FIELDS = ['bank', 'bankForeign1', 'bankForeign2', 'logoUrl', 'stampUrl'];
+
 export async function GET() {
   try {
     const db = getDb();
     ensureTable(db);
     const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('company') as { value: string } | undefined;
     const saved = row ? JSON.parse(row.value) : {};
-    return NextResponse.json({ data: { ...DEFAULT_COMPANY, ...saved } });
+    // 빈 문자열로 기본값 덮어쓰기 방지
+    const filteredSaved = Object.fromEntries(
+      Object.entries(saved).filter(([key, v]) =>
+        PRESERVE_DEFAULT_FIELDS.includes(key) ? (v !== '' && v !== null && v !== undefined) : true
+      )
+    );
+    return NextResponse.json({ data: { ...DEFAULT_COMPANY, ...filteredSaved } });
   } catch {
     return NextResponse.json({ data: DEFAULT_COMPANY });
   }
