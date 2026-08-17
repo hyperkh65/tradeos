@@ -455,6 +455,7 @@ function ImportModal({
         settlementItems,
       };
       const safeErr = async (res: Response, label: string) => {
+        if (res.status === 401) { window.location.href = '/login'; throw new Error('세션 만료'); }
         const text = await res.text();
         let msg = `${label} (${res.status})`;
         try { const j = JSON.parse(text); msg = j.error || msg; } catch { if (text) msg = text.slice(0, 120); }
