@@ -4,168 +4,240 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { CostRecord, CostLineItem } from '@/app/api/cost-records/route';
 
-const COST_TYPE_LABELS: Record<string, string> = {
-  certification: '인증비', as_service: 'A/S 현장 비용',
+const TYPE_TITLES: Record<string, { ko: string; en: string }> = {
+  certification: { ko: '인증비 청구서', en: 'CERTIFICATION INVOICE' },
+  as_service:    { ko: 'A/S 현장 비용 청구서', en: 'FIELD SERVICE INVOICE' },
+  labor:         { ko: '인건비 청구서', en: 'LABOR COST INVOICE' },
+  other:         { ko: '비용 청구서', en: 'COST INVOICE' },
 };
+
+interface CompanySettings {
+  name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
+  address: string; tel: string; fax: string; email: string;
+  bank: string; bankForeign1: string; bankForeign2: string;
+  logoUrl: string; stampUrl: string;
+}
+
+function fmt(n: number, cur: string) {
+  if (cur === 'KRW') return n.toLocaleString('ko-KR');
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function CertPrintContent() {
   const params = useSearchParams();
   const id = params.get('id');
   const [record, setRecord] = useState<CostRecord | null>(null);
+  const [company, setCompany] = useState<CompanySettings | null>(null);
+  const [writer, setWriter] = useState<{ name: string; department?: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
-    fetch(`/api/cost-records/${id}`)
-      .then(r => r.json())
-      .then(d => { if (d.data) setRecord(d.data); })
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch(`/api/cost-records/${id}`).then(r => r.json()),
+      fetch('/api/settings/company').then(r => r.json()),
+      fetch('/api/auth/me').then(r => r.json()),
+    ]).then(([rec, co, me]) => {
+      if (rec.data) setRecord(rec.data);
+      if (co.data) setCompany(co.data);
+      if (me.user) setWriter(me.user);
+    }).finally(() => setLoading(false));
   }, [id]);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>로딩 중...</div>;
   if (!record) return <div style={{ padding: 40, textAlign: 'center' }}>항목을 찾을 수 없습니다.</div>;
 
   const items: CostLineItem[] = record.lineItems || [];
+  const cur = record.billCurrency || record.costCurrency || 'KRW';
+  const isForeign = cur !== 'KRW';
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const vatItems = items.filter(i => i.vatIncluded);
-  const vatTotal = vatItems.reduce((s, i) => s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100, 0);
+  const vatAmount = items.reduce((s, i) => {
+    if (!i.vatIncluded) return s;
+    return s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100;
+  }, 0);
   const grandTotal = subtotal;
 
-  const typeLabel = COST_TYPE_LABELS[record.costType] || record.costType;
+  const title = TYPE_TITLES[record.costType] || TYPE_TITLES.other;
   const issuedDate = new Date().toLocaleDateString('ko-KR');
+  const bankInfo = isForeign ? (company?.bankForeign1 || company?.bank || '') : (company?.bank || '');
+
+  const sym = { KRW: '₩', USD: '$', CNY: '¥', EUR: '€', JPY: '¥' }[cur] || cur;
 
   return (
     <div>
       <style>{`
-        @media print { .no-print { display: none !important; } body { -webkit-print-color-adjust: exact; } }
-        * { box-sizing: border-box; }
-        body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif; margin: 0; color: #1a1a1a; }
+        @media print {
+          .no-print { display: none !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { margin: 15mm 15mm 15mm 15mm; }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif; color: #1a1a1a; background: white; }
         table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #bbb; padding: 6px 10px; font-size: 12px; vertical-align: middle; }
-        th { background: #f0f4f8; font-weight: 600; text-align: center; white-space: nowrap; }
-        .num { text-align: right; }
+        th, td { border: 1px solid #c8cdd5; padding: 6px 10px; font-size: 11.5px; vertical-align: middle; }
+        th { background: #f0f4f8; font-weight: 600; white-space: nowrap; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
         .center { text-align: center; }
-        .total-row { background: #eef2ff !important; font-weight: 700; }
-        .btn { position: fixed; top: 18px; right: 18px; background: #1e3a5f; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
-        .page { padding: 32px 44px; max-width: 860px; margin: 0 auto; }
-        h1 { font-size: 22px; font-weight: 700; letter-spacing: 4px; text-align: center; margin-bottom: 4px; }
-        .sub-title { text-align: center; font-size: 11px; color: #888; margin-bottom: 20px; }
-        .info-table td:first-child { background: #f5f7fa; font-weight: 600; width: 100px; text-align: center; }
-        .stamp-area { border: 2px solid #333; width: 70px; height: 70px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #aaa; }
+        .total-row td { background: #e8f0fe !important; font-weight: 700; font-size: 13px; }
+        .print-btn { position: fixed; top: 18px; right: 18px; background: #1e3a5f; color: white; border: none; padding: 10px 22px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
       `}</style>
 
-      <button className="btn no-print" onClick={() => window.print()}>🖨 인쇄 / PDF</button>
+      <button className="no-print print-btn" onClick={() => window.print()}>🖨 인쇄 / PDF</button>
 
-      <div className="page">
-        {/* 헤더 */}
-        <h1>{typeLabel === '인증비' ? 'CERTIFICATION INVOICE' : 'A/S SERVICE INVOICE'}</h1>
-        <div className="sub-title">{typeLabel} 청구서</div>
-
-        {/* 기본 정보 */}
-        <table className="info-table" style={{ marginBottom: 16 }}>
-          <tbody>
-            <tr>
-              <td>문서번호</td><td>{record.businessId}</td>
-              <td style={{ background: '#f5f7fa', fontWeight: 600, textAlign: 'center', width: 100 }}>발행일</td><td>{issuedDate}</td>
-            </tr>
-            <tr>
-              <td>제목 / 내용</td><td colSpan={3}>{record.description || typeLabel}</td>
-            </tr>
-            <tr>
-              <td>청구 대상</td><td>{record.clientName || '-'}</td>
-              <td style={{ background: '#f5f7fa', fontWeight: 600, textAlign: 'center' }}>발생일</td><td>{record.incurredDate || '-'}</td>
-            </tr>
-            <tr>
-              <td>통관 연결</td><td>{record.importBusinessId || '-'}</td>
-              <td style={{ background: '#f5f7fa', fontWeight: 600, textAlign: 'center' }}>선적 연결</td><td>{record.shipmentBusinessId || '-'}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* 비용 내역 */}
-        <table style={{ marginBottom: 4 }}>
-          <thead>
-            <tr>
-              <th style={{ width: 32 }}>No.</th>
-              <th>내역 (Description)</th>
-              <th style={{ width: 60 }}>수량</th>
-              <th style={{ width: 50 }}>단위</th>
-              <th style={{ width: 110 }}>단가 (원)</th>
-              <th style={{ width: 50 }}>VAT</th>
-              <th style={{ width: 120 }}>금액 (원)</th>
-              <th>비고</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length > 0 ? items.map((item, i) => (
-              <tr key={i}>
-                <td className="center">{i + 1}</td>
-                <td>{item.description}</td>
-                <td className="num">{(item.qty || 1).toLocaleString()}</td>
-                <td className="center">{item.unit || 'EA'}</td>
-                <td className="num">{(item.unitPrice || 0).toLocaleString()}</td>
-                <td className="center">{item.vatIncluded ? '✓' : '-'}</td>
-                <td className="num" style={{ fontWeight: 600 }}>{(item.amount || 0).toLocaleString()}</td>
-                <td style={{ fontSize: 11, color: '#666' }}>{item.note || ''}</td>
-              </tr>
-            )) : (
-              <tr><td colSpan={8} className="center" style={{ color: '#aaa' }}>내역 없음</td></tr>
+      <div style={{ padding: '0 0 40px' }}>
+        {/* ── 헤더 배너 ── */}
+        <div style={{ background: '#1e3a5f', color: 'white', padding: '18px 36px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {company?.logoUrl && (
+              <img src={company.logoUrl} alt="logo" style={{ height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
             )}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: '#f9f9f9' }}>
-              <td colSpan={6} className="num" style={{ fontSize: 11, color: '#666' }}>소 계 (Subtotal)</td>
-              <td className="num" style={{ fontWeight: 600 }}>{subtotal.toLocaleString()}</td>
-              <td></td>
-            </tr>
-            {vatTotal > 0 && (
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 2 }}>{title.en}</div>
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>{title.ko}</div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{record.businessId}</div>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>발행일: {issuedDate}</div>
+            <div style={{ fontSize: 11, opacity: 0.8 }}>통화: {cur}</div>
+          </div>
+        </div>
+
+        <div style={{ padding: '20px 36px', display: 'flex', gap: 20 }}>
+          {/* 발행 회사 */}
+          <div style={{ flex: 1, border: '1px solid #dde3ed', borderRadius: 6, padding: '12px 16px' }}>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 8, fontWeight: 700 }}>발행자 (From)</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{company?.name || ''}</div>
+            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7 }}>
+              {company?.address && <div>{company.address}</div>}
+              {company?.tel && <div>TEL: {company.tel}{company.fax ? `  FAX: ${company.fax}` : ''}</div>}
+              {company?.email && <div>E: {company.email}</div>}
+              {company?.bizNo && <div>사업자번호: {company.bizNo}</div>}
+            </div>
+          </div>
+
+          {/* 청구 대상 */}
+          <div style={{ flex: 1, border: '1px solid #dde3ed', borderRadius: 6, padding: '12px 16px' }}>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 8, fontWeight: 700 }}>청구 대상 (Bill To)</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{record.clientName || '—'}</div>
+            {record.importBusinessId && <div style={{ fontSize: 11, color: '#555' }}>통관: {record.importBusinessId}</div>}
+            {record.shipmentBusinessId && <div style={{ fontSize: 11, color: '#555' }}>선적: {record.shipmentBusinessId}</div>}
+          </div>
+
+          {/* 청구 요약 */}
+          <div style={{ minWidth: 180, border: '2px solid #1e3a5f', borderRadius: 6, padding: '12px 16px', background: '#f7f9fc' }}>
+            <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#1e3a5f', marginBottom: 8, fontWeight: 700 }}>청구 금액</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#1e3a5f' }}>{sym} {fmt(grandTotal, cur)}</div>
+            {vatAmount > 0 && <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>VAT: {sym} {fmt(vatAmount, cur)}</div>}
+            {record.incurredDate && <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>발생일: {record.incurredDate}</div>}
+          </div>
+        </div>
+
+        {/* ── 제목 ── */}
+        <div style={{ padding: '0 36px', marginBottom: 12 }}>
+          {record.description && (
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1e3a5f', borderLeft: '3px solid #1e3a5f', paddingLeft: 10 }}>
+              {record.description}
+            </div>
+          )}
+        </div>
+
+        {/* ── 내역 테이블 ── */}
+        <div style={{ padding: '0 36px', marginBottom: 16 }}>
+          <table>
+            <thead>
               <tr>
-                <td colSpan={6} className="num" style={{ fontSize: 11, color: '#666' }}>부가세 (VAT 10%)</td>
-                <td className="num">{Math.round(vatTotal).toLocaleString()}</td>
+                <th className="center" style={{ width: 34 }}>No.</th>
+                <th>내역 (Description)</th>
+                <th className="num" style={{ width: 55 }}>수량</th>
+                <th className="center" style={{ width: 48 }}>단위</th>
+                <th className="num" style={{ width: 110 }}>단가 ({cur})</th>
+                <th className="center" style={{ width: 44 }}>VAT</th>
+                <th className="num" style={{ width: 120 }}>금액 ({cur})</th>
+                <th style={{ width: 90 }}>비고</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length > 0 ? items.map((item, i) => (
+                <tr key={i}>
+                  <td className="center">{i + 1}</td>
+                  <td style={{ fontWeight: 500 }}>{item.description}</td>
+                  <td className="num">{(item.qty || 1).toLocaleString()}</td>
+                  <td className="center">{item.unit || '건'}</td>
+                  <td className="num">{fmt(item.unitPrice || 0, cur)}</td>
+                  <td className="center">{item.vatIncluded ? '✓' : '—'}</td>
+                  <td className="num" style={{ fontWeight: 600 }}>{fmt(item.amount || 0, cur)}</td>
+                  <td style={{ fontSize: 10.5, color: '#666' }}>{item.note || ''}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={8} className="center" style={{ color: '#aaa', padding: 20 }}>내역 없음</td></tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5f7fa' }}>
+                <td colSpan={6} className="num" style={{ fontWeight: 600, color: '#555' }}>소 계 (Subtotal)</td>
+                <td className="num" style={{ fontWeight: 700 }}>{fmt(subtotal, cur)}</td>
                 <td></td>
               </tr>
-            )}
-            <tr className="total-row">
-              <td colSpan={6} className="num" style={{ fontSize: 13 }}>합 계 (Total)</td>
-              <td className="num" style={{ fontSize: 14 }}>₩ {grandTotal.toLocaleString()}</td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
+              {vatAmount > 0 && (
+                <tr style={{ background: '#fefaf5' }}>
+                  <td colSpan={6} className="num" style={{ color: '#666' }}>부가세 (VAT 10%)</td>
+                  <td className="num">{fmt(Math.round(vatAmount), cur)}</td>
+                  <td></td>
+                </tr>
+              )}
+              <tr className="total-row">
+                <td colSpan={6} className="num" style={{ fontSize: 13 }}>합 계 (Total)</td>
+                <td className="num" style={{ fontSize: 14 }}>{sym} {fmt(grandTotal, cur)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
 
-        {/* 비고 */}
-        {record.remark && (
-          <div style={{ border: '1px solid #ddd', borderRadius: 4, padding: '8px 12px', fontSize: 11, color: '#555', marginBottom: 24, marginTop: 8 }}>
-            <strong>비고:</strong> {record.remark}
+        {/* ── 비고 + 계좌 ── */}
+        <div style={{ padding: '0 36px', display: 'flex', gap: 16, marginBottom: 20 }}>
+          {record.remark && (
+            <div style={{ flex: 1, border: '1px solid #e0e6ef', borderRadius: 5, padding: '10px 14px', fontSize: 11.5, color: '#555' }}>
+              <strong>비고:</strong> {record.remark}
+            </div>
+          )}
+          {bankInfo && (
+            <div style={{ minWidth: 260, border: '1px solid #c8d8f0', borderRadius: 5, padding: '10px 14px', background: '#f5f9ff' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#1e3a5f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+                {isForeign ? 'Bank Account (Foreign)' : '입금 계좌 정보'}
+              </div>
+              <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', color: '#333', fontFamily: 'inherit', lineHeight: 1.6 }}>{bankInfo}</pre>
+            </div>
+          )}
+        </div>
+
+        {/* ── 결재란 (compact) ── */}
+        <div style={{ padding: '0 36px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, width: 'fit-content' }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: '#555', marginRight: 12, paddingTop: 8 }}>결재:</div>
+            {/* 작성자 */}
+            <div style={{ border: '1px solid #aaa', textAlign: 'center', width: 76, padding: '6px 4px' }}>
+              <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>작성자</div>
+              <div style={{ fontSize: 11, fontWeight: 600, minHeight: 24, paddingTop: 4 }}>{writer?.name || ''}</div>
+              {writer?.department && <div style={{ fontSize: 9, color: '#999', marginTop: 2 }}>{writer.department}</div>}
+            </div>
+            {/* 검토자 */}
+            <div style={{ border: '1px solid #aaa', borderLeft: 'none', textAlign: 'center', width: 76, padding: '6px 4px' }}>
+              <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>검토자</div>
+              <div style={{ minHeight: 24 }}></div>
+            </div>
+            {/* 승인자 */}
+            <div style={{ border: '1px solid #aaa', borderLeft: 'none', textAlign: 'center', width: 76, padding: '6px 4px' }}>
+              <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>승인자</div>
+              <div style={{ minHeight: 24 }}></div>
+              <div style={{ fontSize: 8, color: '#bbb', marginTop: 2 }}>전자결재</div>
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* 서명란 */}
-        <table style={{ marginTop: 28 }}>
-          <tbody>
-            <tr>
-              <th style={{ width: '20%', textAlign: 'center' }}>작성자</th>
-              <td style={{ width: '30%', height: 60, textAlign: 'center' }}>
-                <div className="stamp-area">서명</div>
-              </td>
-              <th style={{ width: '20%', textAlign: 'center' }}>수신 확인</th>
-              <td style={{ width: '30%', height: 60, textAlign: 'center' }}>
-                <div className="stamp-area">서명</div>
-              </td>
-            </tr>
-            <tr>
-              <th style={{ textAlign: 'center' }}>승인자</th>
-              <td style={{ height: 60, textAlign: 'center' }}>
-                <div className="stamp-area">서명</div>
-              </td>
-              <th style={{ textAlign: 'center' }}>결재일</th>
-              <td style={{ height: 60 }}></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style={{ marginTop: 28, textAlign: 'center', fontSize: 10, color: '#aaa' }}>
-          본 문서는 {typeLabel} 관련 청구서로 전자 발행되었습니다. · {issuedDate} 발행
+        <div style={{ padding: '16px 36px 0', fontSize: 10, color: '#bbb', textAlign: 'right' }}>
+          본 문서는 전자 발행된 청구서입니다 · {company?.name || ''} · {issuedDate}
         </div>
       </div>
     </div>

@@ -20,10 +20,19 @@ const COST_TYPE_LABELS: Record<string, string> = {
   inspection: '세관검사비', warehouse: '창고료(장치료)',
   demurrage: '체화료(DEM)', detention: '지체료(DET)',
   inland_freight: '내륙운송비', ocean_freight: '해상운임',
-  air_freight: '항공운임', certification: '인증비', as_service: 'A/S 현장비', other: '기타',
+  air_freight: '항공운임',
+  certification: '인증비', as_service: 'A/S 현장비', labor: '인건비', other: '기타',
 };
 
-const DETAIL_COST_TYPES = new Set(['certification', 'as_service']);
+// 단위 기본값 per 비용 유형
+const UNIT_DEFAULTS: Record<string, string[]> = {
+  certification: ['건', '식', '품목', 'set', 'lot'],
+  as_service: ['건', '시간', '일', '회', '식'],
+  labor: ['시간', '일', '인', '명', '건'],
+  other: ['건', 'lot', 'set', 'EA'],
+};
+
+const DETAIL_COST_TYPES = new Set(['certification', 'as_service', 'labor']);
 
 const DISPOSITION_LABELS: Record<string, { label: string; color: string }> = {
   pending:            { label: '미결정',    color: 'bg-gray-100 text-gray-600' },
@@ -173,9 +182,12 @@ function ShipmentPreviewCard({ shipment }: {
 
 // ── 라인 아이템 테이블 (인증비/A/S) ─────────────────────────────────────────
 
-function LineItemsTable({ items, onChange }: {
-  items: CostLineItem[]; onChange: (items: CostLineItem[]) => void;
+function LineItemsTable({ items, onChange, costType }: {
+  items: CostLineItem[]; onChange: (items: CostLineItem[]) => void; costType?: string;
 }) {
+  const defaultUnit = (UNIT_DEFAULTS[costType || 'other'] || ['건'])[0];
+  const unitOptions = UNIT_DEFAULTS[costType || 'other'] || ['건', 'lot'];
+
   const update = (idx: number, field: keyof CostLineItem, val: string | number | boolean) => {
     const next = items.map((item, i) => {
       if (i !== idx) return item;
@@ -188,7 +200,7 @@ function LineItemsTable({ items, onChange }: {
     onChange(next);
   };
 
-  const addRow = () => onChange([...items, { description: '', qty: 1, unit: 'EA', unitPrice: 0, vatIncluded: false, note: '', amount: 0 }]);
+  const addRow = () => onChange([...items, { description: '', qty: 1, unit: defaultUnit, unitPrice: 0, vatIncluded: false, note: '', amount: 0 }]);
   const removeRow = (idx: number) => onChange(items.filter((_, i) => i !== idx));
 
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -226,7 +238,11 @@ function LineItemsTable({ items, onChange }: {
                   <Input type="number" value={item.qty} onChange={e => update(idx, 'qty', parseFloat(e.target.value) || 0)} className="h-7 text-xs text-right" />
                 </td>
                 <td className="px-2 py-1">
-                  <Input value={item.unit} onChange={e => update(idx, 'unit', e.target.value)} placeholder="EA" className="h-7 text-xs" />
+                  <select className="h-7 border rounded text-xs px-1 w-full" value={item.unit}
+                    onChange={e => update(idx, 'unit', e.target.value)}>
+                    {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
+                    <option value="기타">기타</option>
+                  </select>
                 </td>
                 <td className="px-2 py-1">
                   <Input type="number" value={item.unitPrice} onChange={e => update(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-7 text-xs text-right" />
@@ -486,7 +502,9 @@ function CostModal({ record, onClose, onSave }: {
           ['inspection', imp.inspectionFee],
           ['inland_freight', imp.inlandFreight],
           ['demurrage', imp.demurrage],
+          ['detention', (imp as unknown as Record<string, unknown>).detentionFee as number | undefined],
           ['warehouse', imp.warehouseFee],
+          ['ocean_freight', imp.freightKrw || (imp.freightUsd ? imp.freightUsd * (imp.freightExchangeRate || 1) : undefined)],
         ];
         const missing = toCheck
           .filter(([type, amount]) => amount && amount > 0 && !existTypes.includes(type))
@@ -514,6 +532,7 @@ function CostModal({ record, onClose, onSave }: {
       { type: 'inland_freight', amount: linkedImport.inlandFreight, currency: 'KRW' },
       { type: 'demurrage', amount: linkedImport.demurrage, currency: 'KRW' },
       { type: 'warehouse', amount: linkedImport.warehouseFee, currency: 'KRW' },
+      { type: 'ocean_freight', amount: linkedImport.freightKrw || (linkedImport.freightUsd ? linkedImport.freightUsd * (linkedImport.freightExchangeRate || 1) : undefined), currency: 'KRW' },
     ];
 
     const toCreate = costTypeMap.filter(
@@ -715,7 +734,7 @@ function CostModal({ record, onClose, onSave }: {
                   <div className="text-xs font-bold text-orange-800">합계: {lineItemsTotal.toLocaleString()}원</div>
                 )}
               </div>
-              <LineItemsTable items={lineItems} onChange={setLineItems} />
+              <LineItemsTable items={lineItems} onChange={setLineItems} costType={form.costType} />
               {!isNew && record && (
                 <button type="button"
                   onClick={() => window.open(`/costs/cert-print?id=${record.id}`, '_blank')}
