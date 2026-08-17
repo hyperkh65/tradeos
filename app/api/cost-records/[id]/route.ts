@@ -119,7 +119,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
     const db = getDb();
-    db.prepare('DELETE FROM cost_records WHERE id=? AND is_auto_allocated=0').run(id);
+    const row = db.prepare('SELECT is_auto_allocated FROM cost_records WHERE id=?').get(id) as { is_auto_allocated: number } | undefined;
+    if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+
+    if (row.is_auto_allocated) {
+      const user = await getSessionUser();
+      if (!user || user.role !== 'admin') {
+        return NextResponse.json({ error: '자동 생성 비용은 관리자만 삭제할 수 있습니다.' }, { status: 403 });
+      }
+    }
+    db.prepare('DELETE FROM cost_records WHERE id=?').run(id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
