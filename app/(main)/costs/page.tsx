@@ -170,6 +170,116 @@ function getStatusDisplay(disposition: string, billStatus: string): { label: str
     || { label: billStatus, color: 'text-gray-500' };
 }
 
+// ── 입금 확인 다이얼로그 ───────────────────────────────────────────────────
+
+function PaymentConfirmDialog({
+  billAmount, billCurrency, initRate, initDate, recordId, onClose, onSuccess,
+}: {
+  billAmount: number; billCurrency: string; initRate?: number; initDate?: string;
+  recordId: string; onClose: () => void; onSuccess: () => void;
+}) {
+  const [rate, setRate] = useState(initRate ? initRate.toString() : '');
+  const [date, setDate] = useState(initDate || new Date().toISOString().slice(0, 10));
+  const [paidKrw, setPaidKrw] = useState('');
+  const [memo, setMemo] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [paidTouched, setPaidTouched] = useState(false);
+
+  const rateNum = parseFloat(rate) || 0;
+  const expectedKrw = Math.round(billAmount * rateNum);
+
+  useEffect(() => {
+    if (rateNum > 0 && !paidTouched) {
+      setPaidKrw(expectedKrw.toString());
+    }
+  }, [rate]);
+
+  const paidKrwNum = parseFloat(paidKrw) || 0;
+  const discrepancy = paidTouched && paidKrwNum > 0 ? Math.abs(paidKrwNum - expectedKrw) : 0;
+  const hasDiscrepancy = discrepancy > 1000;
+  const canSubmit = rateNum > 0 && date && (!hasDiscrepancy || memo.trim().length > 0);
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSaving(true);
+    const body: Record<string, unknown> = {
+      billStatus: 'collected',
+      fxRateAtSettle: rateNum,
+      settledAt: date,
+      paidAmountKrw: paidKrwNum || expectedKrw,
+    };
+    if (memo.trim()) body.paymentMemo = memo.trim();
+    const res = await fetch(`/api/cost-records/${recordId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    if (res.ok) { onSuccess(); onClose(); }
+    else { const e = await res.json(); alert(e.error || '처리 실패'); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm">입금 확인 처리</h3>
+          <button type="button" onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-800">
+          청구금액: <strong>{billAmount.toLocaleString()} {billCurrency}</strong>
+          {rateNum > 0 && <span className="ml-2">→ 예상 수금: <strong>₩{expectedKrw.toLocaleString()}</strong></span>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">수금 시 환율 <span className="text-red-500">*</span></label>
+            <Input type="number" value={rate} onChange={e => setRate(e.target.value)} placeholder="예: 1380" className="h-9" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">수금일 <span className="text-red-500">*</span></label>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted-foreground block mb-1">
+            실제 입금액 (KRW)
+            {expectedKrw > 0 && <span className="font-normal ml-1 text-muted-foreground/70">(예상 ₩{expectedKrw.toLocaleString()})</span>}
+          </label>
+          <Input type="number" value={paidKrw}
+            onChange={e => { setPaidKrw(e.target.value); setPaidTouched(true); }}
+            placeholder={expectedKrw > 0 ? expectedKrw.toString() : '원화 입금액'}
+            className="h-9" />
+        </div>
+
+        {hasDiscrepancy && (
+          <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+            <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              입금 받은 금액과 상이합니다 (차액: {(paidKrwNum - expectedKrw) >= 0 ? '+' : ''}{(paidKrwNum - expectedKrw).toLocaleString()}원)
+            </div>
+            <div>
+              <label className="text-xs font-medium text-amber-800 block mb-1">사유 입력 (필수) <span className="text-red-500">*</span></label>
+              <Input value={memo} onChange={e => setMemo(e.target.value)}
+                placeholder="차액 발생 사유를 입력하세요 (수수료, 환차손 등)"
+                className="h-9 border-amber-400 focus:border-amber-500" />
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 text-sm border rounded-lg py-2 hover:bg-muted/50">취소</button>
+          <button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}
+            className="flex-1 text-sm bg-green-700 text-white rounded-lg py-2 hover:bg-green-800 disabled:opacity-50 font-medium">
+            {saving ? '처리중...' : '입금 확인'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 다중 매출 연결 선택기 ───────────────────────────────────────────────────
 
 function LinkedSalesSelector({
@@ -573,6 +683,7 @@ function CostModal({ record, onClose, onSave }: {
   const [poSearch, setPoSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
 
   // 통관 프리뷰 관련
   const [linkedImport, setLinkedImport] = useState<Import | null>(null);
@@ -758,7 +869,15 @@ function CostModal({ record, onClose, onSave }: {
     ? (costItems.length > 0 ? costItems.reduce((s, i) => s + (i.amount || 0), 0) : parseFloat(form.costAmount || '0'))
     : parseFloat(form.costAmount || '0');
   const billFinal = lineItemsTotal > 0 ? lineItemsTotal : parseFloat(form.billAmount || effectiveCostAmount.toString() || '0');
-  const fxRateNum = parseFloat(form.fxRateAtCost || '1') || 1;
+  // 잡손익 계산용 환율: KRW원가-외화청구일 때 수금환율(fxRateAtSettle) 우선, 없으면 발생환율(fxRateAtCost) 사용
+  const fxRateNum = (() => {
+    if (form.costCurrency === 'KRW' && form.billCurrency !== 'KRW') {
+      const settle = parseFloat(form.fxRateAtSettle || '0');
+      const cost = parseFloat(form.fxRateAtCost || '0');
+      return settle > 1 ? settle : (cost > 1 ? cost : 1);
+    }
+    return parseFloat(form.fxRateAtCost || '1') || 1;
+  })();
   // 통화 불일치 시 환율 환산: costCurrency=KRW, billCurrency=USD → cost를 USD로 변환
   const marginCurrency = form.billCurrency;
   let margin: number;
@@ -934,6 +1053,7 @@ function CostModal({ record, onClose, onSave }: {
   }));
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3.5 border-b">
@@ -1275,11 +1395,7 @@ function CostModal({ record, onClose, onSave }: {
                     <span className={cn('text-xs font-semibold', statusInfo.color)}>{statusInfo.label}</span>
                     {autoStatus === 'invoiced' && record?.id && (
                       <button type="button"
-                        onClick={async () => {
-                          if (!confirm('입금 확인 처리하시겠습니까?')) return;
-                          const res = await fetch(`/api/cost-records/${record.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billStatus: 'collected' }) });
-                          if (res.ok) { setForm(f => ({ ...f, billStatus: 'collected' })); onSave(); }
-                        }}
+                        onClick={() => setShowPaymentDialog(true)}
                         className="text-[10px] px-2 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300">
                         입금확인
                       </button>
@@ -1510,6 +1626,20 @@ function CostModal({ record, onClose, onSave }: {
         </div>
       </div>
     </div>
+
+    {/* 입금 확인 다이얼로그 */}
+    {showPaymentDialog && record?.id && (
+      <PaymentConfirmDialog
+        recordId={record.id}
+        billAmount={lineItemsTotal || parseFloat(form.billAmount || '0')}
+        billCurrency={form.billCurrency}
+        initRate={parseFloat(form.fxRateAtSettle || '0') || parseFloat(form.fxRateAtCost || '0') || undefined}
+        initDate={form.settledAt || undefined}
+        onClose={() => setShowPaymentDialog(false)}
+        onSuccess={() => { setForm(f => ({ ...f, billStatus: 'collected' })); onSave(); }}
+      />
+    )}
+    </>
   );
 }
 
@@ -1685,6 +1815,7 @@ export default function CostsPage() {
   const [search, setSearch] = useState('');
   const [editModal, setEditModal] = useState<{ open: boolean; record?: CostRecord | null }>({ open: false });
   const [invoiceModal, setInvoiceModal] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState<CostRecord | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1726,14 +1857,9 @@ export default function CostsPage() {
     load();
   };
 
-  const handleConfirmPayment = async (id: string) => {
-    if (!confirm('입금 확인 처리하시겠습니까? billStatus를 수금완료로 변경합니다.')) return;
-    const res = await fetch(`/api/cost-records/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billStatus: 'collected' }) });
-    if (!res.ok) {
-      const err = await res.json();
-      alert(err.error || '처리 실패');
-    }
-    load();
+  const handleConfirmPayment = (id: string) => {
+    const rec = records.find(r => r.id === id);
+    if (rec) setPaymentTarget(rec);
   };
 
   return (
@@ -1972,6 +2098,17 @@ export default function CostsPage() {
       )}
       {invoiceModal && (
         <ForeignInvoiceModal records={records} onClose={() => setInvoiceModal(false)} onSave={() => { setInvoiceModal(false); load(); }} />
+      )}
+      {paymentTarget && (
+        <PaymentConfirmDialog
+          recordId={paymentTarget.id}
+          billAmount={paymentTarget.billAmount || 0}
+          billCurrency={paymentTarget.billCurrency || 'USD'}
+          initRate={paymentTarget.fxRateAtSettle || paymentTarget.fxRateAtCost || undefined}
+          initDate={paymentTarget.settledAt || undefined}
+          onClose={() => setPaymentTarget(null)}
+          onSuccess={() => { setPaymentTarget(null); load(); }}
+        />
       )}
     </div>
   );

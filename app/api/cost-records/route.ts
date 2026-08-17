@@ -81,6 +81,7 @@ export interface CostRecord {
   notionId?: string;
   allocationGroupId?: string; allocationMethod?: string; allocationRatio?: number;
   isAutoAllocated: boolean;
+  paidAmountKrw?: number; paymentMemo?: string;
   remark?: string; createdBy?: string; createdAt: string; updatedAt?: string;
 }
 
@@ -130,6 +131,8 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     allocationMethod: (row.allocation_method as string) || undefined,
     allocationRatio: (row.allocation_ratio as number) || undefined,
     isAutoAllocated: Boolean(row.is_auto_allocated),
+    paidAmountKrw: (row.paid_amount_krw as number) || undefined,
+    paymentMemo: (row.payment_memo as string) || undefined,
     remark: (row.remark as string) || undefined,
     createdBy: (row.created_by as string) || undefined,
     createdAt: row.created_at as string,

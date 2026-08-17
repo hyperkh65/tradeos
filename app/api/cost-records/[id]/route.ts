@@ -65,6 +65,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
       cost_items_json=?, line_items_json=?,
       allocation_method=?, allocation_ratio=?,
+      paid_amount_krw=?, payment_memo=?,
       remark=?, updated_at=?
       WHERE id=?`)
       .run(
@@ -103,6 +104,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.lineItems !== undefined ? JSON.stringify(body.lineItems) : (row.line_items_json ?? '[]'),
         body.allocationMethod ?? row.allocation_method,
         body.allocationRatio ?? row.allocation_ratio,
+        body.paidAmountKrw !== undefined ? body.paidAmountKrw : (row.paid_amount_krw ?? null),
+        body.paymentMemo !== undefined ? body.paymentMemo : (row.payment_memo ?? null),
         body.remark ?? row.remark,
         now(), id,
       );
