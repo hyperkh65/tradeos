@@ -296,14 +296,7 @@ function CertPrintContent() {
                 <td className="num" style={{ fontSize: 14 }}>{sym} {fmt(grandTotal, cur)}</td>
                 <td></td>
               </tr>
-              {hasCostSection && effectiveCost > 0 && grandTotal > 0 && costCur !== cur && fxRate <= 1 ? (
-                <tr style={{ background: '#fffbeb' }}>
-                  <td colSpan={7} className="num" style={{ color: '#92400e', fontSize: 10 }}>
-                    ⚠ 통화 불일치 ({costCur} 원가 / {cur} 청구) — 환율 설정 후 잡손익 계산 가능
-                  </td>
-                  <td></td>
-                </tr>
-              ) : hasCostSection && effectiveCost > 0 && grandTotal > 0 && (
+              {hasCostSection && effectiveCost > 0 && grandTotal > 0 && !(costCur !== cur && fxRate <= 1) && (
                 <tr style={{ background: profit >= 0 ? '#f0fdf4' : '#fff1f2' }}>
                   <td colSpan={6} className="num" style={{ color: profit >= 0 ? '#166534' : '#9f1239', fontWeight: 600, fontSize: 11 }}>
                     {profit >= 0 ? '잡이익' : '잡손실'}

@@ -1436,14 +1436,8 @@ function CostModal({ record, onClose, onSave }: {
 
               {lineItemsTotal > 0 && effectiveCostAmount > 0 && (() => {
                 const currencyMismatch = form.costCurrency !== form.billCurrency;
-                const noRate = currencyMismatch && fxRateNum <= 1;
-                if (noRate) {
-                  return (
-                    <div className="text-xs px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700">
-                      ⚠ 통화 불일치 — 위 환율을 입력하면 잡손익을 계산합니다 ({form.costCurrency} → {form.billCurrency})
-                    </div>
-                  );
-                }
+                // 환율 미설정 시 조용히 숨김 (경고 없음)
+                if (currencyMismatch && fxRateNum <= 1) return null;
                 const baseCost = form.costCurrency === 'KRW' ? effectiveCostAmount / fxRateNum : effectiveCostAmount;
                 const pct = baseCost > 0 ? ((margin / baseCost) * 100).toFixed(1) : '0';
                 if (margin === 0) return null;
