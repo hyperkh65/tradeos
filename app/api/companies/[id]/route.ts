@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { updateNotionPage, companyToNotion, archiveNotionPage } from '@/lib/notion/mapper';
 
+function rowToCompany(r: Record<string, unknown>) {
+  return {
+    id: r.id, businessId: r.business_id, name: r.name, nameEn: r.name_en || undefined,
+    type: r.type, country: r.country,
+    email: r.email || undefined, phone: r.phone || undefined,
+    website: r.website || undefined, wechat: r.wechat || undefined, memo: r.memo || undefined,
+    ceo: r.ceo || undefined, businessNo: r.business_no || undefined,
+    address: r.address || undefined, bank: r.bank || undefined,
+    accountNo: r.account_no || undefined, currency: r.trade_currency || undefined,
+    contactPerson: r.contact_person || undefined,
+    bizRegFile: r.biz_reg_file || undefined, bankCopyFile: r.bank_copy_file || undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM companies WHERE id=?').get(id) as Record<string, unknown> | undefined;
+  if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+  return NextResponse.json({ data: rowToCompany(row) });
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;

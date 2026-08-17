@@ -23,12 +23,19 @@ function fmt(n: number, cur: string) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+interface ClientInfo {
+  name: string; nameEn?: string; address?: string;
+  phone?: string; email?: string; contactPerson?: string;
+  businessNo?: string; country?: string;
+}
+
 function CertPrintContent() {
   const params = useSearchParams();
   const id = params.get('id');
   const [record, setRecord] = useState<CostRecord | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [writer, setWriter] = useState<{ name: string; department?: string } | null>(null);
+  const [client, setClient] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +48,11 @@ function CertPrintContent() {
       if (rec.data) setRecord(rec.data);
       if (co.data) setCompany(co.data);
       if (me.user) setWriter(me.user);
+      if (rec.data?.clientId) {
+        fetch(`/api/companies/${rec.data.clientId}`).then(r => r.json()).then(j => {
+          if (j.data) setClient(j.data);
+        });
+      }
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -121,9 +133,17 @@ function CertPrintContent() {
           {/* 청구 대상 */}
           <div style={{ flex: 1, border: '1px solid #dde3ed', borderRadius: 6, padding: '12px 16px' }}>
             <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 8, fontWeight: 700 }}>청구 대상 (Bill To)</div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{record.clientName || '—'}</div>
-            {record.importBusinessId && <div style={{ fontSize: 11, color: '#555' }}>통관: {record.importBusinessId}</div>}
-            {record.shipmentBusinessId && <div style={{ fontSize: 11, color: '#555' }}>선적: {record.shipmentBusinessId}</div>}
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{client?.name || record.clientName || '—'}</div>
+            {client?.nameEn && <div style={{ fontSize: 11, color: '#777', marginBottom: 2 }}>{client.nameEn}</div>}
+            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7 }}>
+              {client?.address && <div>{client.address}</div>}
+              {client?.phone && <div>TEL: {client.phone}</div>}
+              {client?.email && <div>E: {client.email}</div>}
+              {client?.contactPerson && <div>담당: {client.contactPerson}</div>}
+              {client?.businessNo && <div>사업자번호: {client.businessNo}</div>}
+              {!client && record.importBusinessId && <div style={{ marginTop: 4, color: '#999' }}>통관: {record.importBusinessId}</div>}
+              {!client && record.shipmentBusinessId && <div style={{ color: '#999' }}>선적: {record.shipmentBusinessId}</div>}
+            </div>
           </div>
 
           {/* 청구 요약 */}

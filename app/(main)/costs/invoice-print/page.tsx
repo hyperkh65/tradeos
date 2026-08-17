@@ -11,6 +11,12 @@ interface CompanySettings {
   logoUrl: string; stampUrl: string;
 }
 
+interface ClientInfo {
+  name: string; nameEn?: string; address?: string;
+  phone?: string; email?: string; contactPerson?: string;
+  businessNo?: string; country?: string;
+}
+
 const SYM: Record<string, string> = { KRW: '₩', USD: '$', CNY: '¥', EUR: '€', JPY: '¥' };
 
 function fmt(n: number, cur: string) {
@@ -24,6 +30,7 @@ function InvoicePrintContent() {
   const [inv, setInv] = useState<ForeignInvoice | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [writer, setWriter] = useState<{ name: string; department?: string } | null>(null);
+  const [client, setClient] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +43,11 @@ function InvoicePrintContent() {
       if (d.data) setInv(d.data);
       if (co.data) setCompany(co.data);
       if (me.user) setWriter(me.user);
+      if (d.data?.clientId) {
+        fetch(`/api/companies/${d.data.clientId}`).then(r => r.json()).then(j => {
+          if (j.data) setClient(j.data);
+        });
+      }
     }).finally(() => setLoading(false));
   }, [id]);
 
@@ -108,7 +120,17 @@ function InvoicePrintContent() {
           {/* 청구 대상 */}
           <div style={{ flex: 1, border: '1px solid #dde3ed', borderRadius: 6, padding: '12px 16px' }}>
             <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 8, fontWeight: 700 }}>Bill To (청구 대상)</div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{inv.clientName || '—'}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{client?.nameEn || client?.name || inv.clientName || '—'}</div>
+            {client?.nameEn && client?.name && client.name !== client.nameEn && (
+              <div style={{ fontSize: 11, color: '#777', marginBottom: 2 }}>{client.name}</div>
+            )}
+            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7 }}>
+              {client?.address && <div>{client.address}</div>}
+              {client?.phone && <div>TEL: {client.phone}</div>}
+              {client?.email && <div>E: {client.email}</div>}
+              {client?.contactPerson && <div>Attn: {client.contactPerson}</div>}
+              {client?.country && <div>{client.country}</div>}
+            </div>
           </div>
 
           {/* 금액 요약 */}
