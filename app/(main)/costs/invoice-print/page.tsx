@@ -29,7 +29,6 @@ function InvoicePrintContent() {
   const id = params.get('id');
   const [inv, setInv] = useState<ForeignInvoice | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
-  const [writer, setWriter] = useState<{ name: string; department?: string } | null>(null);
   const [client, setClient] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,11 +37,9 @@ function InvoicePrintContent() {
     Promise.all([
       fetch(`/api/foreign-invoices/${id}`).then(r => r.json()),
       fetch('/api/settings/company').then(r => r.json()),
-      fetch('/api/auth/me').then(r => r.json()),
-    ]).then(([d, co, me]) => {
+    ]).then(([d, co]) => {
       if (d.data) setInv(d.data);
       if (co.data) setCompany(co.data);
-      if (me.user) setWriter(me.user);
       if (d.data?.clientId) {
         fetch(`/api/companies/${d.data.clientId}`).then(r => r.json()).then(j => {
           if (j.data) setClient(j.data);
@@ -59,214 +56,201 @@ function InvoicePrintContent() {
   const isForeign = cur !== 'KRW';
   const bankInfo = isForeign ? (company?.bankForeign1 || company?.bank || '') : (company?.bank || '');
   const issuedDate = inv.issuedDate || new Date().toISOString().slice(0, 10);
-  const clientDisplayName = client?.nameEn || client?.name || inv.clientName || '—';
-
-  const statusColor = inv.status === 'paid' ? '#16a34a' : inv.status === 'sent' ? '#d97706' : '#555';
-  const statusLabel = inv.status === 'paid' ? 'PAID' : inv.status === 'sent' ? 'SENT' : inv.status === 'draft' ? 'DRAFT' : inv.status.toUpperCase();
+  const dateStr = new Date(issuedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const clientName = client?.nameEn || client?.name || inv.clientName || '—';
+  const emptyRows = Math.max(0, 8 - inv.items.length);
 
   return (
     <div>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
         @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body * { visibility: hidden !important; }
+          #inv-print-area, #inv-print-area * { visibility: visible !important; }
+          #inv-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
           .no-print { display: none !important; }
-          @page { margin: 12mm 15mm 15mm 15mm; size: A4; }
+          @page { size: A4 portrait; margin: 0; }
         }
-        * { box-sizing: border-box; }
-        body { font-family: 'Arial', sans-serif; margin: 0; padding: 0; color: #1a1a1a; background: #fff; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 7px 10px; font-size: 12px; vertical-align: middle; }
-        th { background: #f5f7fa; font-weight: 600; text-align: left; }
-        .header-row { background: #1e3a5f; color: white; padding: 20px 30px; display: flex; align-items: center; justify-content: space-between; }
-        .content { padding: 20px 30px; }
-        .title { font-size: 24px; font-weight: 800; letter-spacing: 2px; }
-        .subtitle { font-size: 12px; margin-top: 2px; opacity: 0.75; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-        .info-box { border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 16px; }
-        .info-box h4 { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin: 0 0 10px; font-weight: 700; }
-        .info-name { font-size: 14px; font-weight: 700; margin-bottom: 5px; }
-        .info-detail { font-size: 11.5px; color: #444; line-height: 1.65; }
-        .section-title { font-size: 13px; font-weight: 700; margin: 18px 0 8px; border-bottom: 2px solid #1e3a5f; padding-bottom: 5px; color: #1e3a5f; }
-        .total-row td { background: #eef2ff !important; font-weight: 700; }
-        .subtotal-row td { background: #f8fafc; }
-        .bank-box { border: 1px solid #c8d8f0; border-radius: 6px; padding: 12px 16px; background: #f0f6ff; margin-top: 16px; }
-        .bank-box h4 { font-size: 9px; text-transform: uppercase; color: #1e3a5f; margin: 0 0 8px; font-weight: 700; letter-spacing: 1px; }
-        .approval-row { display: flex; border: 1px solid #ccc; }
-        .approval-cell { text-align: center; width: 76px; padding: 6px 4px; font-size: 9px; color: #888; border-right: 1px solid #ccc; }
-        .approval-cell:last-child { border-right: none; }
-        .approval-name { font-size: 11px; font-weight: 600; min-height: 22px; padding-top: 4px; color: #1a1a1a; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-        .print-btn { position: fixed; top: 20px; right: 20px; background: #1e3a5f; color: white; border: none; padding: 10px 22px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
-        .print-btn:hover { background: #2a4f82; }
-        .remark-box { border: 1px solid #e8e8e8; border-radius: 5px; padding: 10px 14px; font-size: 12px; color: #555; margin-top: 16px; }
-        .footer-text { font-size: 10px; color: #bbb; text-align: right; margin-top: 16px; }
+        #inv-print-area { font-family: 'Noto Sans KR', 'Arial', sans-serif; color: #171717; }
+        #inv-print-area .inv-table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+        #inv-print-area .inv-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 9px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        #inv-print-area .inv-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+        #inv-print-area .inv-table tbody tr:last-child td { border-bottom: 2px solid #171717; }
+        #inv-print-area .box-container { display: flex; gap: 28px; margin-bottom: 28px; }
+        #inv-print-area .box { flex: 1; border: 1px solid #e5e5e5; padding: 18px 20px; border-radius: 8px; position: relative; }
+        #inv-print-area .box-gray { flex: 1; background: #fafafa; border: none; padding: 18px 20px; border-radius: 8px; position: relative; }
+        #inv-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 8px; font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1.5px; }
+        #inv-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 8px; font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1.5px; }
+        #inv-print-area .box-content { font-size: 12.5px; line-height: 1.65; color: #333; }
+        .print-btn { position: fixed; top: 20px; right: 20px; background: #171717; color: white; border: none; padding: 10px 22px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; z-index: 100; }
+        .print-btn:hover { background: #333; }
       `}</style>
 
-      <button className="print-btn no-print" onClick={() => window.print()}>🖨 PDF 인쇄</button>
+      <button className="no-print print-btn" onClick={() => {
+        const orig = document.title;
+        document.title = inv.businessId;
+        window.print();
+        window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+      }}>🖨 PDF 인쇄</button>
 
-      {/* ── 헤더 ── */}
-      <div className="header-row">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {company?.logoUrl && (
-            <div style={{ background: 'white', borderRadius: 5, padding: '3px 8px', display: 'flex', alignItems: 'center' }}>
-              <img src={company.logoUrl} alt="logo" style={{ height: 30, objectFit: 'contain', display: 'block' }} />
-            </div>
-          )}
-          <div>
-            <div className="title">INVOICE</div>
-            <div className="subtitle">외화 청구서</div>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontWeight: 700, fontSize: 17 }}>{inv.businessId}</div>
-          <div style={{ opacity: 0.8, fontSize: 12, marginTop: 3 }}>Date: {issuedDate}</div>
-          {inv.dueDate && <div style={{ opacity: 0.75, fontSize: 11 }}>Due: {inv.dueDate}</div>}
-          <div style={{ opacity: 0.75, fontSize: 11 }}>Currency: {cur}</div>
-          <div style={{ marginTop: 5 }}>
-            <span className="status-badge" style={{ background: inv.status === 'paid' ? '#dcfce7' : '#fef3c7', color: statusColor }}>
-              {statusLabel}
-            </span>
-          </div>
-        </div>
-      </div>
+      <div id="inv-print-area" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', background: 'white', padding: '10mm', boxSizing: 'border-box', position: 'relative' }}>
 
-      <div className="content">
-        {/* ── From / Bill To ── */}
-        <div className="info-grid">
-          <div className="info-box">
-            <h4>From (발행자)</h4>
-            <div className="info-name">{company?.name || ''}</div>
-            <div className="info-detail">
-              {company?.address && <div>{company.address}</div>}
-              {company?.tel && <div>TEL: {company.tel}{company.fax ? `  FAX: ${company.fax}` : ''}</div>}
-              {company?.email && <div>E: {company.email}</div>}
-              {company?.bizNo && <div>Business No: {company.bizNo}</div>}
-            </div>
-          </div>
-          <div className="info-box" style={{ borderLeft: '3px solid #1e3a5f' }}>
-            <h4>Bill To (청구 대상)</h4>
-            <div className="info-name">{clientDisplayName}</div>
-            {client?.nameEn && client?.name && client.name !== client.nameEn && (
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 3 }}>{client.name}</div>
+        {/* ── 헤더 ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '44px' }}>
+          <div style={{ width: '28%' }}>
+            {company?.logoUrl ? (
+              <img src={company.logoUrl} alt="Logo" style={{ height: '44px', objectFit: 'contain', display: 'block' }} />
+            ) : (
+              <div style={{ fontSize: '16px', fontWeight: 800 }}>{company?.name || ''}</div>
             )}
-            <div className="info-detail">
-              {client?.address && <div>{client.address}</div>}
-              {client?.country && <div>{client.country}</div>}
-              {client?.phone && <div>TEL: {client.phone}</div>}
-              {client?.email && <div>E: {client.email}</div>}
-              {client?.contactPerson && <div>Attn: <strong>{client.contactPerson}</strong></div>}
-              {!client && <div style={{ color: '#999' }}>{inv.clientName}</div>}
+          </div>
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <h1 style={{ fontSize: '30px', fontWeight: 900, letterSpacing: '5px', margin: '0 0 4px', color: '#171717' }}>INVOICE</h1>
+            <div style={{ fontSize: '12px', color: '#888', letterSpacing: '1px' }}>외화 청구서</div>
+            <div style={{ width: '36px', height: '3px', background: '#171717', margin: '14px auto 0' }} />
+          </div>
+          <div style={{ width: '28%', textAlign: 'right' }}>
+            <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Reference No.</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '10px' }}>{inv.businessId}</div>
+            <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: '#333', marginBottom: '8px' }}>{dateStr}</div>
+            {inv.dueDate && (
+              <>
+                <div style={{ fontSize: '10px', color: '#888', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Due Date</div>
+                <div style={{ fontSize: '13px', color: '#333' }}>{inv.dueDate}</div>
+              </>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <span style={{
+                display: 'inline-block', padding: '2px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
+                background: inv.status === 'paid' ? '#dcfce7' : '#f3f4f6',
+                color: inv.status === 'paid' ? '#16a34a' : '#555',
+                border: '1px solid ' + (inv.status === 'paid' ? '#86efac' : '#e5e7eb'),
+              }}>
+                {inv.status === 'paid' ? 'PAID' : inv.status === 'sent' ? 'SENT' : 'DRAFT'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* ── 금액 요약 바 ── */}
-        <div style={{ background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 6, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <div style={{ fontSize: 12, color: '#3730a3', fontWeight: 600 }}>Total Amount Due</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#1e3a5f' }}>{sym} {fmt(inv.total, cur)}</div>
+        {/* ── From / To ── */}
+        <div className="box-container">
+          <div className="box-gray">
+            <div className="box-title-gray">From (Seller)</div>
+            <div className="box-content">
+              <div style={{ fontSize: '15px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{company?.name || ''}</div>
+              {company?.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
+              {(company?.tel || company?.fax) && <div style={{ marginBottom: '2px' }}>Tel: {company?.tel}{company?.fax ? ` / Fax: ${company.fax}` : ''}</div>}
+              {company?.email && <div style={{ marginBottom: '2px' }}>Email: {company.email}</div>}
+              {company?.bizNo && <div>Reg.No: {company.bizNo}</div>}
+            </div>
+          </div>
+          <div className="box">
+            <div className="box-title">Bill To (Buyer)</div>
+            <div className="box-content">
+              <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '8px', color: '#171717' }}>{clientName}</div>
+              {client?.nameEn && client?.name && client.name !== client.nameEn && (
+                <div style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>{client.name}</div>
+              )}
+              {client?.address && <div style={{ marginBottom: '2px' }}>{client.address}</div>}
+              {client?.country && <div style={{ marginBottom: '2px' }}>{client.country}</div>}
+              {client?.phone && <div style={{ marginBottom: '2px' }}>Tel: {client.phone}</div>}
+              {client?.email && <div style={{ marginBottom: '2px' }}>Email: {client.email}</div>}
+              {client?.contactPerson && <div style={{ marginBottom: '2px' }}>Attn: <strong>{client.contactPerson}</strong></div>}
+              {!client && inv.clientName && <div style={{ color: '#555' }}>{inv.clientName}</div>}
+            </div>
+          </div>
         </div>
 
         {/* ── 내역 테이블 ── */}
-        <div className="section-title">청구 내역 (Item Details)</div>
-        <table>
+        <table className="inv-table">
           <thead>
             <tr>
-              <th style={{ width: 32, textAlign: 'center' }}>No.</th>
-              <th>Description (항목)</th>
-              <th style={{ width: 52, textAlign: 'right' }}>Qty</th>
-              <th style={{ width: 48, textAlign: 'center' }}>Unit</th>
-              <th style={{ width: 115, textAlign: 'right' }}>Unit Price ({cur})</th>
-              <th style={{ width: 42, textAlign: 'center' }}>VAT</th>
-              <th style={{ width: 120, textAlign: 'right' }}>Amount ({cur})</th>
+              <th style={{ width: '5%' }}>No</th>
+              <th style={{ textAlign: 'left', paddingLeft: '10px' }}>Description / 항목</th>
+              <th style={{ width: '8%' }}>Unit</th>
+              <th style={{ width: '8%' }}>Qty</th>
+              <th style={{ width: '14%', textAlign: 'right', paddingRight: '8px' }}>Unit Price ({cur})</th>
+              <th style={{ width: '6%', textAlign: 'center' }}>VAT</th>
+              <th style={{ width: '16%', textAlign: 'right', paddingRight: '8px' }}>Amount ({cur})</th>
             </tr>
           </thead>
           <tbody>
-            {inv.items.length > 0 ? inv.items.map((item, i) => (
+            {inv.items.map((item, i) => (
               <tr key={i}>
-                <td style={{ textAlign: 'center' }}>{i + 1}</td>
-                <td style={{ fontWeight: 500 }}>{item.description}</td>
-                <td style={{ textAlign: 'right' }}>{(item.qty ?? 1).toLocaleString()}</td>
+                <td style={{ textAlign: 'center', color: '#888' }}>{i + 1}</td>
+                <td style={{ paddingLeft: '10px' }}>
+                  <div style={{ fontWeight: 600, color: '#171717' }}>{item.description}</div>
+                </td>
                 <td style={{ textAlign: 'center' }}>{item.unit || 'lot'}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(item.unitPrice ?? item.amount, cur)}</td>
+                <td style={{ textAlign: 'center', fontWeight: 600 }}>{(item.qty ?? 1).toLocaleString()}</td>
+                <td style={{ textAlign: 'right', paddingRight: '8px' }}>{fmt(item.unitPrice ?? item.amount, cur)}</td>
                 <td style={{ textAlign: 'center' }}>{item.vatIncluded ? '✓' : '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(item.amount, cur)}</td>
+                <td style={{ textAlign: 'right', paddingRight: '8px', fontWeight: 700, color: '#171717' }}>{fmt(item.amount, cur)}</td>
               </tr>
-            )) : (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#aaa', padding: 18 }}>No items</td></tr>
-            )}
+            ))}
+            {Array.from({ length: emptyRows }).map((_, i) => (
+              <tr key={`e${i}`}><td style={{ padding: '14px' }} /><td /><td /><td /><td /><td /><td /></tr>
+            ))}
           </tbody>
-          <tfoot>
-            <tr className="subtotal-row">
-              <td colSpan={6} style={{ textAlign: 'right', fontWeight: 600, color: '#555' }}>Subtotal</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(inv.subtotal, cur)}</td>
-            </tr>
-            {(inv.vatAmount ?? 0) > 0 && (
-              <tr>
-                <td colSpan={6} style={{ textAlign: 'right', color: '#666' }}>VAT (10%)</td>
-                <td style={{ textAlign: 'right' }}>{fmt(inv.vatAmount, cur)}</td>
-              </tr>
-            )}
-            <tr className="total-row">
-              <td colSpan={5} style={{ border: 'none', background: 'transparent' }} />
-              <td style={{ textAlign: 'right', fontSize: 13 }}>TOTAL ({cur})</td>
-              <td style={{ textAlign: 'right', fontSize: 14 }}>{sym} {fmt(inv.total, cur)}</td>
-            </tr>
-          </tfoot>
         </table>
 
-        {/* ── 수금 정보 ── */}
-        {inv.status === 'paid' && inv.fxRateAtPayment && (
-          <div style={{ border: '1px solid #bbf7d0', borderRadius: 5, padding: '8px 14px', background: '#f0fdf4', fontSize: 11.5, color: '#166534', marginTop: 12 }}>
-            <strong>수금 완료</strong> · 환율: {inv.fxRateAtPayment.toLocaleString()}
-            {inv.paidAmountKrw && ` · ₩${inv.paidAmountKrw.toLocaleString()}`}
-            {inv.paidAt && ` · 수금일: ${inv.paidAt}`}
-          </div>
-        )}
-
-        {/* ── 계좌 정보 ── */}
-        {bankInfo && (
-          <div className="bank-box">
-            <h4>{isForeign ? 'Remittance Account (송금 계좌)' : '입금 계좌 정보'}</h4>
-            <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', color: '#222', fontFamily: 'inherit', lineHeight: 1.65, margin: 0 }}>{bankInfo}</pre>
-          </div>
-        )}
-
-        {/* ── 비고 ── */}
-        {inv.remark && (
-          <div className="remark-box">
-            <strong style={{ color: '#333' }}>Remarks:</strong> {inv.remark}
-          </div>
-        )}
-
-        {/* ── 결재란 + 직인 ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#555', marginRight: 10, paddingTop: 8 }}>결재:</div>
-            <div>
-              <div className="approval-row">
-                <div className="approval-cell">
-                  <div>작성자</div>
-                  <div className="approval-name">{writer?.name || ''}</div>
-                  {writer?.department && <div style={{ fontSize: 8, color: '#aaa', marginTop: 1 }}>{writer.department}</div>}
-                </div>
-                <div className="approval-cell">
-                  <div>검토자</div>
-                  <div style={{ minHeight: 22 }}></div>
-                </div>
-                <div className="approval-cell" style={{ borderRight: 'none' }}>
-                  <div>승인자</div>
-                  <div style={{ minHeight: 22 }}></div>
-                  <div style={{ fontSize: 8, color: '#ccc', marginTop: 1 }}>전자결재</div>
-                </div>
-              </div>
+        {/* ── Grand Total ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', marginBottom: '36px' }}>
+          {(inv.vatAmount ?? 0) > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginRight: '32px' }}>
+              <div style={{ fontSize: '12px', color: '#666' }}>VAT (10%)</div>
+              <div style={{ fontSize: '15px', color: '#555' }}>{sym} {fmt(inv.vatAmount, cur)}</div>
             </div>
-          </div>
-          {company?.stampUrl && (
-            <img src={company.stampUrl} alt="stamp" style={{ height: 70, objectFit: 'contain', opacity: 0.85 }} />
           )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#555', textTransform: 'uppercase' }}>Grand Total ({cur})</div>
+            <div style={{ fontSize: '26px', fontWeight: 900, color: '#171717' }}>{sym} {fmt(inv.total, cur)}</div>
+          </div>
         </div>
 
-        <div className="footer-text">
+        {/* ── Terms & Bank / Signature ── */}
+        <div style={{ display: 'flex', gap: '28px', marginTop: '8px' }}>
+          <div style={{ flex: 1 }}>
+            {inv.remark && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Remarks</div>
+                <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '8px', whiteSpace: 'pre-wrap' }}>{inv.remark}</div>
+              </div>
+            )}
+            {bankInfo && (
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  {isForeign ? 'Remittance Account' : '입금 계좌'}
+                </div>
+                <div style={{ fontSize: '12px', color: '#444', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '8px', background: '#f5f5f5', padding: '10px 12px', borderRadius: '5px', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>{bankInfo}</div>
+              </div>
+            )}
+
+            {/* 수금 완료 정보 */}
+            {inv.status === 'paid' && inv.paidAt && (
+              <div style={{ marginTop: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '5px', padding: '8px 12px', fontSize: '11.5px', color: '#166534' }}>
+                <strong>수금 완료</strong>
+                {inv.fxRateAtPayment && ` · 환율: ${inv.fxRateAtPayment.toLocaleString()}`}
+                {inv.paidAmountKrw && ` · ₩${inv.paidAmountKrw.toLocaleString()}`}
+                {` · 수금일: ${inv.paidAt}`}
+              </div>
+            )}
+          </div>
+
+          {/* Signature */}
+          <div style={{ width: '240px', display: 'flex', flexDirection: 'column', minHeight: '150px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Authorized Signature</div>
+            <div style={{ flex: 1, borderBottom: '2px solid #171717', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px' }}>
+              {company?.stampUrl && (
+                <img src={company.stampUrl} alt="Stamp" style={{ width: '180px', opacity: 0.85, transform: 'rotate(-5deg)', position: 'absolute' }} />
+              )}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, marginTop: '8px', color: '#171717' }}>{company?.name || ''}</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '24px', borderTop: '1px solid #e5e5e5', paddingTop: '10px', fontSize: '10px', color: '#bbb', textAlign: 'center' }}>
           This document is electronically issued · {company?.name || ''} · {issuedDate}
         </div>
       </div>
