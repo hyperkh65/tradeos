@@ -50,6 +50,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       linked_invoice_id=?, linked_sale_id=?,
       cause_type=?,
       offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
+      line_items_json=?,
       allocation_method=?, allocation_ratio=?,
       remark=?, updated_at=?
       WHERE id=?`)
@@ -82,6 +83,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         offsetRemaining,
         body.offsetPoId ?? row.offset_po_id,
         body.offsetItems !== undefined ? JSON.stringify(body.offsetItems) : (row.offset_items_json ?? '[]'),
+        body.lineItems !== undefined ? JSON.stringify(body.lineItems) : (row.line_items_json ?? '[]'),
         body.allocationMethod ?? row.allocation_method,
         body.allocationRatio ?? row.allocation_ratio,
         body.remark ?? row.remark,

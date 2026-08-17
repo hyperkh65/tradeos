@@ -1,10 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
+
+async function syncToNotion(record: ReturnType<typeof dbToCostRecord>): Promise<string | null> {
+  const dbId = DB.costs;
+  if (!dbId || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const COST_TYPE_KO: Record<string, string> = {
+      duty:'관세', vat:'수입부가세', customs_broker:'관세사비', inspection:'세관검사비',
+      warehouse:'창고료', demurrage:'체화료', detention:'지체료',
+      inland_freight:'내륙운송비', ocean_freight:'해상운임', air_freight:'항공운임',
+      certification:'인증비', as_service:'A/S현장비', other:'기타',
+    };
+    const DISPOSITION_KO: Record<string, string> = {
+      pending:'미결정', internal:'내부비용', billable_domestic:'국내매출',
+      billable_foreign:'외화청구', offset_purchase:'매입상계',
+    };
+    const page = await notion.pages.create({
+      parent: { database_id: dbId },
+      properties: {
+        '비용번호': { title: [{ text: { content: record.businessId } }] },
+        '비용유형': { select: { name: COST_TYPE_KO[record.costType] || record.costType } },
+        '설명': { rich_text: [{ text: { content: record.description || '' } }] },
+        '원가': { number: record.costAmount },
+        '통화': { select: { name: record.costCurrency } },
+        '발생일': record.incurredDate ? { date: { start: record.incurredDate } } : { date: null },
+        '처리방향': { select: { name: DISPOSITION_KO[record.disposition] || record.disposition } },
+        '청구금액': { number: record.billAmount ?? null },
+        '거래처': { rich_text: [{ text: { content: record.clientName || '' } }] },
+        '통관번호': { rich_text: [{ text: { content: record.importBusinessId || '' } }] },
+        '선적번호': { rich_text: [{ text: { content: record.shipmentBusinessId || '' } }] },
+      },
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[cost-records Notion sync]', e);
+    return null;
+  }
+}
 
 export interface OffsetItem {
   poId: string; poBusinessId: string; supplierName: string;
   description: string; qty: number; amount: number; currency: string;
+}
+
+export interface CostLineItem {
+  description: string; qty: number; unit: string;
+  unitPrice: number; vatIncluded: boolean; note: string; amount: number;
+}
+
+export interface CostFileRecord {
+  id: string; originalName: string; filename: string;
+  url: string; size: number; uploadedAt: string;
 }
 
 export interface CostRecord {
@@ -25,6 +74,9 @@ export interface CostRecord {
   offsetStatus: 'none' | 'pending' | 'partial' | 'completed';
   offsetRemaining?: number; offsetPoId?: string;
   offsetItems: OffsetItem[];
+  lineItems: CostLineItem[];
+  files: CostFileRecord[];
+  notionId?: string;
   allocationGroupId?: string; allocationMethod?: string; allocationRatio?: number;
   isAutoAllocated: boolean;
   remark?: string; createdBy?: string; createdAt: string; updatedAt?: string;
@@ -65,6 +117,9 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     offsetRemaining: (row.offset_remaining as number) || undefined,
     offsetPoId: (row.offset_po_id as string) || undefined,
     offsetItems: (() => { try { return JSON.parse((row.offset_items_json as string) || '[]'); } catch { return []; } })(),
+    lineItems: (() => { try { return JSON.parse((row.line_items_json as string) || '[]'); } catch { return []; } })(),
+    files: (() => { try { return JSON.parse((row.files_json as string) || '[]'); } catch { return []; } })(),
+    notionId: (row.notion_id as string) || undefined,
     allocationGroupId: (row.allocation_group_id as string) || undefined,
     allocationMethod: (row.allocation_method as string) || undefined,
     allocationRatio: (row.allocation_ratio as number) || undefined,
@@ -113,6 +168,13 @@ export async function POST(req: NextRequest) {
       ? body.costAmount
       : (body.costAmount || 0) * (body.fxRateAtCost || 1);
 
+    // line_items에서 billAmount 계산 (cert/as_service)
+    const lineItems = body.lineItems || [];
+    const lineItemsTotal = lineItems.length > 0
+      ? lineItems.reduce((s: number, i: { amount: number }) => s + (i.amount || 0), 0)
+      : null;
+    const finalBillAmount = lineItemsTotal ?? body.billAmount ?? null;
+
     db.prepare(`INSERT INTO cost_records
       (id,business_id,cost_type,description,
        shipment_id,shipment_business_id,import_id,import_business_id,po_id,po_business_id,
@@ -120,9 +182,9 @@ export async function POST(req: NextRequest) {
        cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
        incurred_date,disposition,bill_amount,bill_currency,bill_status,
        cause_type,offset_status,offset_remaining,offset_po_id,offset_items_json,
-       linked_sale_id,allocation_method,remark,
+       line_items_json,linked_sale_id,allocation_method,remark,
        is_auto_allocated,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.costType || 'other', body.description ?? null,
@@ -134,20 +196,28 @@ export async function POST(req: NextRequest) {
         body.fxRateAtCost ?? 1, costAmountKrw,
         body.incurredDate ?? ts.slice(0, 10),
         body.disposition || 'pending',
-        body.billAmount ?? null, body.billCurrency || 'KRW',
+        finalBillAmount, body.billCurrency || 'KRW',
         body.billStatus || 'unbilled',
         body.causeType || 'schedule',
         body.offsetStatus || 'none',
         body.offsetRemaining ?? null, body.offsetPoId ?? null,
         JSON.stringify(body.offsetItems || []),
+        JSON.stringify(lineItems),
         body.linkedSaleId ?? null,
         body.allocationMethod ?? null,
         body.remark ?? null,
-        0, user?.id || 'unknown', ts, ts,
+        body.isAutoAllocated ? 1 : 0, user?.id || 'unknown', ts, ts,
       );
 
     const row = db.prepare('SELECT * FROM cost_records WHERE id=?').get(id) as Record<string, unknown>;
-    return NextResponse.json({ data: dbToCostRecord(row) }, { status: 201 });
+    const created = dbToCostRecord(row);
+
+    // Notion 비동기 동기화 (실패해도 응답은 정상 처리)
+    syncToNotion(created).then(notionId => {
+      if (notionId) db.prepare('UPDATE cost_records SET notion_id=? WHERE id=?').run(notionId, id);
+    });
+
+    return NextResponse.json({ data: created }, { status: 201 });
   } catch (e) {
     console.error('[cost-records POST]', e);
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });
