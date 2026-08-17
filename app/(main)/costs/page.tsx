@@ -218,13 +218,13 @@ function LineItemsTable({ items, onChange, costType }: {
         <table className="w-full text-xs">
           <thead className="bg-muted/60">
             <tr>
-              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">내역</th>
-              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-14">수량</th>
-              <th className="px-2 py-1.5 font-medium text-muted-foreground w-14">단위</th>
-              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-20">단가</th>
+              <th className="text-left px-2 py-1.5 font-medium text-muted-foreground min-w-[180px]">내역</th>
+              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-16">수량</th>
+              <th className="px-2 py-1.5 font-medium text-muted-foreground w-16">단위</th>
+              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">단가</th>
               <th className="text-center px-1 py-1.5 font-medium text-muted-foreground w-12">VAT</th>
-              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-20">금액</th>
-              <th className="px-2 py-1.5 font-medium text-muted-foreground">비고</th>
+              <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">금액</th>
+              <th className="px-2 py-1.5 font-medium text-muted-foreground w-28">비고</th>
               <th className="w-7"></th>
             </tr>
           </thead>
@@ -232,29 +232,29 @@ function LineItemsTable({ items, onChange, costType }: {
             {items.map((item, idx) => (
               <tr key={idx} className="border-t">
                 <td className="px-2 py-1">
-                  <Input value={item.description} onChange={e => update(idx, 'description', e.target.value)} placeholder="내역" className="h-7 text-xs" />
+                  <Input value={item.description} onChange={e => update(idx, 'description', e.target.value)} placeholder="내역을 입력하세요" className="h-8 text-xs min-w-[160px]" />
                 </td>
                 <td className="px-2 py-1">
-                  <Input type="number" value={item.qty} onChange={e => update(idx, 'qty', parseFloat(e.target.value) || 0)} className="h-7 text-xs text-right" />
+                  <Input type="number" value={item.qty} onChange={e => update(idx, 'qty', parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right w-16" />
                 </td>
                 <td className="px-2 py-1">
-                  <select className="h-7 border rounded text-xs px-1 w-full" value={item.unit}
+                  <select className="h-8 border rounded text-xs px-1 w-full" value={item.unit}
                     onChange={e => update(idx, 'unit', e.target.value)}>
                     {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
                     <option value="기타">기타</option>
                   </select>
                 </td>
                 <td className="px-2 py-1">
-                  <Input type="number" value={item.unitPrice} onChange={e => update(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-7 text-xs text-right" />
+                  <Input type="number" value={item.unitPrice} onChange={e => update(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right w-24" />
                 </td>
                 <td className="px-1 py-1 text-center">
-                  <input type="checkbox" checked={item.vatIncluded} onChange={e => update(idx, 'vatIncluded', e.target.checked)} className="accent-primary" />
+                  <input type="checkbox" checked={item.vatIncluded} onChange={e => update(idx, 'vatIncluded', e.target.checked)} className="accent-primary w-4 h-4" />
                 </td>
-                <td className="px-2 py-1 text-right font-semibold">
+                <td className="px-2 py-1 text-right font-semibold text-sm">
                   {(item.amount || 0).toLocaleString()}
                 </td>
                 <td className="px-2 py-1">
-                  <Input value={item.note} onChange={e => update(idx, 'note', e.target.value)} placeholder="비고" className="h-7 text-xs" />
+                  <Input value={item.note} onChange={e => update(idx, 'note', e.target.value)} placeholder="비고" className="h-8 text-xs w-28" />
                 </td>
                 <td className="px-1 py-1 text-center">
                   <button type="button" onClick={() => removeRow(idx)} className="text-muted-foreground hover:text-destructive">
@@ -684,7 +684,7 @@ function CostModal({ record, onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[94vh] flex flex-col">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[94vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3.5 border-b">
           <h2 className="font-semibold text-sm">{isNew ? '비용 등록' : '비용 수정'} — {COST_TYPE_LABELS[form.costType] || form.costType}</h2>
           <div className="flex items-center gap-2">
@@ -777,7 +777,7 @@ function CostModal({ record, onClose, onSave }: {
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-semibold text-orange-800">
-                    💰 청구 (고객에게 청구)
+                    💰 청구 내역 (상대방에게 청구)
                   </div>
                   <div className="flex items-center gap-2">
                     {lineItems.length > 0 && (
@@ -933,11 +933,20 @@ function CostModal({ record, onClose, onSave }: {
           {/* 국내 매출 */}
           {form.disposition === 'billable_domestic' && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-3">
-              <div className="text-xs font-semibold text-blue-800">국내 매출 청구</div>
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-blue-800">국내 매출 청구</div>
+                {lineItemsTotal > 0 && <div className="text-xs font-bold text-blue-800">청구 합계: {lineItemsTotal.toLocaleString()} {form.billCurrency}</div>}
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className={labelCls}>청구 금액</label>
-                  <Input type="number" value={form.billAmount} onChange={e => setForm(f => ({ ...f, billAmount: e.target.value }))} placeholder={effectiveCostAmount.toString() || '원가와 동일'} className="h-9" />
+                  <label className={labelCls}>청구처 (상대방)</label>
+                  <AcInput
+                    value={form.clientName}
+                    onChange={v => setForm(f => ({ ...f, clientName: v, clientId: '' }))}
+                    options={companyOptions}
+                    placeholder="청구할 업체명"
+                    onSelect={opt => setForm(f => ({ ...f, clientName: opt.label, clientId: opt.id || '', companyId: opt.id || '' }))}
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>통화</label>
@@ -952,13 +961,20 @@ function CostModal({ record, onClose, onSave }: {
                   </select>
                 </div>
               </div>
-              {form.billAmount && margin !== 0 && (
+              <LineItemsTable items={lineItems} onChange={setLineItems} costType={form.costType} />
+              {lineItems.length === 0 && (
+                <div>
+                  <label className={labelCls}>청구 금액 (직접 입력)</label>
+                  <Input type="number" value={form.billAmount} onChange={e => setForm(f => ({ ...f, billAmount: e.target.value }))} placeholder={effectiveCostAmount.toString() || '원가와 동일'} className="h-9" />
+                </div>
+              )}
+              {margin !== 0 && (lineItemsTotal > 0 || form.billAmount) && (
                 <div className={cn('text-xs font-medium', margin > 0 ? 'text-green-700' : 'text-red-600')}>
                   마진: {margin >= 0 ? '+' : ''}{margin.toLocaleString(undefined, { maximumFractionDigits: 2 })} {form.billCurrency}
                 </div>
               )}
               <div>
-                <label className={labelCls}>연결 매출 (매출관리 시트 연결 시 매출처리 인정)</label>
+                <label className={labelCls}>연결 매출 (선택)</label>
                 <AcInput
                   value={form.linkedSaleLabel}
                   onChange={v => setForm(f => ({ ...f, linkedSaleLabel: v }))}
@@ -979,11 +995,20 @@ function CostModal({ record, onClose, onSave }: {
           {/* 외화 청구 */}
           {form.disposition === 'billable_foreign' && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
-              <div className="text-xs font-semibold text-green-800">외화 청구</div>
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-green-800">외화 청구</div>
+                {lineItemsTotal > 0 && <div className="text-xs font-bold text-green-800">청구 합계: {lineItemsTotal.toLocaleString()} {form.billCurrency}</div>}
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className={labelCls}>청구 금액</label>
-                  <Input type="number" value={form.billAmount} onChange={e => setForm(f => ({ ...f, billAmount: e.target.value }))} placeholder="원가와 동일" className="h-9" />
+                  <label className={labelCls}>청구처 (상대방)</label>
+                  <AcInput
+                    value={form.clientName}
+                    onChange={v => setForm(f => ({ ...f, clientName: v, clientId: '' }))}
+                    options={companyOptions}
+                    placeholder="청구할 외국 업체명"
+                    onSelect={opt => setForm(f => ({ ...f, clientName: opt.label, clientId: opt.id || '', companyId: opt.id || '' }))}
+                  />
                 </div>
                 <div>
                   <label className={labelCls}>청구 통화</label>
@@ -998,7 +1023,14 @@ function CostModal({ record, onClose, onSave }: {
                   </select>
                 </div>
               </div>
-              {form.billAmount && margin !== 0 && (
+              <LineItemsTable items={lineItems} onChange={setLineItems} costType={form.costType} />
+              {lineItems.length === 0 && (
+                <div>
+                  <label className={labelCls}>청구 금액 (직접 입력)</label>
+                  <Input type="number" value={form.billAmount} onChange={e => setForm(f => ({ ...f, billAmount: e.target.value }))} placeholder="원가와 동일" className="h-9" />
+                </div>
+              )}
+              {margin !== 0 && (lineItemsTotal > 0 || form.billAmount) && (
                 <div className={cn('text-xs font-medium', margin > 0 ? 'text-green-700' : 'text-red-600')}>
                   마진: {margin >= 0 ? '+' : ''}{margin.toLocaleString(undefined, { maximumFractionDigits: 2 })} {form.billCurrency}
                 </div>
