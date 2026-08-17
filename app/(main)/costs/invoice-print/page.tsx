@@ -74,7 +74,9 @@ function InvoicePrintContent() {
         <div style={{ background: '#1e3a5f', color: 'white', padding: '18px 36px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {company?.logoUrl && (
-              <img src={company.logoUrl} alt="logo" style={{ height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              <div style={{ background: 'white', borderRadius: 6, padding: '4px 8px' }}>
+                <img src={company.logoUrl} alt="logo" style={{ height: 32, objectFit: 'contain', display: 'block' }} />
+              </div>
             )}
             <div>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3 }}>INVOICE</div>
