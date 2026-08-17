@@ -454,14 +454,20 @@ function ImportModal({
         customCosts: customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).map(c => ({ name: c.name, amount: parseFloat(c.amount) })),
         settlementItems,
       };
+      const safeErr = async (res: Response, label: string) => {
+        const text = await res.text();
+        let msg = `${label} (${res.status})`;
+        try { const j = JSON.parse(text); msg = j.error || msg; } catch { if (text) msg = text.slice(0, 120); }
+        throw new Error(msg);
+      };
       let savedId = item?.id || null;
       if (item) {
         const res = await fetch(`/api/imports/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || `저장 실패 (${res.status})`); }
+        if (!res.ok) await safeErr(res, '저장 실패');
       } else {
         const res = await fetch('/api/imports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || `등록 실패 (${res.status})`); }
-        const d = await res.json();
+        if (!res.ok) await safeErr(res, '등록 실패');
+        const d = JSON.parse(await res.text());
         savedId = d.data?.id || null;
       }
       if (savedId) {
