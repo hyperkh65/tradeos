@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { dbToCostRecord } from '../route';
+import { getSessionUser } from '@/lib/auth/session';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,6 +18,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const db = getDb();
     const row = db.prepare('SELECT * FROM cost_records WHERE id=?').get(id) as Record<string, unknown> | undefined;
     if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+
+    // 수정 잠금: 익월 10일 이후는 관리자만 수정 가능
+    const createdAt = new Date(row.created_at as string);
+    const lockDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + 1, 10); // 익월 10일
+    const isLocked = new Date() > lockDate;
+    if (isLocked) {
+      const user = await getSessionUser();
+      if (!user || user.role !== 'admin') {
+        return NextResponse.json({ error: '마감된 비용은 관리자만 수정할 수 있습니다. (익월 10일 마감)' }, { status: 403 });
+      }
+    }
 
     const costAmountKrw = (body.costCurrency || row.cost_currency) === 'KRW'
       ? (body.costAmount ?? row.cost_amount)
@@ -48,7 +60,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       incurred_date=?, disposition=?,
       bill_amount=?, bill_currency=?, bill_status=?,
       fx_rate_at_settle=?, fx_gain_loss=?, settled_at=?,
-      linked_invoice_id=?, linked_sale_id=?,
+      linked_invoice_id=?, linked_sale_id=?, linked_sales_json=?,
       cause_type=?,
       offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
       cost_items_json=?, line_items_json=?,
@@ -81,6 +93,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.settledAt ?? row.settled_at,
         body.linkedInvoiceId ?? row.linked_invoice_id,
         body.linkedSaleId ?? row.linked_sale_id,
+        body.linkedSales !== undefined ? JSON.stringify(body.linkedSales) : (row.linked_sales_json ?? '[]'),
         body.causeType ?? row.cause_type,
         body.offsetStatus ?? row.offset_status,
         offsetRemaining,

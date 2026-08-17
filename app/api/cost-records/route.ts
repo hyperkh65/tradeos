@@ -66,11 +66,11 @@ export interface CostRecord {
   costAmount: number; costCurrency: string;
   fxRateAtCost?: number; costAmountKrw?: number;
   incurredDate?: string;
-  disposition: 'pending' | 'internal' | 'billable_domestic' | 'billable_foreign' | 'offset_purchase';
+  disposition: 'pending' | 'internal' | 'billable_domestic' | 'billable_foreign' | 'offset_purchase' | 'selling_admin';
   billAmount?: number; billCurrency?: string;
   billStatus: 'unbilled' | 'invoiced' | 'collected' | 'offset' | 'waived';
   fxRateAtSettle?: number; fxGainLoss?: number; settledAt?: string;
-  linkedInvoiceId?: string; linkedSaleId?: string; linkedExpenseId?: string;
+  linkedInvoiceId?: string; linkedSaleId?: string; linkedSales: { id: string; businessId: string; amount?: number }[]; linkedExpenseId?: string;
   causeType?: string;
   offsetStatus: 'none' | 'pending' | 'partial' | 'completed';
   offsetRemaining?: number; offsetPoId?: string;
@@ -115,6 +115,7 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     settledAt: (row.settled_at as string) || undefined,
     linkedInvoiceId: (row.linked_invoice_id as string) || undefined,
     linkedSaleId: (row.linked_sale_id as string) || undefined,
+    linkedSales: (() => { try { return JSON.parse((row.linked_sales_json as string) || '[]'); } catch { return []; } })(),
     linkedExpenseId: (row.linked_expense_id as string) || undefined,
     causeType: (row.cause_type as string) || 'schedule',
     offsetStatus: (row.offset_status as CostRecord['offsetStatus']) || 'none',
@@ -192,9 +193,9 @@ export async function POST(req: NextRequest) {
        cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
        incurred_date,disposition,bill_amount,bill_currency,bill_status,
        cause_type,offset_status,offset_remaining,offset_po_id,offset_items_json,
-       cost_items_json,line_items_json,linked_sale_id,allocation_method,remark,
+       cost_items_json,line_items_json,linked_sale_id,linked_sales_json,allocation_method,remark,
        is_auto_allocated,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.costType || 'other', body.description ?? null,
@@ -216,6 +217,7 @@ export async function POST(req: NextRequest) {
         JSON.stringify(costItems),
         JSON.stringify(lineItems),
         body.linkedSaleId ?? null,
+        JSON.stringify(body.linkedSales || []),
         body.allocationMethod ?? null,
         body.remark ?? null,
         body.isAutoAllocated ? 1 : 0, user?.id || 'unknown', ts, ts,

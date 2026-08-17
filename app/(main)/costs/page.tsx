@@ -40,6 +40,7 @@ const DISPOSITION_LABELS: Record<string, { label: string; color: string }> = {
   billable_domestic:  { label: '국내 매출', color: 'bg-blue-100 text-blue-700' },
   billable_foreign:   { label: '외화 청구', color: 'bg-green-100 text-green-700' },
   offset_purchase:    { label: '매입 상계', color: 'bg-purple-100 text-purple-700' },
+  selling_admin:      { label: '판매관리비', color: 'bg-orange-100 text-orange-700' },
 };
 
 const BILL_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -98,6 +99,72 @@ function AcInput({
               {opt.sub && <div className="text-muted-foreground text-[10px] mt-0.5">{opt.sub}</div>}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 다중 매출 연결 선택기 ───────────────────────────────────────────────────
+
+function LinkedSalesSelector({
+  linkedSales, onChange, salesOptions, billTotal,
+}: {
+  linkedSales: { id: string; businessId: string; amount?: number }[];
+  onChange: (v: { id: string; businessId: string; amount?: number }[]) => void;
+  salesOptions: AcOption[];
+  billTotal: number;
+}) {
+  const [search, setSearch] = useState('');
+  const filtered = search.trim()
+    ? salesOptions.filter(o => o.label.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+    : salesOptions.slice(0, 8);
+  const isMatched = linkedSales.some(ls => ls.amount != null && billTotal > 0 && Math.abs((ls.amount || 0) - billTotal) < 1);
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="매출 번호 검색..." className="h-8 text-xs" />
+        {search && filtered.length > 0 && (
+          <div className="absolute z-50 top-full mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-44 overflow-y-auto">
+            {filtered.map(opt => (
+              <button key={opt.value} type="button"
+                onMouseDown={e => {
+                  e.preventDefault();
+                  if (!linkedSales.find(ls => ls.id === (opt.id || opt.value))) {
+                    onChange([...linkedSales, { id: opt.id || opt.value, businessId: opt.label.split(' · ')[0], amount: undefined }]);
+                  }
+                  setSearch('');
+                }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0">
+                <div className="font-medium">{opt.label}</div>
+                {opt.sub && <div className="text-muted-foreground text-[10px]">{opt.sub}</div>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {linkedSales.length > 0 && (
+        <div className="space-y-1">
+          {linkedSales.map((ls, i) => (
+            <div key={ls.id} className="flex items-center gap-2 px-2 py-1.5 bg-white border rounded-lg text-xs">
+              <span className="flex-1 font-medium">{ls.businessId}</span>
+              <input type="number" value={ls.amount ?? ''} placeholder="매출금액"
+                onChange={e => {
+                  const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                  onChange(linkedSales.map((it, idx) => idx === i ? { ...it, amount: val } : it));
+                }}
+                className="w-24 h-6 border rounded px-1.5 text-right text-xs" />
+              <button type="button" onClick={() => onChange(linkedSales.filter((_, idx) => idx !== i))}
+                className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+            </div>
+          ))}
+          {billTotal > 0 && (
+            <div className={cn('text-[10px] flex items-center gap-1', isMatched ? 'text-green-700' : 'text-amber-600')}>
+              {isMatched ? <Check className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+              {isMatched ? '연결 매출 금액 일치 → 저장 시 수금완료 처리' : '연결 매출에 청구금액과 일치하는 항목 없음 → 미청구 상태 유지'}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -433,14 +500,17 @@ function CostModal({ record, onClose, onSave }: {
     shipmentId: record?.shipmentId || '',
     linkedSaleId: record?.linkedSaleId || '',
     linkedSaleLabel: '',
+    isLocked: false,
   });
 
   const [offsetItems, setOffsetItems] = useState<OffsetItem[]>(record?.offsetItems || []);
   const [costItems, setCostItems] = useState<CostLineItem[]>(record?.costItems || []);
   const [lineItems, setLineItems] = useState<CostLineItem[]>(record?.lineItems || []);
+  const [linkedSales, setLinkedSales] = useState<{ id: string; businessId: string; amount?: number }[]>(record?.linkedSales || []);
   const [files, setFiles] = useState<CostFileRecord[]>(record?.files || []);
   const [poSearch, setPoSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   // 통관 프리뷰 관련
   const [linkedImport, setLinkedImport] = useState<Import | null>(null);
@@ -449,6 +519,14 @@ function CostModal({ record, onClose, onSave }: {
   const [existingCostTypes, setExistingCostTypes] = useState<string[]>([]);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoGenerated, setAutoGenerated] = useState(false);
+
+  // 잠금 상태 체크
+  useEffect(() => {
+    if (!record?.createdAt) return;
+    const createdAt = new Date(record.createdAt);
+    const lockDate = new Date(createdAt.getFullYear(), createdAt.getMonth() + 1, 10);
+    setIsLocked(new Date() > lockDate);
+  }, [record?.createdAt]);
 
   // 참조 데이터 로드
   useEffect(() => {
@@ -639,6 +717,7 @@ function CostModal({ record, onClose, onSave }: {
       shipmentBusinessId: form.shipmentBusinessId || undefined,
       shipmentId: form.shipmentId || undefined,
       linkedSaleId: form.linkedSaleId || undefined,
+      linkedSales,
     };
   };
 
@@ -647,14 +726,31 @@ function CostModal({ record, onClose, onSave }: {
     setSaving(true);
     try {
       const body = buildBody();
-      let savedId = record?.id;
+
+      // 국내매출 / 판매관리비 — 연결 매출 금액 일치 시 자동 수금완료
+      if ((form.disposition === 'billable_domestic' || form.disposition === 'selling_admin') && linkedSales.length > 0) {
+        const billTotal = lineItems.reduce((s, i) => s + (i.amount || 0), 0) || parseFloat(form.billAmount || '0');
+        const hasMatchingSale = linkedSales.some(ls => ls.amount != null && Math.abs((ls.amount || 0) - billTotal) < 1);
+        body.billStatus = hasMatchingSale ? 'collected' : 'unbilled';
+      }
+
+      // 매입상계 — offsetItems 합계 = 원가이면 자동 완료
+      if (form.disposition === 'offset_purchase' && offsetItems.length > 0) {
+        const offTotal = offsetItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const costAmt = effectiveCostAmount;
+        body.offsetStatus = offTotal >= costAmt && costAmt > 0 ? 'completed' : offTotal > 0 ? 'partial' : 'pending';
+        body.offsetRemaining = Math.max(0, costAmt - offTotal);
+      }
+
       if (isNew) {
         const res = await fetch('/api/cost-records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         if (!res.ok) throw new Error('저장 실패');
-        savedId = (await res.json()).data?.id;
       } else {
         const res = await fetch(`/api/cost-records/${record!.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) throw new Error('저장 실패');
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || '저장 실패');
+        }
       }
       onSave();
     } catch (e) { alert(`오류: ${e}`); }
@@ -747,6 +843,12 @@ function CostModal({ record, onClose, onSave }: {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {isLocked && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              익월 10일이 지나 마감된 비용입니다. 관리자만 수정할 수 있습니다.
+            </div>
+          )}
           {record?.isAutoAllocated && (
             <div className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
               통관 입력 시 자동 생성된 비용입니다. 처리 방향만 변경 가능합니다.
@@ -901,7 +1003,7 @@ function CostModal({ record, onClose, onSave }: {
           {/* 처리 방향 */}
           <div>
             <label className={labelCls}>처리 방향</label>
-            <div className="grid grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-6 gap-1.5">
               {Object.entries(DISPOSITION_LABELS).map(([k, { label, color }]) => (
                 <button key={k} type="button"
                   onClick={() => setForm(f => ({ ...f, disposition: k as CostRecord['disposition'] }))}
@@ -956,20 +1058,63 @@ function CostModal({ record, onClose, onSave }: {
                 </div>
               )}
               <div>
-                <label className={labelCls}>연결 매출 (선택)</label>
-                <AcInput
-                  value={form.linkedSaleLabel}
-                  onChange={v => setForm(f => ({ ...f, linkedSaleLabel: v }))}
-                  options={salesOptions}
-                  placeholder="매출 번호 검색..."
-                  onSelect={opt => setForm(f => ({ ...f, linkedSaleId: opt.id || '', linkedSaleLabel: opt.label }))}
+                <label className={labelCls}>연결 매출 (복수 가능)</label>
+                <LinkedSalesSelector
+                  linkedSales={linkedSales}
+                  onChange={setLinkedSales}
+                  salesOptions={salesOptions}
+                  billTotal={lineItems.reduce((s, i) => s + (i.amount || 0), 0) || parseFloat(form.billAmount || '0')}
                 />
-                {form.linkedSaleId && (
-                  <div className="flex items-center gap-1.5 mt-1 text-xs text-green-700">
-                    <Check className="w-3 h-3" />매출관리 연결됨
-                    <button type="button" className="text-red-500 hover:underline" onClick={() => setForm(f => ({ ...f, linkedSaleId: '', linkedSaleLabel: '' }))}>해제</button>
-                  </div>
-                )}
+              </div>
+            </div>
+          )}
+
+          {/* 판매관리비 */}
+          {form.disposition === 'selling_admin' && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-orange-800">판매관리비</div>
+                {lineItemsTotal > 0 && <div className="text-xs font-bold text-orange-800">합계: {lineItemsTotal.toLocaleString()} {form.billCurrency}</div>}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className={labelCls}>청구처 (상대방)</label>
+                  <AcInput
+                    value={form.clientName}
+                    onChange={v => setForm(f => ({ ...f, clientName: v, clientId: '' }))}
+                    options={companyOptions}
+                    placeholder="청구할 업체명"
+                    onSelect={opt => setForm(f => ({ ...f, clientName: opt.label, clientId: opt.id || '', companyId: opt.id || '' }))}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>통화</label>
+                  <select className={inputCls} value={form.billCurrency} onChange={e => setForm(f => ({ ...f, billCurrency: e.target.value }))}>
+                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>청구 상태</label>
+                  <select className={inputCls} value={form.billStatus} onChange={e => setForm(f => ({ ...f, billStatus: e.target.value as CostRecord['billStatus'] }))}>
+                    {Object.entries(BILL_STATUS_LABELS).map(([k, { label }]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <LineItemsTable items={lineItems} onChange={setLineItems} costType={form.costType} />
+              {lineItems.length === 0 && (
+                <div>
+                  <label className={labelCls}>청구 금액 (직접 입력)</label>
+                  <Input type="number" value={form.billAmount} onChange={e => setForm(f => ({ ...f, billAmount: e.target.value }))} placeholder={effectiveCostAmount.toString() || '원가와 동일'} className="h-9" />
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>연결 매출 (복수 가능)</label>
+                <LinkedSalesSelector
+                  linkedSales={linkedSales}
+                  onChange={setLinkedSales}
+                  salesOptions={salesOptions}
+                  billTotal={lineItems.reduce((s, i) => s + (i.amount || 0), 0) || parseFloat(form.billAmount || '0')}
+                />
               </div>
             </div>
           )}
@@ -1397,12 +1542,23 @@ export default function CostsPage() {
 
   const totalCostKrw = filtered.reduce((s, r) => s + (r.costAmountKrw || r.costAmount), 0);
   const pendingCount = filtered.filter(r => r.disposition === 'pending').length;
-  const unbilledBillable = filtered.filter(r => r.disposition !== 'internal' && r.disposition !== 'pending' && r.billStatus === 'unbilled').length;
+  const BILLABLE_DISPOSITIONS = new Set(['billable_domestic', 'billable_foreign', 'offset_purchase', 'selling_admin']);
+  const unbilledBillable = filtered.filter(r => BILLABLE_DISPOSITIONS.has(r.disposition) && r.billStatus === 'unbilled').length;
   const offsetPending = filtered.filter(r => r.offsetStatus === 'pending' || r.offsetStatus === 'partial').length;
   const fxBillable = records.filter(r => r.disposition === 'billable_foreign' && r.billStatus === 'unbilled').length;
 
   const handleQuickDisposition = async (id: string, disposition: CostRecord['disposition']) => {
     await fetch(`/api/cost-records/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disposition }) });
+    load();
+  };
+
+  const handleConfirmPayment = async (id: string) => {
+    if (!confirm('입금 확인 처리하시겠습니까? billStatus를 수금완료로 변경합니다.')) return;
+    const res = await fetch(`/api/cost-records/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ billStatus: 'collected' }) });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || '처리 실패');
+    }
     load();
   };
 
@@ -1527,6 +1683,7 @@ export default function CostsPage() {
                               <button onClick={() => handleQuickDisposition(r.id, 'billable_domestic')} className="text-[10px] px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded">국내</button>
                               <button onClick={() => handleQuickDisposition(r.id, 'billable_foreign')} className="text-[10px] px-1.5 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">외화</button>
                               <button onClick={() => handleQuickDisposition(r.id, 'offset_purchase')} className="text-[10px] px-1.5 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded">상계</button>
+                              <button onClick={() => handleQuickDisposition(r.id, 'selling_admin')} className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">판관</button>
                             </div>
                           ) : (
                             <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', disp?.color)}>{disp?.label}</span>
@@ -1546,6 +1703,13 @@ export default function CostsPage() {
                         </td>
                         <td className="px-3 py-2">
                           <span className={cn('text-xs font-medium', billSt?.color)}>{billSt?.label}</span>
+                          {r.disposition === 'billable_foreign' && r.billStatus !== 'collected' && r.billStatus !== 'waived' && (
+                            <button type="button"
+                              onClick={e => { e.stopPropagation(); handleConfirmPayment(r.id); }}
+                              className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300">
+                              입금확인
+                            </button>
+                          )}
                           {r.offsetStatus !== 'none' && (
                             <div className="text-[10px] text-purple-600">
                               {r.offsetStatus === 'pending' ? '상계예정' : r.offsetStatus === 'partial' ? `부분(잔:${r.offsetRemaining?.toLocaleString()})` : '완료'}
