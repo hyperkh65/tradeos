@@ -40,7 +40,7 @@ export async function GET() {
       db.transaction(() => {
         for (const p of notionData) {
           // Check by both id AND business_id (local id ≠ Notion page id)
-          const existing = db.prepare('SELECT id FROM products WHERE id=? OR business_id=?').get(p.id, p.businessId);
+          const existing = db.prepare('SELECT id FROM products WHERE id=? OR business_id=? OR notion_id=?').get(p.id, p.businessId, p.id);
           if (existing) continue;
           const ex = p as any;
           const imagesJson = ex.imagesJson || (ex.imageUrl ? JSON.stringify([ex.imageUrl]) : null);
