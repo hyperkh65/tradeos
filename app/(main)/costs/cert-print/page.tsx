@@ -212,28 +212,28 @@ function CertPrintContent() {
           )}
         </div>
 
-        {/* ── 결재란 (compact) ── */}
-        <div style={{ padding: '0 36px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, width: 'fit-content' }}>
+        {/* ── 결재란 + 직인 ── */}
+        <div style={{ padding: '0 36px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: '#555', marginRight: 12, paddingTop: 8 }}>결재:</div>
-            {/* 작성자 */}
             <div style={{ border: '1px solid #aaa', textAlign: 'center', width: 76, padding: '6px 4px' }}>
               <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>작성자</div>
               <div style={{ fontSize: 11, fontWeight: 600, minHeight: 24, paddingTop: 4 }}>{writer?.name || ''}</div>
               {writer?.department && <div style={{ fontSize: 9, color: '#999', marginTop: 2 }}>{writer.department}</div>}
             </div>
-            {/* 검토자 */}
             <div style={{ border: '1px solid #aaa', borderLeft: 'none', textAlign: 'center', width: 76, padding: '6px 4px' }}>
               <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>검토자</div>
               <div style={{ minHeight: 24 }}></div>
             </div>
-            {/* 승인자 */}
             <div style={{ border: '1px solid #aaa', borderLeft: 'none', textAlign: 'center', width: 76, padding: '6px 4px' }}>
               <div style={{ fontSize: 9, color: '#888', marginBottom: 4 }}>승인자</div>
               <div style={{ minHeight: 24 }}></div>
               <div style={{ fontSize: 8, color: '#bbb', marginTop: 2 }}>전자결재</div>
             </div>
           </div>
+          {company?.stampUrl && (
+            <img src={company.stampUrl} alt="직인" style={{ height: 72, objectFit: 'contain', opacity: 0.85 }} />
+          )}
         </div>
 
         <div style={{ padding: '16px 36px 0', fontSize: 10, color: '#bbb', textAlign: 'right' }}>

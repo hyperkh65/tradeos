@@ -244,28 +244,66 @@ export default function SettingsPage() {
               </div>
 
               <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold mb-3">로고 / 직인</h3>
+                <h3 className="text-sm font-semibold mb-1">로고 / 직인</h3>
+                <p className="text-xs text-muted-foreground mb-3">견적서·청구서·인보이스 출력 시 자동으로 삽입됩니다.</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">로고 URL</label>
-                    <Input value={company.logoUrl} onChange={e => setCompany(c => ({ ...c, logoUrl: e.target.value }))} placeholder="https://..." />
-                    {company.logoUrl && (
-                      <div className="mt-2 border rounded-lg p-2 bg-muted/30">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={company.logoUrl} alt="로고 미리보기" className="max-h-16 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+                  {(['logo', 'stamp'] as const).map(type => {
+                    const urlKey = type === 'logo' ? 'logoUrl' : 'stampUrl';
+                    const label = type === 'logo' ? '회사 로고' : '직인 (도장)';
+                    const currentUrl = company[urlKey];
+                    return (
+                      <div key={type}>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+                        <div className="border-2 border-dashed border-border rounded-lg p-3 flex flex-col items-center gap-2 bg-muted/20 relative">
+                          {currentUrl ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={currentUrl} alt={label} className="max-h-20 max-w-full object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+                              <span className="text-xs text-green-600 font-medium">등록됨</span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground py-4">미등록</span>
+                          )}
+                          <label className="cursor-pointer text-xs text-primary font-medium hover:underline">
+                            {currentUrl ? '이미지 교체' : '이미지 업로드'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async e => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const fd = new FormData();
+                                fd.append('type', type);
+                                fd.append('file', file);
+                                setSaving(true);
+                                try {
+                                  const res = await fetch('/api/settings/company/upload', { method: 'POST', body: fd });
+                                  const j = await res.json();
+                                  if (j.url) {
+                                    setCompany(c => ({ ...c, [urlKey]: j.url }));
+                                    showMsg('success', `${label} 업로드 완료`);
+                                  } else {
+                                    showMsg('error', j.error ?? '업로드 실패');
+                                  }
+                                } catch { showMsg('error', '업로드 오류'); }
+                                finally { setSaving(false); e.target.value = ''; }
+                              }}
+                            />
+                          </label>
+                          {currentUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setCompany(c => ({ ...c, [urlKey]: '' }))}
+                              className="text-xs text-red-500 hover:underline"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">직인 URL</label>
-                    <Input value={company.stampUrl} onChange={e => setCompany(c => ({ ...c, stampUrl: e.target.value }))} placeholder="https://..." />
-                    {company.stampUrl && (
-                      <div className="mt-2 border rounded-lg p-2 bg-muted/30">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={company.stampUrl} alt="직인 미리보기" className="max-h-16 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
 
