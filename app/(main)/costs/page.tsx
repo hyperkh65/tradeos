@@ -185,6 +185,16 @@ function PaymentConfirmDialog({
   const [saving, setSaving] = useState(false);
   const [paidTouched, setPaidTouched] = useState(false);
 
+  // 환율 자동 조회 (미설정 시)
+  useEffect(() => {
+    if (initRate && initRate > 1) return;
+    if (billCurrency === 'KRW') return;
+    fetch(`/api/utils/fx-rate?base=${billCurrency}&target=KRW`)
+      .then(r => r.json())
+      .then(d => { if (d.rate > 1) setRate(d.rate.toString()); })
+      .catch(() => {});
+  }, []);
+
   const rateNum = parseFloat(rate) || 0;
   const expectedKrw = Math.round(billAmount * rateNum);
 
@@ -685,6 +695,24 @@ function CostModal({ record, onClose, onSave }: {
   const [isLocked, setIsLocked] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
 
+  // 현재 환율 자동 조회 (KRW 원가 + 외화 청구 시)
+  useEffect(() => {
+    const billCur = form.billCurrency;
+    const costCur = form.costCurrency;
+    if (costCur !== 'KRW' || billCur === 'KRW') return;
+    // 이미 환율이 설정된 경우 스킵
+    if (parseFloat(form.fxRateAtCost || '0') > 1) return;
+    fetch(`/api/utils/fx-rate?base=${billCur}&target=KRW`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.rate && d.rate > 1) {
+          setForm(f => ({ ...f, fxRateAtCost: d.rate.toString() }));
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.billCurrency, form.costCurrency]);
+
   // 통관 프리뷰 관련
   const [linkedImport, setLinkedImport] = useState<Import | null>(null);
   const [linkedShipment, setLinkedShipment] = useState<FullShipment | null>(null);
@@ -1167,12 +1195,12 @@ function CostModal({ record, onClose, onSave }: {
                 <div>
                   <label className={labelCls}>
                     환율
-                    {form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' && (
-                      <span className="text-[10px] text-orange-600 ml-1">(잡손익 계산용)</span>
+                    {form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' && parseFloat(form.fxRateAtCost || '0') > 1 && (
+                      <span className="text-[10px] text-green-600 ml-1">(현재환율 자동)</span>
                     )}
                   </label>
                   <Input type="number" value={form.fxRateAtCost} onChange={e => setForm(f => ({ ...f, fxRateAtCost: e.target.value }))}
-                    placeholder={form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' ? '예: 1380' : '1'}
+                    placeholder={form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' ? '자동 조회 중...' : '1'}
                     disabled={form.costCurrency === 'KRW' && form.billCurrency === 'KRW'}
                     className="h-9" />
                 </div>
