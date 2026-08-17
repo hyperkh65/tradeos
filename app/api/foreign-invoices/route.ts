@@ -3,13 +3,20 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 
 export interface ForeignInvoiceItem {
-  costRecordId?: string; description: string; amount: number; currency: string;
+  costRecordId?: string;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  vatIncluded: boolean;
+  amount: number;
+  currency: string;
 }
 
 export interface ForeignInvoice {
   id: string; businessId: string;
   clientId?: string; clientName?: string;
-  currency: string; subtotal: number; total: number;
+  currency: string; subtotal: number; vatAmount: number; total: number;
   items: ForeignInvoiceItem[];
   issuedDate?: string; dueDate?: string;
   status: 'draft' | 'sent' | 'paid' | 'cancelled';
@@ -25,6 +32,7 @@ export function dbToFI(row: Record<string, unknown>): ForeignInvoice {
     clientName: (row.client_name as string) || undefined,
     currency: (row.currency as string) || 'USD',
     subtotal: (row.subtotal as number) || 0,
+    vatAmount: (row.vat_amount as number) || 0,
     total: (row.total as number) || 0,
     items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
     issuedDate: (row.issued_date as string) || undefined,
@@ -67,16 +75,20 @@ export async function POST(req: NextRequest) {
 
     const items: ForeignInvoiceItem[] = body.items || [];
     const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
+    const vatAmount = items.reduce((s, i) => {
+      if (!i.vatIncluded) return s;
+      return s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100;
+    }, 0);
     const total = subtotal;
 
     db.prepare(`INSERT INTO foreign_invoices
-      (id,business_id,client_id,client_name,currency,subtotal,total,items_json,
+      (id,business_id,client_id,client_name,currency,subtotal,vat_amount,total,items_json,
        issued_date,due_date,status,remark,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.clientId ?? null, body.clientName ?? null,
-        body.currency || 'USD', subtotal, total,
+        body.currency || 'USD', subtotal, vatAmount, total,
         JSON.stringify(items),
         body.issuedDate ?? ts.slice(0, 10),
         body.dueDate ?? null,

@@ -40,14 +40,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     db.prepare(`UPDATE cost_records SET
       cost_type=?, description=?,
-      client_id=?, client_name=?,
+      client_id=?, client_name=?, company_id=?,
+      shipment_id=?, shipment_business_id=?,
+      import_id=?, import_business_id=?,
       cost_amount=?, cost_currency=?, fx_rate_at_cost=?, cost_amount_krw=?,
       incurred_date=?, disposition=?,
       bill_amount=?, bill_currency=?, bill_status=?,
       fx_rate_at_settle=?, fx_gain_loss=?, settled_at=?,
       linked_invoice_id=?, linked_sale_id=?,
       cause_type=?,
-      offset_status=?, offset_remaining=?, offset_po_id=?,
+      offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
       allocation_method=?, allocation_ratio=?,
       remark=?, updated_at=?
       WHERE id=?`)
@@ -56,6 +58,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.description ?? row.description,
         body.clientId ?? row.client_id,
         body.clientName ?? row.client_name,
+        body.companyId ?? row.company_id,
+        body.shipmentId ?? row.shipment_id,
+        body.shipmentBusinessId ?? row.shipment_business_id,
+        body.importId ?? row.import_id,
+        body.importBusinessId ?? row.import_business_id,
         body.costAmount ?? row.cost_amount,
         body.costCurrency ?? row.cost_currency,
         body.fxRateAtCost ?? row.fx_rate_at_cost,
@@ -74,6 +81,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.offsetStatus ?? row.offset_status,
         offsetRemaining,
         body.offsetPoId ?? row.offset_po_id,
+        body.offsetItems !== undefined ? JSON.stringify(body.offsetItems) : (row.offset_items_json ?? '[]'),
         body.allocationMethod ?? row.allocation_method,
         body.allocationRatio ?? row.allocation_ratio,
         body.remark ?? row.remark,

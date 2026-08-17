@@ -68,21 +68,43 @@ function InvoicePrintContent() {
             <tr>
               <th style={{ width: 30 }}>No.</th>
               <th>항목 (Description)</th>
-              <th style={{ width: 120, textAlign: 'right' }}>금액 ({inv.currency})</th>
+              <th style={{ width: 50, textAlign: 'right' }}>수량</th>
+              <th style={{ width: 50 }}>단위</th>
+              <th style={{ width: 120, textAlign: 'right' }}>단가</th>
+              <th style={{ width: 130, textAlign: 'right' }}>금액 ({inv.currency})</th>
             </tr>
           </thead>
           <tbody>
             {inv.items.map((item, i) => (
               <tr key={i}>
                 <td style={{ textAlign: 'center' }}>{i + 1}</td>
-                <td>{item.description}</td>
+                <td>{item.description}{item.vatIncluded ? ' (VAT incl.)' : ''}</td>
+                <td style={{ textAlign: 'right' }}>{item.qty ?? 1}</td>
+                <td style={{ textAlign: 'center' }}>{item.unit || 'lot'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {(item.unitPrice ?? item.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>
                   {item.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
             ))}
+            <tr style={{ background: '#f9f9f9' }}>
+              <td colSpan={5} style={{ textAlign: 'right', fontSize: 12, color: '#666' }}>SUBTOTAL</td>
+              <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                {inv.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+            </tr>
+            {(inv.vatAmount ?? 0) > 0 && (
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'right', fontSize: 12, color: '#666' }}>VAT (10%)</td>
+                <td style={{ textAlign: 'right' }}>
+                  {(inv.vatAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            )}
             <tr className="total-row">
-              <td colSpan={2} style={{ textAlign: 'right' }}>TOTAL</td>
+              <td colSpan={5} style={{ textAlign: 'right' }}>TOTAL</td>
               <td style={{ textAlign: 'right', fontSize: 14 }}>
                 {inv.currency} {inv.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>

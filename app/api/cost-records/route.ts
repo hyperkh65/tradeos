@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 
+export interface OffsetItem {
+  poId: string; poBusinessId: string; supplierName: string;
+  description: string; qty: number; amount: number; currency: string;
+}
+
 export interface CostRecord {
   id: string; businessId: string; costType: string; description?: string;
   shipmentId?: string; shipmentBusinessId?: string;
   importId?: string; importBusinessId?: string;
   poId?: string; poBusinessId?: string;
-  clientId?: string; clientName?: string;
+  clientId?: string; clientName?: string; companyId?: string;
   costAmount: number; costCurrency: string;
   fxRateAtCost?: number; costAmountKrw?: number;
   incurredDate?: string;
@@ -19,6 +24,7 @@ export interface CostRecord {
   causeType?: string;
   offsetStatus: 'none' | 'pending' | 'partial' | 'completed';
   offsetRemaining?: number; offsetPoId?: string;
+  offsetItems: OffsetItem[];
   allocationGroupId?: string; allocationMethod?: string; allocationRatio?: number;
   isAutoAllocated: boolean;
   remark?: string; createdBy?: string; createdAt: string; updatedAt?: string;
@@ -38,6 +44,7 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     poBusinessId: (row.po_business_id as string) || undefined,
     clientId: (row.client_id as string) || undefined,
     clientName: (row.client_name as string) || undefined,
+    companyId: (row.company_id as string) || undefined,
     costAmount: (row.cost_amount as number) || 0,
     costCurrency: (row.cost_currency as string) || 'KRW',
     fxRateAtCost: (row.fx_rate_at_cost as number) || undefined,
@@ -57,6 +64,7 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     offsetStatus: (row.offset_status as CostRecord['offsetStatus']) || 'none',
     offsetRemaining: (row.offset_remaining as number) || undefined,
     offsetPoId: (row.offset_po_id as string) || undefined,
+    offsetItems: (() => { try { return JSON.parse((row.offset_items_json as string) || '[]'); } catch { return []; } })(),
     allocationGroupId: (row.allocation_group_id as string) || undefined,
     allocationMethod: (row.allocation_method as string) || undefined,
     allocationRatio: (row.allocation_ratio as number) || undefined,
@@ -108,20 +116,20 @@ export async function POST(req: NextRequest) {
     db.prepare(`INSERT INTO cost_records
       (id,business_id,cost_type,description,
        shipment_id,shipment_business_id,import_id,import_business_id,po_id,po_business_id,
-       client_id,client_name,
+       client_id,client_name,company_id,
        cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
        incurred_date,disposition,bill_amount,bill_currency,bill_status,
-       cause_type,offset_status,offset_remaining,offset_po_id,
-       allocation_method,remark,
+       cause_type,offset_status,offset_remaining,offset_po_id,offset_items_json,
+       linked_sale_id,allocation_method,remark,
        is_auto_allocated,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.costType || 'other', body.description ?? null,
         body.shipmentId ?? null, body.shipmentBusinessId ?? null,
         body.importId ?? null, body.importBusinessId ?? null,
         body.poId ?? null, body.poBusinessId ?? null,
-        body.clientId ?? null, body.clientName ?? null,
+        body.clientId ?? null, body.clientName ?? null, body.companyId ?? null,
         body.costAmount || 0, body.costCurrency || 'KRW',
         body.fxRateAtCost ?? 1, costAmountKrw,
         body.incurredDate ?? ts.slice(0, 10),
@@ -131,6 +139,8 @@ export async function POST(req: NextRequest) {
         body.causeType || 'schedule',
         body.offsetStatus || 'none',
         body.offsetRemaining ?? null, body.offsetPoId ?? null,
+        JSON.stringify(body.offsetItems || []),
+        body.linkedSaleId ?? null,
         body.allocationMethod ?? null,
         body.remark ?? null,
         0, user?.id || 'unknown', ts, ts,

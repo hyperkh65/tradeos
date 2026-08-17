@@ -622,6 +622,12 @@ function runMigrations(db: Database.Database) {
       updated_at TEXT
     )`);
   } catch { /* already exists */ }
+  // cost_records 컬럼 확장 (idempotent)
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN offset_items_json TEXT DEFAULT '[]'`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN company_id TEXT`); } catch { /* already exists */ }
+  // foreign_invoices 컬럼 확장
+  try { db.exec(`ALTER TABLE foreign_invoices ADD COLUMN vat_amount REAL DEFAULT 0`); } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
