@@ -300,10 +300,12 @@ function ImportModal({
     // 금액: 직접 입력 > 수량×단가 자동계산 > 0
     const cv = cvManual > 0 ? cvManual : (qty > 0 && up > 0 ? Math.round(qty * up * 100) / 100 : 0);
     const cvKrw = exRate > 0 ? Math.round(cv * exRate) : cv;
-    const dr = parseFloat(it.dutyRateStr || '0');
+    // 관세율 방어: 200% 초과면 무시 (사용자가 관세금액을 관세율 칸에 잘못 입력하면 천문학적 숫자 방지)
+    const drRaw = parseFloat(it.dutyRateStr || '0');
+    const dr = (drRaw >= 0 && drRaw <= 200) ? drRaw : 0;
     const d = Math.round(cvKrw * dr / 100);
     const v = Math.round((cvKrw + d) * 0.1);
-    return { ...it, customsValue: cv || undefined, customsValueKrw: cvKrw, dutyRate: dr || undefined, duty: d || undefined, vat: v || undefined };
+    return { ...it, customsValue: cv || undefined, customsValueKrw: cvKrw, dutyRate: drRaw || undefined, duty: (d > 0 ? d : undefined), vat: (v > 0 ? v : undefined) };
   });
   const itemsHaveData = itemsWithCalc.some(i => (i.customsValue || 0) > 0);
   const totalItemCv    = itemsWithCalc.reduce((s, i) => s + (i.customsValue || 0), 0);    // 외화 합계
@@ -950,7 +952,13 @@ function ImportModal({
                               <div className="px-2 py-1.5"><input autoComplete="off" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
                               <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
                               <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5">
+                                {(() => { const drV = parseFloat(it.dutyRateStr || '0'); const invalid = drV > 200; return (
+                                  <input autoComplete="off" type="number" title={invalid ? '⚠ 관세율이 200%를 초과합니다. 관세율(%)을 입력하세요' : '관세율 (%)'}
+                                    className={`w-full h-7 rounded border px-2 text-xs ${invalid ? 'border-red-400 bg-red-50 text-red-700' : 'border-input bg-background'}`}
+                                    value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} />
+                                );})()}
+                              </div>
                               <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
                               <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center text-xs">{d > 0 ? d.toLocaleString() : '-'}</div>
                               <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center text-xs">{v > 0 ? v.toLocaleString() : '-'}</div>
@@ -985,26 +993,54 @@ function ImportModal({
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>
-                        관세 (원) <span className="text-blue-500 font-normal">품목합계 자동</span>
-                        {form.duty && <span className="text-amber-500 ml-1">(수동 보정 중)</span>}
+                        관세 (원)
+                        {form.duty
+                          ? <span className="text-amber-500 ml-1 font-normal">수동 입력 중</span>
+                          : <span className="text-blue-500 ml-1 font-normal">자동 계산</span>}
                       </label>
                       <div className="flex gap-1">
-                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm flex items-center font-medium text-blue-900">
-                          {totalItemDuty.toLocaleString()}원
+                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-2 text-sm flex items-center gap-1 font-medium text-blue-900 overflow-hidden">
+                          <span className="truncate text-xs">{totalItemDuty > 0 ? totalItemDuty.toLocaleString() + '원' : '-'}</span>
+                          {canEdit && totalItemDuty > 0 && (
+                            <button type="button" title="자동계산값 적용"
+                              onClick={() => setForm(f => ({ ...f, duty: String(totalItemDuty) }))}
+                              className="ml-auto shrink-0 text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              ↓적용
+                            </button>
+                          )}
                         </div>
-                        <Input type="number" className="w-28" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder="보정값" disabled={!canEdit} title="다를 경우에만 입력" />
+                        <div className="relative w-28">
+                          <Input type="number" className="w-full pr-6" value={form.duty} onChange={e => setForm(f => ({ ...f, duty: e.target.value }))} placeholder="직접 입력" disabled={!canEdit} title="직접 입력 시 자동계산 무시" />
+                          {canEdit && form.duty && (
+                            <button type="button" onClick={() => setForm(f => ({ ...f, duty: '' }))} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div>
                       <label className={labelCls}>
-                        부가세 (원) <span className="text-blue-500 font-normal">품목합계 자동</span>
-                        {form.vat && <span className="text-amber-500 ml-1">(수동 보정 중)</span>}
+                        부가세 (원)
+                        {form.vat
+                          ? <span className="text-amber-500 ml-1 font-normal">수동 입력 중</span>
+                          : <span className="text-blue-500 ml-1 font-normal">자동 계산</span>}
                       </label>
                       <div className="flex gap-1">
-                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm flex items-center font-medium text-blue-900">
-                          {totalItemVat.toLocaleString()}원
+                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-2 text-sm flex items-center gap-1 font-medium text-blue-900 overflow-hidden">
+                          <span className="truncate text-xs">{totalItemVat > 0 ? totalItemVat.toLocaleString() + '원' : '-'}</span>
+                          {canEdit && totalItemVat > 0 && (
+                            <button type="button" title="자동계산값 적용"
+                              onClick={() => setForm(f => ({ ...f, vat: String(totalItemVat) }))}
+                              className="ml-auto shrink-0 text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              ↓적용
+                            </button>
+                          )}
                         </div>
-                        <Input type="number" className="w-28" value={form.vat} onChange={e => setForm(f => ({ ...f, vat: e.target.value }))} placeholder="보정값" disabled={!canEdit} title="다를 경우에만 입력" />
+                        <div className="relative w-28">
+                          <Input type="number" className="w-full pr-6" value={form.vat} onChange={e => setForm(f => ({ ...f, vat: e.target.value }))} placeholder="직접 입력" disabled={!canEdit} title="직접 입력 시 자동계산 무시" />
+                          {canEdit && form.vat && (
+                            <button type="button" onClick={() => setForm(f => ({ ...f, vat: '' }))} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1313,6 +1349,11 @@ function ImportModal({
                             발주금액: {linkedPO.totalAmount.toLocaleString()} {linkedPO.currency}
                           </span>
                         )}
+                        <button type="button"
+                          onClick={() => window.open(`/purchase-orders/print?id=${encodeURIComponent(linkedPO.id)}`, '_blank')}
+                          className="ml-auto flex items-center gap-1 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+                          <Download className="w-3 h-3" /> PO PDF
+                        </button>
                       </div>
                       {allFiles.length > 0 ? allFiles.map((f, i) => (
                         <div key={i} className={cn('flex items-center gap-2 px-3 py-2 border rounded-lg text-xs',
