@@ -453,7 +453,7 @@ function LineItemsTable({ items, onChange, costType }: {
   const removeRow = (idx: number) => onChange(items.filter((_, i) => i !== idx));
 
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const vatTotal = items.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100 : s, 0);
+  const vatTotal = items.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0);
 
   return (
     <div className="space-y-2">
@@ -532,7 +532,7 @@ function LineItemsTable({ items, onChange, costType }: {
               )}
               <tr className="font-bold">
                 <td colSpan={5} className="px-2 py-1.5 text-right text-xs">합계</td>
-                <td className="px-2 py-1.5 text-right text-sm text-primary">{subtotal.toLocaleString()}</td>
+                <td className="px-2 py-1.5 text-right text-sm text-primary">{(subtotal + vatTotal).toLocaleString()}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -885,8 +885,10 @@ function CostModal({ record, onClose, onSave }: {
     setTimeout(onSave, 100);
   };
 
-  // 라인 아이템 합계 → costAmount 자동 반영
-  const lineItemsTotal = lineItems.reduce((s, i) => s + (i.amount || 0), 0);
+  // 라인 아이템 합계 → costAmount 자동 반영 (VAT 별도 추가)
+  const lineItemsBase = lineItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const lineItemsVat = lineItems.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0);
+  const lineItemsTotal = lineItemsBase + lineItemsVat;
   const isDetailType = DETAIL_COST_TYPES.has(form.costType);
 
   const costKrw = form.costCurrency === 'KRW'
@@ -894,7 +896,9 @@ function CostModal({ record, onClose, onSave }: {
     : parseFloat(form.costAmount || '0') * parseFloat(form.fxRateAtCost || '1');
 
   const effectiveCostAmount = isDetailType
-    ? (costItems.length > 0 ? costItems.reduce((s, i) => s + (i.amount || 0), 0) : parseFloat(form.costAmount || '0'))
+    ? (costItems.length > 0
+      ? costItems.reduce((s, i) => s + (i.amount || 0), 0) + costItems.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0)
+      : parseFloat(form.costAmount || '0'))
     : parseFloat(form.costAmount || '0');
   const billFinal = lineItemsTotal > 0 ? lineItemsTotal : parseFloat(form.billAmount || effectiveCostAmount.toString() || '0');
   // 잡손익 계산용 환율: KRW원가-외화청구일 때 수금환율(fxRateAtSettle) 우선, 없으면 발생환율(fxRateAtCost) 사용
@@ -934,15 +938,17 @@ function CostModal({ record, onClose, onSave }: {
     p.supplierName.toLowerCase().includes(poSearch.toLowerCase())
   ).slice(0, 8);
 
-  // 원가 합계 (costItems or costAmount)
-  const costItemsTotal = costItems.reduce((s, i) => s + (i.amount || 0), 0);
+  // 원가 합계 (costItems or costAmount, VAT 별도 추가)
+  const costItemsTotal = costItems.reduce((s, i) => s + (i.amount || 0), 0)
+    + costItems.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0);
   const effectiveCostItems = isDetailType && costItems.length > 0;
   const [createdInvoiceId, setCreatedInvoiceId] = useState<string | null>(record?.linkedInvoiceId || null);
 
   const buildBody = () => {
     const finalCostAmount = effectiveCostItems ? costItemsTotal : parseFloat(form.costAmount || '0');
     const billLineItems = lineItems.length > 0 ? lineItems : [];
-    const billTotal = billLineItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const billTotal = billLineItems.reduce((s, i) => s + (i.amount || 0), 0)
+      + billLineItems.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0);
     return {
       costType: form.costType,
       description: form.description || undefined,
@@ -984,7 +990,7 @@ function CostModal({ record, onClose, onSave }: {
       const body = buildBody();
 
       // 처리방향에 따른 billStatus 자동 계산
-      const billTotalForStatus = lineItems.reduce((s, i) => s + (i.amount || 0), 0) || parseFloat(form.billAmount || '0');
+      const billTotalForStatus = (lineItemsTotal > 0 ? lineItemsTotal : 0) || parseFloat(form.billAmount || '0');
       body.billStatus = computeBillStatus(
         form.disposition, linkedSales, billTotalForStatus, createdInvoiceId, form.billStatus, offsetItems, effectiveCostAmount,
       );
@@ -1028,7 +1034,7 @@ function CostModal({ record, onClose, onSave }: {
         if (!res.ok) throw new Error('수정 실패');
       }
       // 외화 인보이스 생성
-      const billTotal = lineItems.reduce((s, i) => s + (i.amount || 0), 0);
+      const billTotal = lineItemsTotal;
       const invRes = await fetch('/api/foreign-invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1714,7 +1720,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
   };
 
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const vatTotal = items.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100 : s, 0);
+  const vatTotal = items.reduce((s, i) => i.vatIncluded ? s + Math.round((i.amount || 0) * 0.1 * 100) / 100 : s, 0);
 
   const handleCreate = async () => {
     if (!clientName) { alert('거래처를 입력하세요.'); return; }
@@ -1781,7 +1787,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
                     <th className="text-right px-2 py-2 font-medium text-muted-foreground w-12">수량</th>
                     <th className="px-2 py-2 font-medium text-muted-foreground w-14">단위</th>
                     <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">단가</th>
-                    <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">VAT포함</th>
+                    <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">VAT</th>
                     <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">금액</th>
                     <th className="w-8"></th>
                   </tr>
@@ -1802,7 +1808,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
                 <tfoot className="bg-muted/40">
                   <tr className="border-t"><td colSpan={5} className="px-2.5 py-2 text-right text-xs font-medium text-muted-foreground">소계 (Subtotal)</td><td className="px-2 py-2 text-right font-semibold text-xs">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td></td></tr>
                   {vatTotal > 0 && <tr><td colSpan={5} className="px-2.5 py-1 text-right text-xs text-muted-foreground">VAT (10%)</td><td className="px-2 py-1 text-right text-xs">{vatTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td></td></tr>}
-                  <tr className="border-t-2 font-bold"><td colSpan={5} className="px-2.5 py-2 text-right text-sm">TOTAL ({currency})</td><td className="px-2 py-2 text-right text-sm text-primary">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td></td></tr>
+                  <tr className="border-t-2 font-bold"><td colSpan={5} className="px-2.5 py-2 text-right text-sm">TOTAL ({currency})</td><td className="px-2 py-2 text-right text-sm text-primary">{(subtotal + vatTotal).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td></td></tr>
                 </tfoot>
               </table>
             </div>

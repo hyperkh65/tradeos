@@ -198,16 +198,22 @@ function InvoicePrintContent() {
         </table>
 
         {/* ── Grand Total ── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', marginBottom: '36px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginTop: '18px', marginBottom: '36px', gap: '6px' }}>
           {(inv.vatAmount ?? 0) > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginRight: '32px' }}>
-              <div style={{ fontSize: '12px', color: '#666' }}>VAT (10%)</div>
-              <div style={{ fontSize: '15px', color: '#555' }}>{sym} {fmt(inv.vatAmount, cur)}</div>
-            </div>
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+                <div style={{ fontSize: '12px', color: '#888' }}>Subtotal ({cur})</div>
+                <div style={{ fontSize: '14px', color: '#555', minWidth: '100px', textAlign: 'right' }}>{sym} {fmt(inv.subtotal, cur)}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+                <div style={{ fontSize: '12px', color: '#888' }}>VAT (10%)</div>
+                <div style={{ fontSize: '14px', color: '#555', minWidth: '100px', textAlign: 'right' }}>{sym} {fmt(inv.vatAmount, cur)}</div>
+              </div>
+            </>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '32px', borderTop: (inv.vatAmount ?? 0) > 0 ? '2px solid #171717' : 'none', paddingTop: (inv.vatAmount ?? 0) > 0 ? '8px' : '0', marginTop: (inv.vatAmount ?? 0) > 0 ? '4px' : '0' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: '#555', textTransform: 'uppercase' }}>Grand Total ({cur})</div>
-            <div style={{ fontSize: '26px', fontWeight: 900, color: '#171717' }}>{sym} {fmt(inv.total, cur)}</div>
+            <div style={{ fontSize: '26px', fontWeight: 900, color: '#171717', minWidth: '100px', textAlign: 'right' }}>{sym} {fmt(inv.total, cur)}</div>
           </div>
         </div>
 

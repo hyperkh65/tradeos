@@ -77,9 +77,9 @@ export async function POST(req: NextRequest) {
     const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
     const vatAmount = items.reduce((s, i) => {
       if (!i.vatIncluded) return s;
-      return s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100;
+      return s + Math.round(i.amount * 0.1 * 100) / 100;
     }, 0);
-    const total = subtotal;
+    const total = subtotal + vatAmount;
 
     db.prepare(`INSERT INTO foreign_invoices
       (id,business_id,client_id,client_name,currency,subtotal,vat_amount,total,items_json,
