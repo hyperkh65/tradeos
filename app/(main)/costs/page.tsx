@@ -1874,11 +1874,30 @@ export default function CostsPage() {
   });
 
   const totalCostKrw = filtered.reduce((s, r) => s + (r.costAmountKrw || r.costAmount), 0);
-  const pendingCount = filtered.filter(r => r.disposition === 'pending').length;
-  const BILLABLE_DISPOSITIONS = new Set(['billable_domestic', 'billable_foreign', 'offset_purchase', 'selling_admin']);
-  const unbilledBillable = filtered.filter(r => BILLABLE_DISPOSITIONS.has(r.disposition) && r.billStatus === 'unbilled').length;
-  const offsetPending = filtered.filter(r => r.offsetStatus === 'pending' || r.offsetStatus === 'partial').length;
   const fxBillable = records.filter(r => r.disposition === 'billable_foreign' && r.billStatus === 'unbilled').length;
+
+  // 처리 필요 (미결정 + 미청구)
+  const BILLABLE_DISPOSITIONS = new Set(['billable_domestic', 'billable_foreign', 'offset_purchase', 'selling_admin']);
+  const actionNeeded = filtered.filter(r => r.disposition === 'pending' || (BILLABLE_DISPOSITIONS.has(r.disposition) && r.billStatus === 'unbilled')).length;
+
+  // 미수금: 청구됐지만 수금 안 된 건 (원화 환산)
+  const uncollected = filtered.filter(r => r.billStatus === 'invoiced');
+  const uncollectedKrw = uncollected.reduce((s, r) => {
+    if (!r.billAmount) return s;
+    if (r.billCurrency === 'KRW') return s + r.billAmount;
+    return s + r.billAmount * (r.fxRateAtCost || 1);
+  }, 0);
+
+  // 수금 완료 원화 금액
+  const collectedKrw = filtered.filter(r => r.billStatus === 'collected').reduce((s, r) => {
+    if (!r.billAmount) return s;
+    if (r.billCurrency === 'KRW') return s + r.billAmount;
+    const rate = r.fxRateAtSettle || r.fxRateAtCost || 1;
+    return s + r.billAmount * rate;
+  }, 0);
+
+  // 잡손익 합계
+  const totalFxGainLoss = filtered.reduce((s, r) => s + (r.fxGainLoss || 0), 0);
 
   const handleQuickDisposition = async (id: string, disposition: CostRecord['disposition']) => {
     await fetch(`/api/cost-records/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disposition }) });
@@ -1897,10 +1916,10 @@ export default function CostsPage() {
         {/* 요약 카드 */}
         <div className="grid grid-cols-4 gap-3 px-4 pt-4 shrink-0">
           {[
-            { label: '총 비용 (원화)', value: `${Math.round(totalCostKrw).toLocaleString()}원`, sub: `${filtered.length}건`, color: 'text-foreground' },
-            { label: '미결정', value: `${pendingCount}건`, sub: '처리방향 지정 필요', color: 'text-amber-600', icon: <Clock className="w-3.5 h-3.5" /> },
-            { label: '미청구 (청구예정)', value: `${unbilledBillable}건`, sub: '인보이스/매출 미발행', color: 'text-blue-600', icon: <AlertCircle className="w-3.5 h-3.5" /> },
-            { label: '상계 미결', value: `${offsetPending}건`, sub: '매입대금 상계 대기', color: 'text-purple-600', icon: <ChevronDown className="w-3.5 h-3.5" /> },
+            { label: '총 비용 (원화)', value: `${Math.round(totalCostKrw).toLocaleString()}원`, sub: `비용 ${filtered.length}건`, color: 'text-foreground' },
+            { label: '처리 필요', value: `${actionNeeded}건`, sub: actionNeeded > 0 ? '미결정·미청구 항목 있음' : '모든 항목 처리 완료', color: actionNeeded > 0 ? 'text-amber-600' : 'text-muted-foreground', icon: actionNeeded > 0 ? <Clock className="w-3.5 h-3.5" /> : undefined },
+            { label: '미수금 (청구 후 미수금)', value: uncollectedKrw > 0 ? `${Math.round(uncollectedKrw).toLocaleString()}원` : `${uncollected.length}건`, sub: uncollectedKrw > 0 ? `${uncollected.length}건 청구 중` : '미수금 없음', color: uncollectedKrw > 0 ? 'text-blue-600' : 'text-muted-foreground', icon: uncollectedKrw > 0 ? <AlertCircle className="w-3.5 h-3.5" /> : undefined },
+            { label: '수금 완료 / 잡손익', value: `${Math.round(collectedKrw).toLocaleString()}원`, sub: totalFxGainLoss !== 0 ? `잡손익 ${totalFxGainLoss > 0 ? '+' : ''}${Math.round(totalFxGainLoss).toLocaleString()}원` : '환차손익 없음', color: 'text-green-700' },
           ].map(({ label, value, sub, color, icon }) => (
             <div key={label} className="bg-background border rounded-xl px-4 py-3">
               <div className="text-xs text-muted-foreground mb-1">{label}</div>
@@ -1985,7 +2004,7 @@ export default function CostsPage() {
                           <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{COST_TYPE_LABELS[r.costType] || r.costType}</span>
                         </td>
                         <td className="px-3 py-2">
-                          <div className="font-medium truncate max-w-[180px]">{r.description || '-'}</div>
+                          {r.description && <div className="font-medium truncate max-w-[180px]">{r.description}</div>}
                           <div className="text-[10px] text-muted-foreground">
                             {[r.importBusinessId, r.shipmentBusinessId, r.clientName].filter(Boolean).join(' · ')}
                           </div>
