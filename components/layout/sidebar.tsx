@@ -78,6 +78,7 @@ const navGroups = [
     label: '영업',
     items: [
       { label: '매출관리', href: '/crm', icon: ShoppingCart },
+      { label: '비용 원장', href: '/costs', icon: DollarSign },
       { label: '회계/청구', href: '/accounting', icon: Receipt },
     ],
   },

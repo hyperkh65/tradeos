@@ -1,0 +1,100 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getDb, now } from '@/lib/db/sqlite';
+import { dbToCostRecord } from '../route';
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM cost_records WHERE id=?').get(id) as Record<string, unknown> | undefined;
+  if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+  return NextResponse.json({ data: dbToCostRecord(row) });
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM cost_records WHERE id=?').get(id) as Record<string, unknown> | undefined;
+    if (!row) return NextResponse.json({ error: '없음' }, { status: 404 });
+
+    const costAmountKrw = (body.costCurrency || row.cost_currency) === 'KRW'
+      ? (body.costAmount ?? row.cost_amount)
+      : (body.costAmount ?? row.cost_amount as number) * (body.fxRateAtCost ?? (row.fx_rate_at_cost as number) ?? 1);
+
+    // 상계 잔액 자동 계산
+    let offsetRemaining = body.offsetRemaining ?? row.offset_remaining;
+    const newBillStatus = body.billStatus ?? row.bill_status;
+    if (newBillStatus === 'offset') {
+      offsetRemaining = 0;
+    }
+
+    // FX 손익 자동 계산 (정산 시)
+    let fxGainLoss = body.fxGainLoss ?? row.fx_gain_loss;
+    if (body.fxRateAtSettle && body.billCurrency !== 'KRW') {
+      const billAmt = body.billAmount ?? row.bill_amount as number ?? 0;
+      const origKrw = billAmt * ((row.fx_rate_at_cost as number) ?? 1);
+      const settleKrw = billAmt * body.fxRateAtSettle;
+      fxGainLoss = Math.round(settleKrw - origKrw);
+    }
+
+    db.prepare(`UPDATE cost_records SET
+      cost_type=?, description=?,
+      client_id=?, client_name=?,
+      cost_amount=?, cost_currency=?, fx_rate_at_cost=?, cost_amount_krw=?,
+      incurred_date=?, disposition=?,
+      bill_amount=?, bill_currency=?, bill_status=?,
+      fx_rate_at_settle=?, fx_gain_loss=?, settled_at=?,
+      linked_invoice_id=?, linked_sale_id=?,
+      cause_type=?,
+      offset_status=?, offset_remaining=?, offset_po_id=?,
+      allocation_method=?, allocation_ratio=?,
+      remark=?, updated_at=?
+      WHERE id=?`)
+      .run(
+        body.costType ?? row.cost_type,
+        body.description ?? row.description,
+        body.clientId ?? row.client_id,
+        body.clientName ?? row.client_name,
+        body.costAmount ?? row.cost_amount,
+        body.costCurrency ?? row.cost_currency,
+        body.fxRateAtCost ?? row.fx_rate_at_cost,
+        costAmountKrw,
+        body.incurredDate ?? row.incurred_date,
+        body.disposition ?? row.disposition,
+        body.billAmount ?? row.bill_amount,
+        body.billCurrency ?? row.bill_currency,
+        newBillStatus,
+        body.fxRateAtSettle ?? row.fx_rate_at_settle,
+        fxGainLoss,
+        body.settledAt ?? row.settled_at,
+        body.linkedInvoiceId ?? row.linked_invoice_id,
+        body.linkedSaleId ?? row.linked_sale_id,
+        body.causeType ?? row.cause_type,
+        body.offsetStatus ?? row.offset_status,
+        offsetRemaining,
+        body.offsetPoId ?? row.offset_po_id,
+        body.allocationMethod ?? row.allocation_method,
+        body.allocationRatio ?? row.allocation_ratio,
+        body.remark ?? row.remark,
+        now(), id,
+      );
+
+    const updated = db.prepare('SELECT * FROM cost_records WHERE id=?').get(id) as Record<string, unknown>;
+    return NextResponse.json({ data: dbToCostRecord(updated) });
+  } catch (e) {
+    console.error('[cost-records PUT]', e);
+    return NextResponse.json({ error: '수정 실패' }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const db = getDb();
+    db.prepare('DELETE FROM cost_records WHERE id=? AND is_auto_allocated=0').run(id);
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: '삭제 실패' }, { status: 500 });
+  }
+}

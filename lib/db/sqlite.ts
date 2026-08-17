@@ -547,10 +547,81 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN settlement_history_json TEXT DEFAULT '[]'`,
     `ALTER TABLE imports ADD COLUMN closed_at TEXT`,
     `ALTER TABLE imports ADD COLUMN closed_by TEXT`,
+    // cost_records 확장
+    `ALTER TABLE expenses ADD COLUMN cost_record_id TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
   }
+
+  // 비용 원장 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS cost_records (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      cost_type TEXT NOT NULL DEFAULT 'other',
+      description TEXT,
+      shipment_id TEXT,
+      shipment_business_id TEXT,
+      import_id TEXT,
+      import_business_id TEXT,
+      po_id TEXT,
+      po_business_id TEXT,
+      client_id TEXT,
+      client_name TEXT,
+      cost_amount REAL NOT NULL,
+      cost_currency TEXT NOT NULL DEFAULT 'KRW',
+      fx_rate_at_cost REAL DEFAULT 1,
+      cost_amount_krw REAL,
+      incurred_date TEXT,
+      disposition TEXT NOT NULL DEFAULT 'pending',
+      bill_amount REAL,
+      bill_currency TEXT DEFAULT 'KRW',
+      bill_status TEXT DEFAULT 'unbilled',
+      fx_rate_at_settle REAL,
+      fx_gain_loss REAL,
+      settled_at TEXT,
+      linked_invoice_id TEXT,
+      linked_sale_id TEXT,
+      linked_expense_id TEXT,
+      cause_type TEXT DEFAULT 'schedule',
+      offset_status TEXT DEFAULT 'none',
+      offset_remaining REAL,
+      offset_po_id TEXT,
+      allocation_group_id TEXT,
+      allocation_method TEXT,
+      allocation_ratio REAL,
+      is_auto_allocated INTEGER DEFAULT 0,
+      remark TEXT,
+      created_by TEXT DEFAULT 'user-1',
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 외화 인보이스 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS foreign_invoices (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      client_id TEXT,
+      client_name TEXT,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      subtotal REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      items_json TEXT DEFAULT '[]',
+      issued_date TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      fx_rate_at_payment REAL,
+      paid_amount_krw REAL,
+      paid_at TEXT,
+      remark TEXT,
+      created_by TEXT DEFAULT 'user-1',
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )`);
+  } catch { /* already exists */ }
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

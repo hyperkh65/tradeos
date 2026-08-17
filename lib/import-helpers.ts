@@ -7,13 +7,29 @@ interface ImportExpenseFields {
   vat?: number;
   brokerFee?: number;
   inspectionFee?: number;
-  warehouseFee?: number;   // Terminal Storage
-  detentionFee?: number;   // DET
-  demurrage?: number;      // DEM
+  warehouseFee?: number;
+  detentionFee?: number;
+  demurrage?: number;
   inlandFreight?: number;
   customCosts?: { name: string; amount: number }[];
   createdBy?: string;
+  // 추가 컨텍스트
+  shipmentId?: string;
+  shipmentBusinessId?: string;
+  importBusinessId?: string;
+  incurredDate?: string;
 }
+
+const COST_TYPE_MAP: Record<string, string> = {
+  '관세':                    'duty',
+  '수입부가세':              'vat',
+  '통관비':                  'customs_broker',
+  '세관검사비':              'inspection',
+  'Terminal Storage(장치료)': 'warehouse',
+  'Demurrage/DEM(체화료)':   'demurrage',
+  'Detention/DET(지체료)':   'detention',
+  '내륙운송비':              'inland_freight',
+};
 
 export function syncImportExpenses(
   db: Db,
@@ -21,7 +37,10 @@ export function syncImportExpenses(
   importBusinessId: string,
   fields: ImportExpenseFields,
 ) {
+  // 기존 expenses 삭제
   db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
+  // 기존 cost_records (import 연결) 삭제
+  db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(importId);
 
   const entries: { cat: string; amt: number | undefined }[] = [
     { cat: '관세',                    amt: fields.duty },
@@ -36,14 +55,40 @@ export function syncImportExpenses(
   ];
 
   const ts = now();
+  const incurredDate = fields.incurredDate || ts.slice(0, 10);
+
   for (const { cat, amt } of entries) {
     if (!amt || amt <= 0) continue;
-    const id = newId();
-    const bizId = nextBizId('EXP');
+
+    // expenses 테이블 (기존 호환)
+    const expId = newId();
+    const expBizId = nextBizId('EXP');
     db.prepare(`INSERT INTO expenses
       (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, bizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
+      .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
+
+    // cost_records 테이블 (새 비용 원장)
+    const crId = newId();
+    const crBizId = nextBizId('CST');
+    const costType = COST_TYPE_MAP[cat] || 'other';
+    db.prepare(`INSERT INTO cost_records
+      (id,business_id,cost_type,description,
+       import_id,import_business_id,shipment_id,shipment_business_id,
+       cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
+       incurred_date,disposition,bill_status,
+       linked_expense_id,is_auto_allocated,
+       created_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        crId, crBizId, costType, `${importBusinessId} ${cat}`,
+        importId, importBusinessId,
+        fields.shipmentId ?? null, fields.shipmentBusinessId ?? null,
+        amt, 'KRW', 1, amt,
+        incurredDate, 'pending', 'unbilled',
+        expId, 1,
+        fields.createdBy || 'unknown', ts, ts,
+      );
   }
 }
 
