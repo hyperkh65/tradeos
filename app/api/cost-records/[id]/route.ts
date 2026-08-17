@@ -41,6 +41,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     db.prepare(`UPDATE cost_records SET
       cost_type=?, description=?,
       client_id=?, client_name=?, company_id=?,
+      vendor_id=?, vendor_name=?,
       shipment_id=?, shipment_business_id=?,
       import_id=?, import_business_id=?,
       cost_amount=?, cost_currency=?, fx_rate_at_cost=?, cost_amount_krw=?,
@@ -50,7 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       linked_invoice_id=?, linked_sale_id=?,
       cause_type=?,
       offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
-      line_items_json=?,
+      cost_items_json=?, line_items_json=?,
       allocation_method=?, allocation_ratio=?,
       remark=?, updated_at=?
       WHERE id=?`)
@@ -60,6 +61,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.clientId ?? row.client_id,
         body.clientName ?? row.client_name,
         body.companyId ?? row.company_id,
+        body.vendorId ?? row.vendor_id,
+        body.vendorName ?? row.vendor_name,
         body.shipmentId ?? row.shipment_id,
         body.shipmentBusinessId ?? row.shipment_business_id,
         body.importId ?? row.import_id,
@@ -83,6 +86,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         offsetRemaining,
         body.offsetPoId ?? row.offset_po_id,
         body.offsetItems !== undefined ? JSON.stringify(body.offsetItems) : (row.offset_items_json ?? '[]'),
+        body.costItems !== undefined ? JSON.stringify(body.costItems) : (row.cost_items_json ?? '[]'),
         body.lineItems !== undefined ? JSON.stringify(body.lineItems) : (row.line_items_json ?? '[]'),
         body.allocationMethod ?? row.allocation_method,
         body.allocationRatio ?? row.allocation_ratio,

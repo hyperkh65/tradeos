@@ -36,6 +36,7 @@ function CertPrintContent() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [writer, setWriter] = useState<{ name: string; department?: string } | null>(null);
   const [client, setClient] = useState<ClientInfo | null>(null);
+  const [vendor, setVendor] = useState<ClientInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,9 +49,15 @@ function CertPrintContent() {
       if (rec.data) setRecord(rec.data);
       if (co.data) setCompany(co.data);
       if (me.user) setWriter(me.user);
-      if (rec.data?.clientId) {
-        fetch(`/api/companies/${rec.data.clientId}`).then(r => r.json()).then(j => {
+      const data = rec.data;
+      if (data?.clientId) {
+        fetch(`/api/companies/${data.clientId}`).then(r => r.json()).then(j => {
           if (j.data) setClient(j.data);
+        });
+      }
+      if (data?.vendorId) {
+        fetch(`/api/companies/${data.vendorId}`).then(r => r.json()).then(j => {
+          if (j.data) setVendor(j.data);
         });
       }
     }).finally(() => setLoading(false));
@@ -60,6 +67,7 @@ function CertPrintContent() {
   if (!record) return <div style={{ padding: 40, textAlign: 'center' }}>항목을 찾을 수 없습니다.</div>;
 
   const items: CostLineItem[] = record.lineItems || [];
+  const costItems: CostLineItem[] = record.costItems || [];
   const cur = record.billCurrency || record.costCurrency || 'KRW';
   const isForeign = cur !== 'KRW';
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -68,6 +76,10 @@ function CertPrintContent() {
     return s + Math.round((i.amount / 1.1) * 0.1 * 100) / 100;
   }, 0);
   const grandTotal = subtotal;
+  const costSubtotal = costItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const effectiveCost = costSubtotal > 0 ? costSubtotal : (record.costAmount || 0);
+  const profit = grandTotal - effectiveCost;
+  const hasCostSection = costItems.length > 0 || record.vendorId || record.vendorName;
 
   const title = TYPE_TITLES[record.costType] || TYPE_TITLES.other;
   const issuedDate = new Date().toLocaleDateString('ko-KR');
@@ -164,8 +176,67 @@ function CertPrintContent() {
           )}
         </div>
 
-        {/* ── 내역 테이블 ── */}
+        {/* ── 원가 섹션 (지급처 + 원가 내역) ── */}
+        {hasCostSection && (
+          <div style={{ padding: '0 36px', marginBottom: 16 }}>
+            <div style={{ background: '#f8f9fb', border: '1px solid #dde3ed', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#666', marginBottom: 8 }}>
+                원가 / 실제 지출 (Cost Incurred)
+              </div>
+              {/* 지급처 */}
+              <div style={{ marginBottom: 8, fontSize: 11 }}>
+                <span style={{ color: '#888', marginRight: 8 }}>지급처:</span>
+                <strong>{vendor?.name || record.vendorName || '내부 직접 처리'}</strong>
+                {vendor?.address && <span style={{ color: '#777', marginLeft: 8 }}>{vendor.address}</span>}
+                {vendor?.phone && <span style={{ color: '#777', marginLeft: 8 }}>TEL: {vendor.phone}</span>}
+              </div>
+              {costItems.length > 0 ? (
+                <table style={{ marginTop: 4 }}>
+                  <thead>
+                    <tr>
+                      <th className="center" style={{ width: 34 }}>No.</th>
+                      <th>내역</th>
+                      <th className="num" style={{ width: 55 }}>수량</th>
+                      <th className="center" style={{ width: 48 }}>단위</th>
+                      <th className="num" style={{ width: 110 }}>단가 ({cur})</th>
+                      <th className="num" style={{ width: 120 }}>금액 ({cur})</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costItems.map((item, i) => (
+                      <tr key={i}>
+                        <td className="center">{i + 1}</td>
+                        <td>{item.description}</td>
+                        <td className="num">{(item.qty || 1).toLocaleString()}</td>
+                        <td className="center">{item.unit || '건'}</td>
+                        <td className="num">{fmt(item.unitPrice || 0, cur)}</td>
+                        <td className="num" style={{ fontWeight: 600 }}>{fmt(item.amount || 0, cur)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#eef2f7' }}>
+                      <td colSpan={5} className="num" style={{ color: '#555', fontWeight: 600 }}>원가 합계</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{sym} {fmt(costSubtotal, cur)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              ) : (
+                <div style={{ fontSize: 11, color: '#555' }}>
+                  원가: <strong>{sym} {fmt(record.costAmount || 0, cur)}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── 청구 내역 테이블 ── */}
         <div style={{ padding: '0 36px', marginBottom: 16 }}>
+          {hasCostSection && (
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#1e3a5f', marginBottom: 6 }}>
+              청구 내역 (Invoice to Client)
+            </div>
+          )}
           <table>
             <thead>
               <tr>
@@ -213,6 +284,17 @@ function CertPrintContent() {
                 <td className="num" style={{ fontSize: 14 }}>{sym} {fmt(grandTotal, cur)}</td>
                 <td></td>
               </tr>
+              {hasCostSection && effectiveCost > 0 && grandTotal > 0 && (
+                <tr style={{ background: profit >= 0 ? '#f0fdf4' : '#fff1f2' }}>
+                  <td colSpan={6} className="num" style={{ color: profit >= 0 ? '#166534' : '#9f1239', fontWeight: 600, fontSize: 11 }}>
+                    {profit >= 0 ? '잡이익' : '잡손실'} ({((profit / effectiveCost) * 100).toFixed(1)}%)
+                  </td>
+                  <td className="num" style={{ color: profit >= 0 ? '#166534' : '#9f1239', fontWeight: 700 }}>
+                    {profit >= 0 ? '+' : ''}{fmt(profit, cur)}
+                  </td>
+                  <td></td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

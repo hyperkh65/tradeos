@@ -628,6 +628,9 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN line_items_json TEXT DEFAULT '[]'`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN files_json TEXT DEFAULT '[]'`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN notion_id TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN vendor_id TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN vendor_name TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN cost_items_json TEXT DEFAULT '[]'`); } catch { /* already exists */ }
   // foreign_invoices 컬럼 확장
   try { db.exec(`ALTER TABLE foreign_invoices ADD COLUMN vat_amount REAL DEFAULT 0`); } catch { /* already exists */ }
 

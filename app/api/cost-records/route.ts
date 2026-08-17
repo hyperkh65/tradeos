@@ -62,6 +62,7 @@ export interface CostRecord {
   importId?: string; importBusinessId?: string;
   poId?: string; poBusinessId?: string;
   clientId?: string; clientName?: string; companyId?: string;
+  vendorId?: string; vendorName?: string;
   costAmount: number; costCurrency: string;
   fxRateAtCost?: number; costAmountKrw?: number;
   incurredDate?: string;
@@ -74,6 +75,7 @@ export interface CostRecord {
   offsetStatus: 'none' | 'pending' | 'partial' | 'completed';
   offsetRemaining?: number; offsetPoId?: string;
   offsetItems: OffsetItem[];
+  costItems: CostLineItem[];
   lineItems: CostLineItem[];
   files: CostFileRecord[];
   notionId?: string;
@@ -97,6 +99,8 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     clientId: (row.client_id as string) || undefined,
     clientName: (row.client_name as string) || undefined,
     companyId: (row.company_id as string) || undefined,
+    vendorId: (row.vendor_id as string) || undefined,
+    vendorName: (row.vendor_name as string) || undefined,
     costAmount: (row.cost_amount as number) || 0,
     costCurrency: (row.cost_currency as string) || 'KRW',
     fxRateAtCost: (row.fx_rate_at_cost as number) || undefined,
@@ -117,6 +121,7 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     offsetRemaining: (row.offset_remaining as number) || undefined,
     offsetPoId: (row.offset_po_id as string) || undefined,
     offsetItems: (() => { try { return JSON.parse((row.offset_items_json as string) || '[]'); } catch { return []; } })(),
+    costItems: (() => { try { return JSON.parse((row.cost_items_json as string) || '[]'); } catch { return []; } })(),
     lineItems: (() => { try { return JSON.parse((row.line_items_json as string) || '[]'); } catch { return []; } })(),
     files: (() => { try { return JSON.parse((row.files_json as string) || '[]'); } catch { return []; } })(),
     notionId: (row.notion_id as string) || undefined,
@@ -170,21 +175,26 @@ export async function POST(req: NextRequest) {
 
     // line_items에서 billAmount 계산 (cert/as_service)
     const lineItems = body.lineItems || [];
+    const costItems = body.costItems || [];
     const lineItemsTotal = lineItems.length > 0
       ? lineItems.reduce((s: number, i: { amount: number }) => s + (i.amount || 0), 0)
       : null;
+    const costItemsTotal = costItems.length > 0
+      ? costItems.reduce((s: number, i: { amount: number }) => s + (i.amount || 0), 0)
+      : null;
     const finalBillAmount = lineItemsTotal ?? body.billAmount ?? null;
+    const finalCostAmount = costItemsTotal ?? body.costAmount ?? 0;
 
     db.prepare(`INSERT INTO cost_records
       (id,business_id,cost_type,description,
        shipment_id,shipment_business_id,import_id,import_business_id,po_id,po_business_id,
-       client_id,client_name,company_id,
+       client_id,client_name,company_id,vendor_id,vendor_name,
        cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
        incurred_date,disposition,bill_amount,bill_currency,bill_status,
        cause_type,offset_status,offset_remaining,offset_po_id,offset_items_json,
-       line_items_json,linked_sale_id,allocation_method,remark,
+       cost_items_json,line_items_json,linked_sale_id,allocation_method,remark,
        is_auto_allocated,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id, bizId,
         body.costType || 'other', body.description ?? null,
@@ -192,7 +202,8 @@ export async function POST(req: NextRequest) {
         body.importId ?? null, body.importBusinessId ?? null,
         body.poId ?? null, body.poBusinessId ?? null,
         body.clientId ?? null, body.clientName ?? null, body.companyId ?? null,
-        body.costAmount || 0, body.costCurrency || 'KRW',
+        body.vendorId ?? null, body.vendorName ?? null,
+        finalCostAmount, body.costCurrency || 'KRW',
         body.fxRateAtCost ?? 1, costAmountKrw,
         body.incurredDate ?? ts.slice(0, 10),
         body.disposition || 'pending',
@@ -202,6 +213,7 @@ export async function POST(req: NextRequest) {
         body.offsetStatus || 'none',
         body.offsetRemaining ?? null, body.offsetPoId ?? null,
         JSON.stringify(body.offsetItems || []),
+        JSON.stringify(costItems),
         JSON.stringify(lineItems),
         body.linkedSaleId ?? null,
         body.allocationMethod ?? null,
