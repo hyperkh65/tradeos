@@ -758,7 +758,19 @@ function CostModal({ record, onClose, onSave }: {
     ? (costItems.length > 0 ? costItems.reduce((s, i) => s + (i.amount || 0), 0) : parseFloat(form.costAmount || '0'))
     : parseFloat(form.costAmount || '0');
   const billFinal = lineItemsTotal > 0 ? lineItemsTotal : parseFloat(form.billAmount || effectiveCostAmount.toString() || '0');
-  const margin = billFinal - effectiveCostAmount;
+  const fxRateNum = parseFloat(form.fxRateAtCost || '1') || 1;
+  // 통화 불일치 시 환율 환산: costCurrency=KRW, billCurrency=USD → cost를 USD로 변환
+  const marginCurrency = form.billCurrency;
+  let margin: number;
+  if (form.costCurrency === form.billCurrency) {
+    margin = billFinal - effectiveCostAmount;
+  } else if (form.costCurrency === 'KRW' && fxRateNum > 1) {
+    margin = billFinal - effectiveCostAmount / fxRateNum;
+  } else if (form.costCurrency !== 'KRW' && form.billCurrency === 'KRW') {
+    margin = billFinal - effectiveCostAmount * fxRateNum;
+  } else {
+    margin = billFinal - effectiveCostAmount; // 동일 외화 또는 환율 미설정
+  }
   const offsetTotal = offsetItems.reduce((s, i) => s + (i.amount || 0), 0);
 
   const addOffsetPo = (po: RefData['purchaseOrders'][0]) => {
@@ -1033,8 +1045,16 @@ function CostModal({ record, onClose, onSave }: {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>환율 (발생 시)</label>
-                  <Input type="number" value={form.fxRateAtCost} onChange={e => setForm(f => ({ ...f, fxRateAtCost: e.target.value }))} placeholder="1" disabled={form.costCurrency === 'KRW'} className="h-9" />
+                  <label className={labelCls}>
+                    환율
+                    {form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' && (
+                      <span className="text-[10px] text-orange-600 ml-1">(잡손익 계산용)</span>
+                    )}
+                  </label>
+                  <Input type="number" value={form.fxRateAtCost} onChange={e => setForm(f => ({ ...f, fxRateAtCost: e.target.value }))}
+                    placeholder={form.costCurrency === 'KRW' && form.billCurrency !== 'KRW' ? '예: 1380' : '1'}
+                    disabled={form.costCurrency === 'KRW' && form.billCurrency === 'KRW'}
+                    className="h-9" />
                 </div>
               </div>
               {form.costCurrency !== 'KRW' && costKrw > 0 && (
@@ -1043,7 +1063,8 @@ function CostModal({ record, onClose, onSave }: {
             </div>
           )}
 
-          {/* 연결 정보 */}
+          {/* 연결 정보 - as_service는 선적/통관 연결 불필요 */}
+          {form.costType !== 'as_service' && (
           <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 space-y-3">
             <div className="text-xs font-semibold text-sky-800">연결 정보</div>
             <div className="grid grid-cols-2 gap-3">
@@ -1081,6 +1102,7 @@ function CostModal({ record, onClose, onSave }: {
               )}
             </div>
           </div>
+          )} {/* end costType !== 'as_service' */}
 
           {/* 선적 프리뷰 */}
           {linkedShipment && <ShipmentPreviewCard shipment={linkedShipment} />}
@@ -1296,12 +1318,27 @@ function CostModal({ record, onClose, onSave }: {
               </div>
               <LineItemsTable items={lineItems} onChange={setLineItems} costType={form.costType} />
 
-              {margin !== 0 && (lineItemsTotal > 0) && (
-                <div className={cn('text-xs font-semibold px-3 py-1.5 rounded-lg', margin > 0 ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-700')}>
-                  {margin > 0 ? '잡이익' : '잡손실'}: {margin >= 0 ? '+' : ''}{margin.toLocaleString(undefined, { maximumFractionDigits: 2 })} {form.billCurrency}
-                  {effectiveCostAmount > 0 && <span className="ml-2 opacity-70">({((margin/effectiveCostAmount)*100).toFixed(1)}%)</span>}
-                </div>
-              )}
+              {lineItemsTotal > 0 && effectiveCostAmount > 0 && (() => {
+                const currencyMismatch = form.costCurrency !== form.billCurrency;
+                const noRate = currencyMismatch && fxRateNum <= 1;
+                if (noRate) {
+                  return (
+                    <div className="text-xs px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700">
+                      ⚠ 통화 불일치 — 위 환율을 입력하면 잡손익을 계산합니다 ({form.costCurrency} → {form.billCurrency})
+                    </div>
+                  );
+                }
+                const baseCost = form.costCurrency === 'KRW' ? effectiveCostAmount / fxRateNum : effectiveCostAmount;
+                const pct = baseCost > 0 ? ((margin / baseCost) * 100).toFixed(1) : '0';
+                if (margin === 0) return null;
+                return (
+                  <div className={cn('text-xs font-semibold px-3 py-1.5 rounded-lg', margin > 0 ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-700')}>
+                    {margin > 0 ? '잡이익' : '잡손실'}: {margin >= 0 ? '+' : ''}{margin.toLocaleString(undefined, { maximumFractionDigits: 2 })} {marginCurrency}
+                    {currencyMismatch && <span className="ml-1 font-normal opacity-70">(환율 {fxRateNum.toLocaleString()} 적용)</span>}
+                    <span className="ml-2 opacity-70">({pct}%)</span>
+                  </div>
+                );
+              })()}
 
               {createdInvoiceId ? (
                 <div className="flex items-center gap-2">

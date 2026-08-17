@@ -78,7 +78,19 @@ function CertPrintContent() {
   const grandTotal = subtotal;
   const costSubtotal = costItems.reduce((s, i) => s + (i.amount || 0), 0);
   const effectiveCost = costSubtotal > 0 ? costSubtotal : (record.costAmount || 0);
-  const profit = grandTotal - effectiveCost;
+  const fxRate = record.fxRateAtCost || 1;
+  const costCur = record.costCurrency || 'KRW';
+  // 통화 불일치 시 환산: costCurrency=KRW, billCurrency=USD → cost를 외화로 변환
+  let profit: number;
+  if (costCur === cur) {
+    profit = grandTotal - effectiveCost;
+  } else if (costCur === 'KRW' && cur !== 'KRW' && fxRate > 1) {
+    profit = grandTotal - effectiveCost / fxRate;
+  } else if (costCur !== 'KRW' && cur === 'KRW') {
+    profit = grandTotal - effectiveCost * fxRate;
+  } else {
+    profit = grandTotal - effectiveCost;
+  }
   const hasCostSection = costItems.length > 0 || record.vendorId || record.vendorName;
 
   const title = TYPE_TITLES[record.costType] || TYPE_TITLES.other;
@@ -284,10 +296,19 @@ function CertPrintContent() {
                 <td className="num" style={{ fontSize: 14 }}>{sym} {fmt(grandTotal, cur)}</td>
                 <td></td>
               </tr>
-              {hasCostSection && effectiveCost > 0 && grandTotal > 0 && (
+              {hasCostSection && effectiveCost > 0 && grandTotal > 0 && costCur !== cur && fxRate <= 1 ? (
+                <tr style={{ background: '#fffbeb' }}>
+                  <td colSpan={7} className="num" style={{ color: '#92400e', fontSize: 10 }}>
+                    ⚠ 통화 불일치 ({costCur} 원가 / {cur} 청구) — 환율 설정 후 잡손익 계산 가능
+                  </td>
+                  <td></td>
+                </tr>
+              ) : hasCostSection && effectiveCost > 0 && grandTotal > 0 && (
                 <tr style={{ background: profit >= 0 ? '#f0fdf4' : '#fff1f2' }}>
                   <td colSpan={6} className="num" style={{ color: profit >= 0 ? '#166534' : '#9f1239', fontWeight: 600, fontSize: 11 }}>
-                    {profit >= 0 ? '잡이익' : '잡손실'} ({((profit / effectiveCost) * 100).toFixed(1)}%)
+                    {profit >= 0 ? '잡이익' : '잡손실'}
+                    {costCur !== cur && ` (환율 ${fxRate.toLocaleString()} 적용)`}
+                    {' '}({((profit / (costCur === cur ? effectiveCost : effectiveCost / fxRate)) * 100).toFixed(1)}%)
                   </td>
                   <td className="num" style={{ color: profit >= 0 ? '#166534' : '#9f1239', fontWeight: 700 }}>
                     {profit >= 0 ? '+' : ''}{fmt(profit, cur)}

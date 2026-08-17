@@ -54,7 +54,9 @@ function InvoicePrintContent() {
   const cur = inv.currency || 'USD';
   const sym = SYM[cur] || cur;
   const isForeign = cur !== 'KRW';
-  const bankInfo = isForeign ? (company?.bankForeign1 || company?.bank || '') : (company?.bank || '');
+  const bankInfo = isForeign
+    ? (company?.bankForeign1 || company?.bankForeign2 || company?.bank || '')
+    : (company?.bank || company?.bankForeign1 || '');
   const issuedDate = inv.issuedDate || new Date().toISOString().slice(0, 10);
   const dateStr = new Date(issuedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const clientName = client?.nameEn || client?.name || inv.clientName || '—';
@@ -218,14 +220,14 @@ function InvoicePrintContent() {
                 <div style={{ fontSize: '12px', color: '#555', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '8px', whiteSpace: 'pre-wrap' }}>{inv.remark}</div>
               </div>
             )}
-            {bankInfo && (
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  {isForeign ? 'Remittance Account' : '입금 계좌'}
-                </div>
-                <div style={{ fontSize: '12px', color: '#444', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', paddingTop: '8px', background: '#f5f5f5', padding: '10px 12px', borderRadius: '5px', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>{bankInfo}</div>
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: '#171717', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {isForeign ? 'Remittance Account' : '입금 계좌'}
               </div>
-            )}
+              <div style={{ fontSize: '12px', color: '#444', lineHeight: '1.7', borderTop: '1px solid #e5e5e5', background: '#f5f5f5', padding: '10px 12px', borderRadius: '5px', fontFamily: 'monospace', whiteSpace: 'pre-line' }}>
+                {bankInfo || '— (설정 > 회사 정보에서 입력)'}
+              </div>
+            </div>
 
             {/* 수금 완료 정보 */}
             {inv.status === 'paid' && inv.paidAt && (
