@@ -100,7 +100,7 @@ function CertPrintContent() {
   const sym = { KRW: '₩', USD: '$', CNY: '¥', EUR: '€', JPY: '¥' }[cur] || cur;
 
   return (
-    <div>
+    <div style={{ overflowY: 'auto', height: '100%' }}>
       <style>{`
         @media print {
           .no-print { display: none !important; }

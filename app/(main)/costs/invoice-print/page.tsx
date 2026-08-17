@@ -63,7 +63,7 @@ function InvoicePrintContent() {
   const emptyRows = Math.max(0, 8 - inv.items.length);
 
   return (
-    <div>
+    <div style={{ overflowY: 'auto', height: '100%' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
         @media print {

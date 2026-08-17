@@ -34,7 +34,7 @@ function ExpensePrintContent() {
   const issuedDate = new Date().toLocaleDateString('ko-KR');
 
   return (
-    <div>
+    <div style={{ overflowY: 'auto', height: '100%' }}>
       <style>{`
         @media print {
           body { -webkit-print-color-adjust: exact; }
