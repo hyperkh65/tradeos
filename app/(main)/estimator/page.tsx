@@ -852,6 +852,7 @@ export default function EstimatorPage() {
                   <th className="border px-2 py-1.5 font-medium w-18 bg-amber-50">이익(KRW)</th>
                   <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50">이익률</th>
                   <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50">물류비%</th>
+                  <th className="border px-2 py-1.5 font-medium min-w-[180px]">비고</th>
                   <th className="border px-1 py-1.5 w-12 sticky right-0 bg-muted/70 no-print"></th>
                 </tr>
               </thead>
@@ -993,6 +994,35 @@ export default function EstimatorPage() {
                       </td>
                       <td className={cn('border px-2 py-1 text-right bg-amber-50/50 font-bold', marginColor)}>{fmtPct(r.marginKrw)}</td>
                       <td className="border px-2 py-1 text-right bg-amber-50/50 text-[10px] text-muted-foreground">{r.freightRatio !== undefined ? fmtPct(r.freightRatio) : '-'}</td>
+                      {/* 비고: 자동 계산내역 + 직접 입력 */}
+                      <td className="border px-2 py-1 min-w-[180px] align-top">
+                        <div className="text-[9px] space-y-0.5 mb-1">
+                          {certTotal > 0 && (
+                            <div className="text-orange-700">
+                              인증비 {fmtKrw(certTotal)}/개
+                              {(item.certs || []).length > 0 && ` (${(item.certs || []).map(ce => ce.name).join(', ')})`}
+                            </div>
+                          )}
+                          {r.eprPerUnitKrw > 0 && (
+                            <div className="text-emerald-700">
+                              EPR {fmtKrw(r.eprPerUnitKrw)}/개 ({item.weightG}g × {c.eprRate}원/kg)
+                            </div>
+                          )}
+                          {item.dutyRateOverride !== undefined && (
+                            <div className="text-blue-600">관세 개별설정 {fmtPct(item.dutyRateOverride)}</div>
+                          )}
+                          {item.currency === 'CNY' && (
+                            <div className="text-muted-foreground">FOB CNY→USD 환산 포함</div>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={item.note || ''}
+                          onChange={e => updateItem(idx, { note: e.target.value })}
+                          placeholder="메모 입력..."
+                          className="w-full text-[10px] border-0 border-b border-dashed bg-transparent focus:outline-none placeholder:text-muted-foreground/30 py-0.5"
+                        />
+                      </td>
                       <td className="border px-1 py-1 sticky right-0 bg-background no-print">
                         <div className="flex gap-1">
                           <button onClick={() => duplicateItem(idx)} className="text-muted-foreground hover:text-primary p-0.5" title="복사"><Copy className="w-3 h-3" /></button>
@@ -1028,6 +1058,7 @@ export default function EstimatorPage() {
                         {fmtPct(avgMargin)}
                       </td>
                       <td className="border bg-amber-50/40"></td>
+                      <td className="border"></td>
                       <td className="border sticky right-0 bg-muted/50 no-print"></td>
                     </tr>
                   );
