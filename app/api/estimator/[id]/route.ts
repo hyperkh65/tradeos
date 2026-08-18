@@ -14,6 +14,8 @@ function toCase(row: Record<string, unknown>) {
     fxRmbSell: Number(row.fx_rmb_sell) || Number(row.fx_rmb) || 195,
     portFrom: (row.port_from as string) || undefined,
     portTo: (row.port_to as string) || undefined,
+    notionPageId: (row.notion_page_id as string) || undefined,
+    notionSyncedAt: (row.notion_synced_at as string) || undefined,
     dutyRate: row.duty_rate ?? 0.024, eprRate: row.epr_rate ?? 0,
     certCosts: (() => { try { return JSON.parse((row.cert_costs_json as string) || '[]'); } catch { return []; } })(),
     simMode: row.sim_mode || 'standard',

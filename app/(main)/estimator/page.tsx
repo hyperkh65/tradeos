@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import {
   Plus, Trash2, Upload, Copy, FileSpreadsheet, X, Check,
-  Printer, ChevronDown, ChevronRight, Paperclip, FileDown, Save,
+  Printer, ChevronDown, ChevronRight, Paperclip, FileDown, Save, RefreshCw,
 } from 'lucide-react';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -43,6 +43,8 @@ interface EstimatorCase {
   eprRate: number;
   portFrom?: string;
   portTo?: string;
+  notionPageId?: string;
+  notionSyncedAt?: string;
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
@@ -465,6 +467,9 @@ export default function EstimatorPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attUploading, setAttUploading] = useState(false);
   const [userName, setUserName] = useState('');
+  const [notionSyncing, setNotionSyncing] = useState(false);
+  const [notionSyncedAt, setNotionSyncedAt] = useState<string | null>(null);
+  const [notionPageId, setNotionPageId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -480,8 +485,14 @@ export default function EstimatorPage() {
   }, []);
 
   useEffect(() => {
-    if (!activeId) { setAttachments([]); return; }
+    if (!activeId) { setAttachments([]); setNotionSyncedAt(null); setNotionPageId(null); return; }
     fetch(`/api/estimator/${activeId}/attachments`).then(r => r.json()).then(d => setAttachments(d.data || [])).catch(() => {});
+    fetch(`/api/estimator/${activeId}`).then(r => r.json()).then(d => {
+      if (d.data) {
+        setNotionPageId(d.data.notionPageId || null);
+        setNotionSyncedAt(d.data.notionSyncedAt || null);
+      }
+    }).catch(() => {});
   }, [activeId]);
 
   const doSave = useCallback(async (data: EstimatorCase) => {
@@ -585,6 +596,26 @@ export default function EstimatorPage() {
       body: JSON.stringify({ attId }),
     });
     setAttachments(prev => prev.filter(a => a.id !== attId));
+  };
+
+  const syncToNotion = async () => {
+    if (!activeId || !draft) return;
+    setNotionSyncing(true);
+    try {
+      await doSave(draft);
+      const res = await fetch(`/api/estimator/${activeId}/notion-sync`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setNotionPageId(data.notionPageId);
+        setNotionSyncedAt(data.syncedAt);
+      } else {
+        alert('Notion 동기화 실패: ' + (data.error || '알 수 없는 오류'));
+      }
+    } catch {
+      alert('Notion 동기화 중 오류가 발생했습니다.');
+    } finally {
+      setNotionSyncing(false);
+    }
   };
 
   const handlePrint = () => {
@@ -874,6 +905,26 @@ export default function EstimatorPage() {
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handlePrint}>
                   <Printer className="w-3 h-3 mr-1" />인쇄
                 </Button>
+                <div className="flex flex-col items-end">
+                  <Button size="sm" variant="outline"
+                    className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                    onClick={syncToNotion} disabled={notionSyncing}>
+                    <RefreshCw className={cn('w-3 h-3 mr-1', notionSyncing && 'animate-spin')} />
+                    {notionSyncing ? '동기화 중...' : 'Notion 동기화'}
+                  </Button>
+                  {notionSyncedAt && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span className="text-[9px] text-purple-600">
+                        ✓ {new Date(notionSyncedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {notionPageId && (
+                        <a href={`https://notion.so/${notionPageId.replace(/-/g, '')}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-[9px] text-purple-500 hover:underline">↗</a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             {/* 2행: 3섹션 */}
