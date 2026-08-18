@@ -750,11 +750,20 @@ export async function createNotionImportSettlement(imp: Import): Promise<string 
   try {
     const notion = getNotionClient();
     const items = (imp.settlementItems || []) as { category: string; calculated: number; adjusted?: number; reason?: string }[];
+
+    // 물품 대금 계산
+    const fx = imp.exchangeRate || 1;
+    const invoiceKrw = imp.invoiceValue ? Math.round(imp.invoiceValue * fx) : 0;
+    const invoiceLine = invoiceKrw > 0
+      ? `물품 대금 (${imp.invoiceCurrency || 'USD'} ${(imp.invoiceValue || 0).toLocaleString()} × ${fx.toLocaleString()}원): ${invoiceKrw.toLocaleString()}원`
+      : null;
+
     const totalCalc = items.reduce((s, it) => s + it.calculated, 0);
     const totalAdj = items.reduce((s, it) => s + (it.adjusted ?? it.calculated), 0);
+    const grandTotal = invoiceKrw + totalAdj;
 
     const summaryLines = items
-      .filter(it => it.calculated > 0 || (it.adjusted ?? 0) > 0)
+      .filter(it => it.calculated !== 0 || (it.adjusted ?? 0) !== 0)
       .map(it => {
         const adj = it.adjusted ?? it.calculated;
         const diff = adj - it.calculated;
@@ -767,14 +776,20 @@ export async function createNotionImportSettlement(imp: Import): Promise<string 
       `[정산서] ${imp.businessId}`,
       `마감일시: ${imp.closedAt ? imp.closedAt.slice(0, 16) : ''}`,
       `마감자: ${imp.closedBy || ''}`,
+      imp.blNo ? `BL번호: ${imp.blNo}` : null,
+      imp.declarationNo ? `통관번호: ${imp.declarationNo}` : null,
       ``,
-      `── 비용 항목 ──`,
-      summaryLines,
+      `── 물품 대금 ──`,
+      invoiceLine || '물품 대금: 미입력',
       ``,
-      `계산 합계: ${totalCalc.toLocaleString()}원`,
-      `확정 합계: ${totalAdj.toLocaleString()}원`,
-      `차이: ${(totalAdj - totalCalc).toLocaleString()}원`,
-    ].join('\n');
+      `── 세금·비용 항목 ──`,
+      summaryLines || '(없음)',
+      ``,
+      `물품 대금: ${invoiceKrw.toLocaleString()}원`,
+      `세금·비용 합계: ${totalAdj.toLocaleString()}원`,
+      `총 합계: ${grandTotal.toLocaleString()}원`,
+      `(계산/확정 차이: ${(totalAdj - totalCalc).toLocaleString()}원)`,
+    ].filter(l => l !== null).join('\n');
 
     const page = await notion.pages.create({
       parent: { database_id: DB.imports },
@@ -785,9 +800,52 @@ export async function createNotionImportSettlement(imp: Import): Promise<string 
         'DutyAmount': num(imp.duty),
         'VATAmount': num(imp.vat),
         'BLNoMaster': rich(imp.blNo || ''),
-        'Exporter': rich(summaryText.slice(0, 2000)), // 정산 요약을 Exporter 필드에 임시 저장
+        'Exporter': rich(summaryText.slice(0, 2000)),
       },
     });
+
+    // 정산서 블록 추가 (테이블 형식)
+    try {
+      const allItems = [
+        ...(invoiceKrw > 0 ? [{ category: `물품 대금 (${imp.invoiceCurrency || 'USD'} ${(imp.invoiceValue||0).toLocaleString()})`, adj: invoiceKrw }] : []),
+        ...items.map(it => ({ category: it.category, adj: it.adjusted ?? it.calculated })),
+      ];
+      await notion.blocks.children.append({
+        block_id: page.id,
+        children: [
+          {
+            object: 'block', type: 'heading_3',
+            heading_3: { rich_text: [{ type: 'text', text: { content: '정산서 상세' } }] },
+          } as Parameters<typeof notion.blocks.children.append>[0]['children'][0],
+          {
+            object: 'block', type: 'table',
+            table: { table_width: 3, has_column_header: true, has_row_header: false },
+            children: [
+              { object: 'block', type: 'table_row', table_row: { cells: [
+                [{ type: 'text', text: { content: '항목' } }],
+                [{ type: 'text', text: { content: '금액 (원)' } }],
+                [{ type: 'text', text: { content: '비고' } }],
+              ]}},
+              ...allItems.map(it => ({
+                object: 'block', type: 'table_row', table_row: { cells: [
+                  [{ type: 'text', text: { content: it.category } }],
+                  [{ type: 'text', text: { content: it.adj.toLocaleString() } }],
+                  [{ type: 'text', text: { content: '' } }],
+                ]},
+              })),
+              { object: 'block', type: 'table_row', table_row: { cells: [
+                [{ type: 'text', text: { content: '총 합계' } }],
+                [{ type: 'text', text: { content: grandTotal.toLocaleString() } }],
+                [{ type: 'text', text: { content: '' } }],
+              ]}},
+            ],
+          } as unknown as Parameters<typeof notion.blocks.children.append>[0]['children'][0],
+        ],
+      });
+    } catch (blockErr) {
+      console.warn('[Notion] settlement block append failed (non-fatal):', blockErr);
+    }
+
     return page.id;
   } catch (e) {
     console.error('[Notion] create import settlement error:', e);

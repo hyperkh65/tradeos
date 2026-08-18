@@ -354,6 +354,14 @@ function ImportModal({
   // 정산서 자동 생성 (처음 열 때)
   const buildSettlementItems = useCallback((): SettlementItem[] => {
     const base: SettlementItem[] = [];
+    // 물품 대금 (인보이스 금액) — 맨 위에 표시
+    const invoiceKrwRounded = Math.round(invoiceKrw);
+    const invoiceLabelCurrency = itemsHaveData
+      ? `${totalItemCv.toLocaleString()} ${form.invoiceCurrency}`
+      : `${parseFloat(form.invoiceValue || '0').toLocaleString()} ${form.invoiceCurrency}`;
+    if (invoiceKrwRounded > 0) {
+      base.push({ category: `물품 대금 (${invoiceLabelCurrency} × ${exRate.toLocaleString()}원)`, calculated: invoiceKrwRounded });
+    }
     if (dutyFinal > 0) base.push({ category: '관세', calculated: dutyFinal });
     if (vatFinal > 0) base.push({ category: '수입부가세', calculated: vatFinal });
     if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal });
@@ -368,7 +376,7 @@ function ImportModal({
     if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal });
     if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', calculated: -inspectionRefundVal });
     return base;
-  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion]);
+  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv]);
 
   const syncSettlementItems = () => {
     const built = buildSettlementItems();
