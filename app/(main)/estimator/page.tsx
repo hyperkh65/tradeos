@@ -733,7 +733,14 @@ export default function EstimatorPage() {
                         className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
                       <span className="text-[10px] text-muted-foreground">원</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">💡 보수적: 높게 · 현재 약 1,380원</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
+                      <input type="number" step="1" value={c.fxRmb || ''}
+                        onChange={e => updateField('fxRmb', parseInt(e.target.value) || 195)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">💡 보수적: 높게 · 현재 USD≈1,380 / RMB≈193원</div>
                   </div>
                   <div className="border-t pt-1.5">
                     <div className="text-[10px] text-purple-700 mb-1 font-medium">판매·견적 (판매가 KRW 표시)</div>
@@ -744,13 +751,7 @@ export default function EstimatorPage() {
                         className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
                       <span className="text-[10px] text-muted-foreground">원</span>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
-                      <input type="number" step="1" value={c.fxRmb || ''}
-                        onChange={e => updateField('fxRmb', parseInt(e.target.value) || 195)}
-                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
-                      <span className="text-[10px] text-muted-foreground">원</span>
-                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">RMB 판매가는 위 구매 RMB/KRW 적용</div>
                   </div>
                 </div>
               </div>
