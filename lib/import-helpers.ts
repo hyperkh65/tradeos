@@ -62,7 +62,7 @@ export function syncImportExpenses(
 
       const expId = newId();
       const expBizId = nextBizId('EXP');
-      db.prepare(`INSERT INTO expenses
+      db.prepare(`INSERT OR REPLACE INTO expenses
         (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
@@ -70,7 +70,7 @@ export function syncImportExpenses(
       const crId = newId();
       const crBizId = nextBizId('CST');
       const costType = COST_TYPE_MAP[cat] || 'other';
-      db.prepare(`INSERT INTO cost_records
+      db.prepare(`INSERT OR REPLACE INTO cost_records
         (id,business_id,cost_type,description,
          import_id,import_business_id,shipment_id,shipment_business_id,
          cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,

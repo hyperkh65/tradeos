@@ -83,20 +83,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const shipmentId = (body.shipmentId || row.shipment_id) as string | undefined;
     updateLinkedShipmentStatus(db, shipmentId, body.status ?? (row.status as string));
 
-    // 비용 자동 연동
+    // 비용 자동 연동 (실패해도 메인 저장은 성공 처리)
     const updated = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
-    syncImportExpenses(db, id, row.business_id as string, {
-      duty: (body.duty ?? updated.duty) as number | undefined,
-      vat: (body.vat ?? updated.vat) as number | undefined,
-      brokerFee: (body.brokerFee ?? updated.broker_fee) as number | undefined,
-      inspectionFee: (body.inspectionFee ?? updated.inspection_fee) as number | undefined,
-      warehouseFee: (body.warehouseFee ?? updated.warehouse_fee) as number | undefined,
-      detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
-      demurrage: (body.demurrage ?? updated.demurrage) as number | undefined,
-      inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
-      customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
-      createdBy: user?.id || 'unknown',
-    });
+    try {
+      syncImportExpenses(db, id, row.business_id as string, {
+        duty: (body.duty ?? updated.duty) as number | undefined,
+        vat: (body.vat ?? updated.vat) as number | undefined,
+        brokerFee: (body.brokerFee ?? updated.broker_fee) as number | undefined,
+        inspectionFee: (body.inspectionFee ?? updated.inspection_fee) as number | undefined,
+        warehouseFee: (body.warehouseFee ?? updated.warehouse_fee) as number | undefined,
+        detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
+        demurrage: (body.demurrage ?? updated.demurrage) as number | undefined,
+        inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
+        customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
+        createdBy: user?.id || 'unknown',
+      });
+    } catch (syncErr) {
+      console.error('[imports PUT] expenses sync failed (non-fatal):', syncErr instanceof Error ? syncErr.message : syncErr);
+    }
 
     return NextResponse.json({ data: dbToImport(updated) });
   } catch (e) {
