@@ -1515,10 +1515,17 @@ function ImportModal({
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            entryDate: form.releaseDate || form.taxPaymentDate || new Date().toISOString().slice(0, 10),
+                            entry_date: form.releaseDate || form.taxPaymentDate || new Date().toISOString().slice(0, 10),
+                            entry_type: '수입',
                             description: `수입통관 ${item?.businessId || ''} 비용 정산`,
-                            lines,
-                            memo: `수입통관 ID: ${item?.id}`,
+                            related_ref: item?.id,
+                            lines: lines.map(l => ({
+                              account_code: l.accountCode,
+                              account_name: l.accountName,
+                              debit: l.debit,
+                              credit: l.credit,
+                              memo: l.note,
+                            })),
                           }),
                         });
                         if (res.ok) {
