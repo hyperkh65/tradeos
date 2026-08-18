@@ -12,6 +12,7 @@ export interface EstimatorCase {
   fxRmbSell: number;  // 판매·견적 RMB/KRW
   dutyRate: number;
   eprRate: number;
+  eprObligationRate: number;  // 재활용의무율 (예: 0.20 = 20%)
   portFrom?: string;
   portTo?: string;
   simMode: 'standard' | 'reverse' | 'mixed';
@@ -59,6 +60,7 @@ function rowToCase(row: Record<string, unknown>): EstimatorCase {
     portTo: (row.port_to as string) || undefined,
     dutyRate: (row.duty_rate as number) ?? 0.024,
     eprRate: (row.epr_rate as number) ?? 0,
+    eprObligationRate: (row.epr_obligation_rate as number) ?? 0.20,
     simMode: (row.sim_mode as EstimatorCase['simMode']) || 'standard',
     items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
     notes: (row.notes as string) || undefined,
@@ -78,12 +80,12 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   const ts = now();
-  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,fx_rmb_sell,duty_rate,epr_rate,port_from,port_to,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,fx_rmb_sell,duty_rate,epr_rate,epr_obligation_rate,port_from,port_to,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, body.name || '새 케이스', body.containerType || '40ft',
       body.freightSeaUsd ?? null, body.freightSea ?? 930000,
       body.freightInland ?? 250000, body.freightPort ?? 280000, body.freightMisc ?? 0,
       body.fxUsd ?? 1430, body.fxUsdSell ?? 1380, body.fxRmb ?? 195, body.fxRmbSell ?? 195,
-      body.dutyRate ?? 0.024, body.eprRate ?? 0,
+      body.dutyRate ?? 0.024, body.eprRate ?? 0, body.eprObligationRate ?? 0.20,
       body.portFrom ?? null, body.portTo ?? null,
       body.simMode || 'standard', JSON.stringify(body.items || []), body.notes ?? null, ts, ts);
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;

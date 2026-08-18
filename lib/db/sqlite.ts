@@ -668,6 +668,7 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN port_to TEXT`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN notion_page_id TEXT`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN notion_synced_at TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN epr_obligation_rate REAL DEFAULT 0.20`); } catch {}
 
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }

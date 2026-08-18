@@ -17,6 +17,7 @@ function toCase(row: Record<string, unknown>) {
     notionPageId: (row.notion_page_id as string) || undefined,
     notionSyncedAt: (row.notion_synced_at as string) || undefined,
     dutyRate: row.duty_rate ?? 0.024, eprRate: row.epr_rate ?? 0,
+    eprObligationRate: row.epr_obligation_rate ?? 0.20,
     certCosts: (() => { try { return JSON.parse((row.cert_costs_json as string) || '[]'); } catch { return []; } })(),
     simMode: row.sim_mode || 'standard',
     items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
@@ -40,11 +41,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const ts = now();
   db.prepare(`UPDATE estimator_cases SET
     name=?, container_type=?, freight_sea_usd=?, freight_sea=?, freight_inland=?, freight_port=?, freight_misc=?,
-    fx_usd=?, fx_usd_sell=?, fx_rmb=?, fx_rmb_sell=?, duty_rate=?, epr_rate=?, port_from=?, port_to=?, sim_mode=?, items_json=?, notes=?, updated_at=?
+    fx_usd=?, fx_usd_sell=?, fx_rmb=?, fx_rmb_sell=?, duty_rate=?, epr_rate=?, epr_obligation_rate=?, port_from=?, port_to=?, sim_mode=?, items_json=?, notes=?, updated_at=?
     WHERE id=?`).run(
     body.name, body.containerType,
     body.freightSeaUsd ?? null, body.freightSea, body.freightInland, body.freightPort, body.freightMisc,
-    body.fxUsd, body.fxUsdSell ?? body.fxUsd, body.fxRmb, body.fxRmbSell ?? body.fxRmb, body.dutyRate, body.eprRate ?? 0,
+    body.fxUsd, body.fxUsdSell ?? body.fxUsd, body.fxRmb, body.fxRmbSell ?? body.fxRmb,
+    body.dutyRate, body.eprRate ?? 0, body.eprObligationRate ?? 0.20,
     body.portFrom ?? null, body.portTo ?? null,
     body.simMode, JSON.stringify(body.items || []), body.notes ?? null, ts, id
   );

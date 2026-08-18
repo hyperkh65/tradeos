@@ -41,6 +41,7 @@ interface EstimatorCase {
   fxRmbSell: number;  // 판매·견적 RMB/KRW
   dutyRate: number;
   eprRate: number;
+  eprObligationRate: number;  // 재활용의무율 (0.20 = 20%)
   portFrom?: string;
   portTo?: string;
   notionPageId?: string;
@@ -99,7 +100,9 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
   const dutyRate = item.dutyRateOverride ?? c.dutyRate;
   const dutyPerUnitUsd = cifUsd * dutyRate;
 
-  const eprPerUnitKrw = ((item.weightG || 0) / 1000) * (c.eprRate || 0);
+  // EPR: 무게(kg) × 재활용의무율 × 분담금단가
+  const eprObligationRate = c.eprObligationRate ?? 0.20;
+  const eprPerUnitKrw = ((item.weightG || 0) / 1000) * eprObligationRate * (c.eprRate || 0);
   const certPerUnitKrw = (item.certs || []).reduce((sum, cert) =>
     sum + (cert.shipQty > 0 ? cert.totalCostKrw / cert.shipQty : 0), 0);
 
@@ -716,7 +719,7 @@ export default function EstimatorPage() {
                 <span>구매환율: USD {c.fxUsd}원 / RMB {c.fxRmb}원</span>
                 <span>판매환율: USD {c.fxUsdSell}원 / RMB {c.fxRmbSell}원</span>
                 <span>기본관세율: {(c.dutyRate * 100).toFixed(1)}%</span>
-                {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg</span>}
+                {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg × {((c.eprObligationRate ?? 0.20) * 100).toFixed(0)}%의무율</span>}
                 {c.freightSeaUsd
                   ? <span>해상운임: ${c.freightSeaUsd.toLocaleString()} (≈{Math.round(c.freightSeaUsd * c.fxUsd).toLocaleString()}원)</span>
                   : c.freightSea > 0 ? <span>해상운임: {c.freightSea.toLocaleString()}원</span> : null}
@@ -1026,16 +1029,21 @@ export default function EstimatorPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-muted-foreground mb-0.5">EPR 환경분담금 단가</div>
+                    <div className="text-[10px] text-muted-foreground mb-0.5">EPR 환경분담금</div>
                     <div className="flex items-center gap-1.5">
                       <input type="number" step="1" min="0" value={c.eprRate || ''} placeholder="0"
                         onChange={e => updateField('eprRate', parseFloat(e.target.value) || 0)}
-                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
-                      <span className="text-[10px] text-muted-foreground">원/kg</span>
+                        className="h-6 border rounded text-[10px] px-1.5 w-16 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원/kg ×</span>
+                      <input type="number" step="1" min="0" max="100"
+                        value={((c.eprObligationRate ?? 0.20) * 100).toFixed(0)}
+                        onChange={e => updateField('eprObligationRate', (parseFloat(e.target.value) || 20) / 100)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-12 text-right" />
+                      <span className="text-[10px] text-muted-foreground">% (의무율)</span>
                     </div>
                     <div className="text-[10px] text-muted-foreground/50 mt-0.5">
-                      💡 LED: ~32 · 형광: ~63 · 모니터: ~25원/kg<br />
-                      무게(g) 제품 행에 입력 → 자동 계산
+                      = 무게(kg) × 의무율 × 단가<br />
+                      💡 2026 전구LED 850원/kg · 의무율 20%
                     </div>
                   </div>
                 </div>
@@ -1095,7 +1103,7 @@ export default function EstimatorPage() {
               <span>구매환율: 1USD={c.fxUsd}원</span>
               <span>판매환율: 1USD={c.fxUsdSell}원</span>
               <span>관세율: {(c.dutyRate * 100).toFixed(1)}%</span>
-              {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg</span>}
+              {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg × {((c.eprObligationRate ?? 0.20) * 100).toFixed(0)}%</span>}
             </div>
           </div>
 
@@ -1257,12 +1265,28 @@ export default function EstimatorPage() {
                         </td>
                       ) : (
                         <td className="border px-1 py-1 bg-purple-50/30">
-                          <div className="flex items-center gap-0.5">
+                          {/* 역산 모드: 통화 선택 + 마진% 입력 + 계산된 판매가 표시 */}
+                          <div className="flex items-center gap-0.5 mb-0.5">
+                            <select value={item.sellingCurrency || 'USD'}
+                              onChange={e => updateItem(idx, { sellingCurrency: e.target.value as 'USD' | 'CNY' | 'KRW' })}
+                              className="h-6 border rounded text-[9px] w-14 shrink-0 bg-purple-50">
+                              <option value="USD">USD</option>
+                              <option value="CNY">RMB</option>
+                              <option value="KRW">KRW</option>
+                            </select>
                             <input type="number" step="0.1"
                               value={item.targetMargin !== undefined ? (item.targetMargin * 100).toFixed(1) : ''}
                               onChange={e => updateItem(idx, { targetMargin: e.target.value ? parseFloat(e.target.value) / 100 : undefined })}
-                              className={cn(inCls, 'text-right w-14 bg-purple-50')} placeholder="15.0" />
-                            <span className="text-[10px] text-muted-foreground">%</span>
+                              className={cn(inCls, 'text-right w-12 bg-purple-50')} placeholder="%" />
+                          </div>
+                          {/* 계산된 판매가 */}
+                          <div className="text-[9px] text-purple-700 font-medium text-right">
+                            {(() => {
+                              const sc = item.sellingCurrency || 'USD';
+                              if (sc === 'CNY') return r.sellingRmb !== undefined ? `¥${r.sellingRmb.toFixed(2)}` : '-';
+                              if (sc === 'KRW') return r.sellingKrw !== undefined ? `${Math.round(r.sellingKrw).toLocaleString()}원` : '-';
+                              return r.sellingUsd !== undefined ? `$${r.sellingUsd.toFixed(2)}` : '-';
+                            })()}
                           </div>
                         </td>
                       )}

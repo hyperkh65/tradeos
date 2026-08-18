@@ -20,6 +20,7 @@ function calcDdpKrw(item: EstimatorItem, c: {
   fxUsd: number; fxRmb: number; dutyRate: number; eprRate: number;
   freightSea: number; freightSeaUsd?: number; freightInland: number; freightPort: number; freightMisc: number;
   containerType: string; simMode: string;
+  eprObligationRate?: number;
 }) {
   const fxUsd = c.fxUsd || 1430;
   const fxRmb = c.fxRmb || 195;
@@ -35,7 +36,7 @@ function calcDdpKrw(item: EstimatorItem, c: {
   const cifUsd = fobUsd + seaPerUnitUsd;
   const dutyRate = item.dutyRateOverride ?? c.dutyRate;
   const dutyPerUnitUsd = cifUsd * dutyRate;
-  const eprPerUnitKrw = ((item.weightG || 0) / 1000) * (c.eprRate || 0);
+  const eprPerUnitKrw = ((item.weightG || 0) / 1000) * (c.eprObligationRate ?? 0.20) * (c.eprRate || 0);
   const certPerUnitKrw = (item.certs || []).reduce((s, cert) =>
     s + (cert.shipQty > 0 ? cert.totalCostKrw / cert.shipQty : 0), 0);
   return {
@@ -62,13 +63,14 @@ export async function POST(
   const fxRmbSell = Number(row.fx_rmb_sell) || fxRmb;
   const dutyRate = Number(row.duty_rate) || 0;
   const eprRate = Number(row.epr_rate) || 0;
+  const eprObligationRate = Number(row.epr_obligation_rate) ?? 0.20;
   const items: EstimatorItem[] = (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })();
   const portFrom = (row.port_from as string) || '';
   const portTo = (row.port_to as string) || '';
   const containerType = (row.container_type as string) || '40ft';
 
   // 평균 마진 계산
-  const caseCtx = { fxUsd, fxRmb, dutyRate, eprRate, freightSea: Number(row.freight_sea) || 0,
+  const caseCtx = { fxUsd, fxRmb, dutyRate, eprRate, eprObligationRate, freightSea: Number(row.freight_sea) || 0,
     freightSeaUsd: row.freight_sea_usd != null ? Number(row.freight_sea_usd) : undefined,
     freightInland: Number(row.freight_inland) || 0, freightPort: Number(row.freight_port) || 0,
     freightMisc: Number(row.freight_misc) || 0, containerType, simMode: (row.sim_mode as string) || 'standard' };
