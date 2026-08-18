@@ -296,8 +296,10 @@ export interface ImportCustomCost {
 
 export interface SettlementItem {
   category: string;
-  calculated: number;
-  adjusted?: number;
+  calculated: number;       // 공급가 계산금액
+  adjusted?: number;        // 공급가 조정금액
+  vat?: number;             // 부가세 계산금액
+  adjustedVat?: number;     // 부가세 조정금액
   reason?: string;
   costType?: 'inventory' | 'vat' | 'expense' | 'refund';
 }

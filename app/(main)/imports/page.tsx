@@ -390,10 +390,22 @@ function ImportModal({
     customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
       base.push({ category: c.name, calculated: parseFloat(c.amount), costType: 'inventory' });
     });
+    // 해상운임 (포워더)
+    const frtKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
+    if (frtKrw > 0) base.push({ category: '해상운임(포워더)', calculated: frtKrw, costType: 'inventory' });
+    // 포워더 부대비용 (H/C, THC 등) — 공급가+부가세 분리
+    type FH = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number };
+    (form.freightHandling || []).forEach((h: FH) => {
+      const supply = h.amtKrw || 0;
+      const vat = h.vat || 0;
+      if (supply > 0 || vat > 0) {
+        base.push({ category: h.name || '포워더 부대비용', calculated: supply, vat: vat || undefined, costType: 'inventory' });
+      }
+    });
     if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal, costType: 'refund' });
     if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', calculated: -inspectionRefundVal, costType: 'refund' });
     return base;
-  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv]);
+  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv, form.freightKrw, freightKrwCalc, form.freightHandling]);
 
   const syncSettlementItems = () => {
     const built = buildSettlementItems();
@@ -1357,11 +1369,30 @@ function ImportModal({
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border overflow-hidden text-xs">
-                    <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
-                      {['비용 항목', '구분', '계산금액', '조정금액', '차이', '조정사유'].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                    {/* 2단 헤더 */}
+                    <div className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
+                      <div className="grid text-[10px]" style={{ gridTemplateColumns: '1.6fr 72px 2fr 2fr 1fr 1.8fr' }}>
+                        <div className="px-2 py-1.5 border-r border-border">비용 항목</div>
+                        <div className="px-2 py-1.5 border-r border-border">구분</div>
+                        <div className="px-2 py-1.5 border-r border-border text-center">계산금액</div>
+                        <div className="px-2 py-1.5 border-r border-border text-center">조정금액</div>
+                        <div className="px-2 py-1.5 border-r border-border">차이</div>
+                        <div className="px-2 py-1.5">조정사유</div>
+                      </div>
+                      <div className="grid text-[10px] border-t border-border/60 bg-muted/30" style={{ gridTemplateColumns: '1.6fr 72px 1fr 1fr 1fr 1fr 1fr 1.8fr' }}>
+                        <div className="px-2 py-1 col-span-2" />
+                        <div className="px-2 py-1 border-l border-border text-blue-600">공급가</div>
+                        <div className="px-2 py-1 border-l border-border text-orange-500">부가세</div>
+                        <div className="px-2 py-1 border-l border-border text-blue-600">공급가</div>
+                        <div className="px-2 py-1 border-l border-border text-orange-500">부가세</div>
+                        <div className="px-2 py-1 border-l border-border">공급가기준</div>
+                        <div className="px-2 py-1 border-l border-border" />
+                      </div>
                     </div>
+                    {/* 데이터 행 */}
                     {settlementItems.map((si, idx) => {
-                      const adj = si.adjusted !== undefined ? si.adjusted : si.calculated;
+                      const adj  = si.adjusted    !== undefined ? si.adjusted    : si.calculated;
+                      const adjV = si.adjustedVat !== undefined ? si.adjustedVat : (si.vat ?? 0);
                       const diff = adj - si.calculated;
                       const costTypeLabel: Record<string, { label: string; cls: string }> = {
                         inventory: { label: '재고원가', cls: 'bg-blue-100 text-blue-700' },
@@ -1370,16 +1401,17 @@ function ImportModal({
                         refund:    { label: '환급',     cls: 'bg-green-100 text-green-700' },
                       };
                       const ct = si.costType ? costTypeLabel[si.costType] : null;
+                      const hasVat = si.vat !== undefined && si.vat !== 0;
                       return (
-                        <div key={idx} className={cn('grid border-t border-border', si.calculated < 0 ? 'bg-green-50' : '')} style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
-                          <div className="px-2 py-1.5 font-medium flex items-center">{si.category}</div>
-                          <div className="px-2 py-1.5 flex items-center">
+                        <div key={idx} className={cn('grid border-t border-border items-center', si.calculated < 0 ? 'bg-green-50' : '')}
+                          style={{ gridTemplateColumns: '1.6fr 72px 1fr 1fr 1fr 1fr 1fr 1.8fr' }}>
+                          <div className="px-2 py-1.5 font-medium">{si.category}</div>
+                          {/* 구분 */}
+                          <div className="px-1.5 py-1.5">
                             {canEdit && !isClosed ? (
-                              <select
-                                className="text-[10px] rounded px-1 py-0.5 border border-input bg-background"
+                              <select className="text-[10px] rounded px-1 py-0.5 border border-input bg-background w-full"
                                 value={si.costType || ''}
-                                onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, costType: e.target.value as 'inventory' | 'vat' | 'expense' | 'refund' || undefined } : p))}
-                              >
+                                onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, costType: e.target.value as 'inventory'|'vat'|'expense'|'refund'||undefined } : p))}>
                                 <option value="">-</option>
                                 <option value="inventory">재고원가</option>
                                 <option value="vat">부가세</option>
@@ -1387,23 +1419,37 @@ function ImportModal({
                                 <option value="refund">환급</option>
                               </select>
                             ) : ct ? (
-                              <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium', ct.cls)}>{ct.label}</span>
+                              <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap', ct.cls)}>{ct.label}</span>
                             ) : <span className="text-muted-foreground">-</span>}
                           </div>
-                          <div className="px-2 py-1.5 flex items-center text-muted-foreground">{si.calculated.toLocaleString()}원</div>
-                          <div className="px-2 py-1.5">
+                          {/* 계산금액 공급가 */}
+                          <div className="px-2 py-1.5 text-muted-foreground">{si.calculated.toLocaleString()}</div>
+                          {/* 계산금액 부가세 */}
+                          <div className="px-2 py-1.5 text-orange-500">{hasVat ? (si.vat!).toLocaleString() : '-'}</div>
+                          {/* 조정금액 공급가 */}
+                          <div className="px-1.5 py-1.5">
                             {canEdit && !isClosed
-                              ? <input type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs"
+                              ? <input type="number" className="w-full h-6 rounded border border-input bg-background px-1.5 text-[11px]"
                                   value={si.adjusted !== undefined ? si.adjusted : ''} placeholder={String(si.calculated)}
                                   onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, adjusted: e.target.value ? Number(e.target.value) : undefined } : p))} />
-                              : <span>{adj.toLocaleString()}원</span>}
+                              : <span>{adj.toLocaleString()}</span>}
                           </div>
-                          <div className={cn('px-2 py-1.5 flex items-center font-medium', diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-muted-foreground')}>
-                            {diff !== 0 ? `${diff > 0 ? '+' : ''}${diff.toLocaleString()}원` : '-'}
+                          {/* 조정금액 부가세 */}
+                          <div className="px-1.5 py-1.5">
+                            {hasVat && canEdit && !isClosed
+                              ? <input type="number" className="w-full h-6 rounded border border-input bg-background px-1.5 text-[11px] border-orange-200"
+                                  value={si.adjustedVat !== undefined ? si.adjustedVat : ''} placeholder={String(si.vat ?? 0)}
+                                  onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, adjustedVat: e.target.value ? Number(e.target.value) : undefined } : p))} />
+                              : hasVat ? <span className="text-orange-500">{adjV.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
                           </div>
-                          <div className="px-2 py-1.5">
+                          {/* 차이 (공급가 기준) */}
+                          <div className={cn('px-2 py-1.5 font-medium', diff > 0 ? 'text-red-600' : diff < 0 ? 'text-green-600' : 'text-muted-foreground')}>
+                            {diff !== 0 ? `${diff > 0 ? '+' : ''}${diff.toLocaleString()}` : '-'}
+                          </div>
+                          {/* 조정사유 */}
+                          <div className="px-1.5 py-1.5">
                             {canEdit && !isClosed
-                              ? <input className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={si.reason || ''} placeholder="조정사유"
+                              ? <input className="w-full h-6 rounded border border-input bg-background px-1.5 text-[11px]" value={si.reason || ''} placeholder="조정사유"
                                   onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, reason: e.target.value } : p))} />
                               : <span className="text-muted-foreground">{si.reason || '-'}</span>}
                           </div>
@@ -1412,37 +1458,34 @@ function ImportModal({
                     })}
                     {/* 4분류 합계 */}
                     {(() => {
-                      const adjVal = (si: typeof settlementItems[0]) => si.adjusted !== undefined ? si.adjusted : si.calculated;
-                      const totalAdj = settlementItems.reduce((s, si) => s + adjVal(si), 0);
-                      const inventorySum = settlementItems.filter(si => si.costType === 'inventory').reduce((s, si) => s + adjVal(si), 0);
-                      const vatSum = settlementItems.filter(si => si.costType === 'vat').reduce((s, si) => s + adjVal(si), 0);
-                      const expenseSum = settlementItems.filter(si => si.costType === 'expense').reduce((s, si) => s + adjVal(si), 0);
-                      const refundSum = settlementItems.filter(si => si.costType === 'refund').reduce((s, si) => s + adjVal(si), 0);
+                      const adjSupply = (si: SettlementItem) => si.adjusted !== undefined ? si.adjusted : si.calculated;
+                      const adjVat    = (si: SettlementItem) => si.adjustedVat !== undefined ? si.adjustedVat : (si.vat ?? 0);
+                      const totalSupply = settlementItems.reduce((s, si) => s + adjSupply(si), 0);
+                      const totalVat    = settlementItems.reduce((s, si) => s + adjVat(si), 0);
+                      const grandTotal  = totalSupply + totalVat;
+                      const inventorySum = settlementItems.filter(si => si.costType === 'inventory').reduce((s, si) => s + adjSupply(si), 0);
+                      const vatSum       = settlementItems.filter(si => si.costType === 'vat').reduce((s, si) => s + adjSupply(si), 0)
+                                         + settlementItems.reduce((s, si) => s + adjVat(si), 0); // 수입부가세 + 포워더VAT
+                      const expenseSum  = settlementItems.filter(si => si.costType === 'expense').reduce((s, si) => s + adjSupply(si), 0);
+                      const refundSum   = settlementItems.filter(si => si.costType === 'refund').reduce((s, si) => s + adjSupply(si), 0);
                       return (
                         <div className="border-t-2 border-border bg-muted/40">
-                          <div className="grid font-semibold" style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
-                            <div className="px-2 py-2 col-span-2">총 정산금액</div>
-                            <div className="px-2 py-2 col-span-4 text-right pr-4">{totalAdj.toLocaleString()}원</div>
+                          <div className="flex justify-between items-center px-3 py-2 font-semibold text-sm">
+                            <span>총 정산금액</span>
+                            <span>{grandTotal.toLocaleString()}원</span>
+                          </div>
+                          <div className="grid text-[11px] border-t border-border/60"
+                            style={{ gridTemplateColumns: '1.6fr 72px 1fr 1fr 1fr 1fr 1fr 1.8fr' }}>
+                            <div className="px-2 py-1.5 col-span-2 font-medium text-muted-foreground">소계</div>
+                            <div className="px-2 py-1.5 font-medium">{totalSupply.toLocaleString()}</div>
+                            <div className="px-2 py-1.5 text-orange-500 font-medium">{totalVat > 0 ? totalVat.toLocaleString() : '-'}</div>
+                            <div className="col-span-4" />
                           </div>
                           <div className="px-3 pb-2 space-y-1 text-[11px]">
-                            <div className="flex justify-between items-center">
-                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-blue-400" />재고 취득원가</span>
-                              <span className="font-medium">{inventorySum.toLocaleString()}원</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-purple-400" />공제대상 부가세</span>
-                              <span className="font-medium">{vatSum.toLocaleString()}원</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-orange-400" />당기비용</span>
-                              <span className="font-medium">{expenseSum.toLocaleString()}원</span>
-                            </div>
-                            {refundSum !== 0 && (
-                              <div className="flex justify-between items-center">
-                                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-400" />환급</span>
-                                <span className="font-medium text-green-600">{refundSum.toLocaleString()}원</span>
-                              </div>
-                            )}
+                            <div className="flex justify-between"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />재고 취득원가</span><span className="font-medium">{inventorySum.toLocaleString()}원</span></div>
+                            <div className="flex justify-between"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" />공제대상 부가세</span><span className="font-medium">{vatSum.toLocaleString()}원</span></div>
+                            <div className="flex justify-between"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />당기비용</span><span className="font-medium">{expenseSum.toLocaleString()}원</span></div>
+                            {refundSum !== 0 && <div className="flex justify-between"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" />환급</span><span className="font-medium text-green-600">{refundSum.toLocaleString()}원</span></div>}
                           </div>
                         </div>
                       );
