@@ -637,6 +637,27 @@ function runMigrations(db: Database.Database) {
   // foreign_invoices 컬럼 확장
   try { db.exec(`ALTER TABLE foreign_invoices ADD COLUMN vat_amount REAL DEFAULT 0`); } catch { /* already exists */ }
 
+  // 원가계산기 케이스 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS estimator_cases (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      container_type TEXT NOT NULL DEFAULT '40ft',
+      freight_sea INTEGER NOT NULL DEFAULT 930000,
+      freight_inland INTEGER NOT NULL DEFAULT 250000,
+      freight_port INTEGER NOT NULL DEFAULT 280000,
+      freight_misc INTEGER NOT NULL DEFAULT 0,
+      fx_usd INTEGER NOT NULL DEFAULT 1330,
+      fx_rmb INTEGER NOT NULL DEFAULT 185,
+      duty_rate REAL NOT NULL DEFAULT 0.024,
+      sim_mode TEXT NOT NULL DEFAULT 'standard',
+      items_json TEXT NOT NULL DEFAULT '[]',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
