@@ -1089,8 +1089,8 @@ function ImportModal({
                             <div key={it.id} className="grid border-t border-border" style={{ gridTemplateColumns: '200px 110px 70px 80px 70px 120px 100px 100px 28px' }}>
                               <div className="px-2 py-1.5"><input autoComplete="off" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.productName} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, productName: e.target.value } : p))} placeholder="품목명" disabled={!canEdit} /></div>
                               <div className="px-2 py-1.5"><input autoComplete="off" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.hsCode || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, hsCode: e.target.value } : p))} placeholder="선택사항" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
-                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.qtyStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, qtyStr: e.target.value, customsValueStr: '' } : p))} placeholder="0" disabled={!canEdit} /></div>
+                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={it.unitPriceStr || ''} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, unitPriceStr: e.target.value, customsValueStr: '' } : p))} placeholder="0" disabled={!canEdit} /></div>
                               <div className="px-2 py-1.5">
                                 {(() => { const drV = parseFloat(it.dutyRateStr || '0'); const invalid = drV > 200; return (
                                   <input autoComplete="off" type="number" title={invalid ? '⚠ 관세율이 200%를 초과합니다. 관세율(%)을 입력하세요' : '관세율 (%)'}
@@ -1098,7 +1098,16 @@ function ImportModal({
                                     value={it.dutyRateStr} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, dutyRateStr: e.target.value } : p))} placeholder="8" disabled={!canEdit} />
                                 );})()}
                               </div>
-                              <div className="px-2 py-1.5"><input autoComplete="off" type="number" className="w-full h-7 rounded border border-input bg-background px-2 text-xs" value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} /></div>
+                              {(() => {
+                                const mismatch = cvRaw > 0 && cvAuto > 0 && Math.round(cvRaw) !== cvAuto;
+                                return (
+                                  <div className="px-2 py-1.5" title={mismatch ? `⚠ 단가×수량 자동계산(${cvAuto.toLocaleString()})과 다릅니다. 수량/단가를 수정하면 재계산됩니다.` : ''}>
+                                    <input autoComplete="off" type="number"
+                                      className={`w-full h-7 rounded border px-2 text-xs ${mismatch ? 'border-yellow-400 bg-yellow-50' : 'border-input bg-background'}`}
+                                      value={cvDisplay} onChange={e => setItems(prev => prev.map((p, i) => i === idx ? { ...p, customsValueStr: e.target.value } : p))} placeholder="단가×수량 자동" disabled={!canEdit} />
+                                  </div>
+                                );
+                              })()}
                               <div className="px-2 py-1.5 text-orange-700 font-medium flex items-center text-xs">{d > 0 ? d.toLocaleString() : '-'}</div>
                               <div className="px-2 py-1.5 text-purple-700 font-medium flex items-center text-xs">{v > 0 ? v.toLocaleString() : '-'}</div>
                               <div className="px-1 py-1.5 flex items-center">{canEdit && <button type="button" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}><X className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>}</div>
