@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Trash2, X, HelpCircle, CheckCircle, AlertCircle, ChevronDown, Search, BookOpen, Scale, TrendingUp, FileText, Loader2 } from 'lucide-react';
+import { Plus, Trash2, X, HelpCircle, CheckCircle, AlertCircle, ChevronDown, Search, BookOpen, Scale, TrendingUp, FileText, Loader2, Link2, Zap, Package } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +45,8 @@ const ENTRY_TYPES = [
   { value: 'receipt', label: '대금수령', color: 'bg-blue-100 text-blue-700' },
   { value: 'salary', label: '급여지급', color: 'bg-purple-100 text-purple-700' },
   { value: 'purchase', label: '매입발생', color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'import_cost', label: '수입원가', color: 'bg-cyan-100 text-cyan-700' },
+  { value: 'sale_full', label: '매출+원가', color: 'bg-teal-100 text-teal-700' },
   { value: 'adjust', label: '결산조정', color: 'bg-gray-100 text-gray-700' },
   { value: 'other', label: '기타', color: 'bg-slate-100 text-slate-700' },
 ];
@@ -81,6 +83,14 @@ const TYPE_GUIDES: Record<string, { tip: string; example: string }> = {
     tip: '감가상각, 선급비용 배분, 충당금 설정 등 결산 시 조정 분개',
     example: '예) 감가상각비 인식 → 차변: 감가상각비 / 대변: 감가상각누계액',
   },
+  import_cost: {
+    tip: '수입통관 시 재고자산 취득 (DDP 원가 기준). 원가계산기 연동으로 자동 생성 가능.',
+    example: '예) 통관 DDP원가 5,000,000원 → 차변: 재고자산 5,000,000 / 대변: 외상매입금 5,000,000',
+  },
+  sale_full: {
+    tip: '매출 발생 + 매출원가 동시 인식 (복합분개). 원가계산기 연동으로 자동 생성 가능.',
+    example: '예) 매출 8백만, 원가 5백만 → 차변: 외상매출금8M+매출원가5M / 대변: 국내매출8M+재고자산5M',
+  },
   other: {
     tip: '위 유형에 해당하지 않는 기타 거래',
     example: '예) 자본금 납입, 차입금 상환 등',
@@ -109,6 +119,16 @@ const TEMPLATES: Record<string, Partial<JournalLine>[]> = {
     { account_code: '1090', account_name: '재고자산', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
     { account_code: '2010', account_name: '외상매입금', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
   ],
+  import_cost: [
+    { account_code: '1090', account_name: '재고자산', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+    { account_code: '2010', account_name: '외상매입금', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+  ],
+  sale_full: [
+    { account_code: '1040', account_name: '외상매출금', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+    { account_code: '5010', account_name: '매출원가', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+    { account_code: '4010', account_name: '국내매출', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+    { account_code: '1090', account_name: '재고자산', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
+  ],
   adjust: [
     { account_code: '5280', account_name: '감가상각비', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
     { account_code: '1350', account_name: '감가상각누계액', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
@@ -118,6 +138,58 @@ const TEMPLATES: Record<string, Partial<JournalLine>[]> = {
     { account_code: '', account_name: '', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '' },
   ],
 };
+
+// T계정 좌(차변)/우(대변) 사이드 기본값
+const TEMPLATE_SIDES: Record<string, ('debit' | 'credit')[]> = {
+  expense: ['debit', 'credit'],
+  revenue: ['debit', 'credit'],
+  receipt: ['debit', 'credit'],
+  salary: ['debit', 'credit', 'credit'],
+  purchase: ['debit', 'credit'],
+  import_cost: ['debit', 'credit'],
+  sale_full: ['debit', 'debit', 'credit', 'credit'],
+  adjust: ['debit', 'credit'],
+  other: ['debit', 'credit'],
+};
+
+const CONTAINER_CBM: Record<string, number> = { '20ft': 27, '40ft': 56, '40HQ': 68 };
+
+interface EstimatorCaseSummary {
+  id: string; name: string; containerType: string;
+  fxUsd: number; fxRmb: number; fxUsdSell: number; fxRmbSell: number;
+  dutyRate: number; eprRate: number; eprObligationRate: number;
+  freightSeaUsd?: number; freightSea: number; freightInland: number; freightPort: number; freightMisc: number;
+  portFrom?: string; portTo?: string;
+  customsNo?: string; salesNo?: string;
+  items: Array<{
+    id: string; name: string; currency: string; sellingCurrency?: string;
+    fobPrice: number; boxL: number; boxW: number; boxH: number; qtyPerBox: number;
+    weightG?: number; certs?: Array<{ totalCostKrw: number; shipQty: number }>;
+    dutyRateOverride?: number; sellingPrice?: number;
+  }>;
+}
+
+function calcItemDdp(item: EstimatorCaseSummary['items'][0], c: EstimatorCaseSummary) {
+  const fxUsd = c.fxUsd || 1430;
+  const fxRmb = c.fxRmb || 195;
+  const containerCbm = CONTAINER_CBM[c.containerType] || 56;
+  const fobUsd = item.currency === 'CNY' ? item.fobPrice * (fxRmb / fxUsd) : item.fobPrice;
+  const cbmPerBox = (item.boxL * item.boxW * item.boxH) / 1_000_000_000;
+  const qtyPerContainer = cbmPerBox > 0 ? Math.floor(containerCbm / cbmPerBox) * item.qtyPerBox : 0;
+  const seaKrw = c.freightSeaUsd != null ? c.freightSeaUsd * fxUsd : c.freightSea;
+  const seaPerUnitUsd = qtyPerContainer > 0 ? seaKrw / qtyPerContainer / fxUsd : 0;
+  const otherKrw = c.freightInland + c.freightPort + c.freightMisc;
+  const otherPerUnitKrw = qtyPerContainer > 0 ? otherKrw / qtyPerContainer : 0;
+  const cifUsd = fobUsd + seaPerUnitUsd;
+  const dutyRate = item.dutyRateOverride ?? c.dutyRate;
+  const dutyPerUnitUsd = cifUsd * dutyRate;
+  const eprPerUnitKrw = ((item.weightG || 0) / 1000) * (c.eprObligationRate ?? 0.20) * (c.eprRate || 0);
+  const certPerUnitKrw = (item.certs || []).reduce((s, cert) => s + (cert.shipQty > 0 ? cert.totalCostKrw / cert.shipQty : 0), 0);
+  return {
+    ddpKrw: (cifUsd + dutyPerUnitUsd) * fxUsd + otherPerUnitKrw + eprPerUnitKrw + certPerUnitKrw,
+    qtyPerContainer,
+  };
+}
 
 const TYPE_COLORS: Record<string, string> = {
   expense: 'bg-orange-100 text-orange-700',
@@ -240,49 +312,165 @@ function JournalEntryModal({
   onSave: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const initType = entry?.entry_type || 'expense';
+
+  const blankLine = (): JournalLine => ({
+    account_code: '', account_name: '', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '',
+  });
 
   const [form, setForm] = useState({
-    entry_type: entry?.entry_type || 'expense',
+    entry_type: initType,
     entry_date: entry?.entry_date || today,
     description: entry?.description || '',
     related_ref: entry?.related_ref || '',
     status: entry?.status || 'posted',
   });
 
-  const blankLine = (): JournalLine => ({
-    account_code: '', account_name: '', debit: 0, credit: 0, currency: 'KRW', fx_rate: 1, memo: '',
-  });
+  const initLines = entry?.lines?.length
+    ? entry.lines.map(l => ({ ...l }))
+    : (TEMPLATES[initType] || [blankLine(), blankLine()]).map(t => ({ ...blankLine(), ...t }));
+  const initSides: ('debit' | 'credit')[] = entry?.lines?.length
+    ? entry.lines.map(l => (l.credit > 0 && l.debit === 0 ? 'credit' : 'debit'))
+    : (TEMPLATE_SIDES[initType] || ['debit', 'credit']);
 
-  const [lines, setLines] = useState<JournalLine[]>(
-    entry?.lines?.length
-      ? entry.lines.map(l => ({ ...l }))
-      : (TEMPLATES[form.entry_type] || [blankLine(), blankLine()]).map(t => ({ ...blankLine(), ...t }))
-  );
-
+  const [lines, setLines] = useState<JournalLine[]>(initLines);
+  const [sides, setSides] = useState<('debit' | 'credit')[]>(initSides);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showGuide, setShowGuide] = useState(true);
+
+  // 원가계산기 연동 state
+  const [showCaseLink, setShowCaseLink] = useState(false);
+  const [cases, setCases] = useState<EstimatorCaseSummary[]>([]);
+  const [caseSearch, setCaseSearch] = useState('');
+  const [selectedCase, setSelectedCase] = useState<EstimatorCaseSummary | null>(null);
+  const [autoQtys, setAutoQtys] = useState<Record<string, number>>({});
+  const [autoType, setAutoType] = useState<'import' | 'sale'>('import');
+  const [casesLoading, setCasesLoading] = useState(false);
 
   const debitTotal = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
   const creditTotal = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
   const diff = Math.round((debitTotal - creditTotal) * 100) / 100;
   const balanced = diff === 0 && debitTotal > 0;
 
+  // 케이스 목록 로드
+  useEffect(() => {
+    if (!showCaseLink || cases.length > 0) return;
+    setCasesLoading(true);
+    fetch('/api/estimator').then(r => r.json()).then(d => {
+      setCases(Array.isArray(d.data) ? d.data : []);
+    }).finally(() => setCasesLoading(false));
+  }, [showCaseLink, cases.length]);
+
+  const filteredCases = useMemo(() => {
+    const q = caseSearch.toLowerCase();
+    if (!q) return cases.slice(0, 8);
+    return cases.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.customsNo || '').toLowerCase().includes(q) ||
+      (c.salesNo || '').toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [cases, caseSearch]);
+
   const handleTypeChange = (type: string) => {
     setForm(f => ({ ...f, entry_type: type }));
-    setLines((TEMPLATES[type] || [blankLine(), blankLine()]).map(t => ({ ...blankLine(), ...t })));
+    const tmpl = TEMPLATES[type] || [blankLine(), blankLine()];
+    setLines(tmpl.map(t => ({ ...blankLine(), ...t })));
+    setSides(TEMPLATE_SIDES[type] || Array.from({ length: tmpl.length }, (_, i) => i === 0 ? 'debit' : 'credit'));
   };
 
   const updateLine = (i: number, field: keyof JournalLine, val: string | number) => {
     setLines(ls => ls.map((l, idx) => idx === i ? { ...l, [field]: val } : l));
   };
 
-  const addLine = () => setLines(ls => [...ls, blankLine()]);
-  const removeLine = (i: number) => setLines(ls => ls.filter((_, idx) => idx !== i));
+  const addDebitLine = () => {
+    setLines(ls => [...ls, blankLine()]);
+    setSides(s => [...s, 'debit']);
+  };
+  const addCreditLine = () => {
+    setLines(ls => [...ls, blankLine()]);
+    setSides(s => [...s, 'credit']);
+  };
+  const removeLine = (i: number) => {
+    if (lines.length <= 2) return;
+    setLines(ls => ls.filter((_, idx) => idx !== i));
+    setSides(s => s.filter((_, idx) => idx !== i));
+  };
 
   const applyTemplate = () => {
-    setLines((TEMPLATES[form.entry_type] || [blankLine(), blankLine()]).map(t => ({ ...blankLine(), ...t })));
+    const tmpl = TEMPLATES[form.entry_type] || [blankLine(), blankLine()];
+    setLines(tmpl.map(t => ({ ...blankLine(), ...t })));
+    setSides(TEMPLATE_SIDES[form.entry_type] || ['debit', 'credit']);
+  };
+
+  // 원가계산기 케이스 선택
+  const selectCase = (c: EstimatorCaseSummary) => {
+    setSelectedCase(c);
+    const qtys: Record<string, number> = {};
+    for (const item of c.items) {
+      const { qtyPerContainer } = calcItemDdp(item, c);
+      qtys[item.id] = qtyPerContainer;
+    }
+    setAutoQtys(qtys);
+  };
+
+  // 자동분개 생성
+  const generateLines = () => {
+    if (!selectedCase) return;
+    const newLines: JournalLine[] = [];
+    const newSides: ('debit' | 'credit')[] = [];
+
+    if (autoType === 'import') {
+      let totalDdp = 0;
+      for (const item of selectedCase.items) {
+        const qty = autoQtys[item.id] || 0;
+        const { ddpKrw } = calcItemDdp(item, selectedCase);
+        totalDdp += ddpKrw * qty;
+      }
+      newLines.push(
+        { account_code: '1090', account_name: '재고자산', debit: Math.round(totalDdp), credit: 0, currency: 'KRW', fx_rate: 1, memo: 'DDP원가 기준 수입원가' },
+        { account_code: '2010', account_name: '외상매입금', debit: 0, credit: Math.round(totalDdp), currency: 'KRW', fx_rate: 1, memo: '공급업체 외상 매입' },
+      );
+      newSides.push('debit', 'credit');
+      setForm(f => ({
+        ...f, entry_type: 'import_cost',
+        description: f.description || `${selectedCase.name} 수입원가 (통관)`,
+        related_ref: f.related_ref || (selectedCase.customsNo || ''),
+      }));
+    } else {
+      let totalSell = 0;
+      let totalDdp = 0;
+      for (const item of selectedCase.items) {
+        const qty = autoQtys[item.id] || 0;
+        const { ddpKrw } = calcItemDdp(item, selectedCase);
+        totalDdp += ddpKrw * qty;
+        if (item.sellingPrice && qty > 0) {
+          const sc = item.sellingCurrency || 'USD';
+          let sellKrw = item.sellingPrice;
+          if (sc === 'USD') sellKrw = item.sellingPrice * selectedCase.fxUsdSell;
+          else if (sc === 'CNY') sellKrw = item.sellingPrice * selectedCase.fxRmbSell;
+          totalSell += sellKrw * qty;
+        }
+      }
+      newLines.push(
+        { account_code: '1040', account_name: '외상매출금', debit: Math.round(totalSell), credit: 0, currency: 'KRW', fx_rate: 1, memo: '매출채권 발생' },
+        { account_code: '5010', account_name: '매출원가', debit: Math.round(totalDdp), credit: 0, currency: 'KRW', fx_rate: 1, memo: 'DDP원가 기준' },
+        { account_code: '4010', account_name: '국내매출', debit: 0, credit: Math.round(totalSell), currency: 'KRW', fx_rate: 1, memo: '' },
+        { account_code: '1090', account_name: '재고자산', debit: 0, credit: Math.round(totalDdp), currency: 'KRW', fx_rate: 1, memo: '원가 대체' },
+      );
+      newSides.push('debit', 'debit', 'credit', 'credit');
+      setForm(f => ({
+        ...f, entry_type: 'sale_full',
+        description: f.description || `${selectedCase.name} 매출 (복합분개)`,
+        related_ref: f.related_ref || (selectedCase.salesNo || ''),
+      }));
+    }
+
+    setLines(newLines);
+    setSides(newSides);
+    setShowCaseLink(false);
+    setSelectedCase(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -290,23 +478,17 @@ function JournalEntryModal({
     setError('');
     if (!form.description.trim()) { setError('적요를 입력하세요.'); return; }
     if (!form.entry_date) { setError('전표일자를 입력하세요.'); return; }
-    const hasEmptyAccount = lines.some(l => !l.account_code);
-    if (hasEmptyAccount) { setError('모든 행의 계정과목을 선택해 주세요.'); return; }
+    if (lines.some(l => !l.account_code)) { setError('모든 행의 계정과목을 선택해 주세요.'); return; }
     if (!balanced) { setError(`차변과 대변이 일치하지 않습니다 (차액: ${fmtNum(Math.abs(diff))}원)`); return; }
 
     setSaving(true);
     try {
       const body = { ...form, lines };
-      let res;
-      if (entry) {
-        res = await fetch(`/api/accounting/journals/${entry.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-        });
-      } else {
-        res = await fetch('/api/accounting/journals', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-        });
-      }
+      const res = await fetch(entry ? `/api/accounting/journals/${entry.id}` : '/api/accounting/journals', {
+        method: entry ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) throw new Error('저장 실패');
       setSuccess('저장되었습니다.');
       setTimeout(() => { onSave(); onClose(); }, 800);
@@ -318,10 +500,12 @@ function JournalEntryModal({
   };
 
   const guide = TYPE_GUIDES[form.entry_type];
+  const debitLineItems = lines.map((l, i) => ({ line: l, idx: i })).filter((_, i) => sides[i] === 'debit');
+  const creditLineItems = lines.map((l, i) => ({ line: l, idx: i })).filter((_, i) => sides[i] === 'credit');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[94vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="font-semibold text-base flex items-center gap-2">
@@ -335,11 +519,126 @@ function JournalEntryModal({
 
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
           <div className="p-4 space-y-4">
+
+            {/* 원가계산기 연동 패널 */}
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowCaseLink(v => !v)}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 bg-muted/10"
+              >
+                <Link2 className="w-3.5 h-3.5 text-blue-500" />
+                <span className="text-blue-700 font-semibold">원가계산기 연동</span>
+                <span className="text-muted-foreground font-normal">— 통관번호·매출번호로 분개 자동생성</span>
+                <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showCaseLink && 'rotate-180')} />
+              </button>
+
+              {showCaseLink && (
+                <div className="p-3 border-t bg-blue-50/30 space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      className="w-full h-8 pl-8 pr-3 text-xs border border-input rounded-md bg-background"
+                      placeholder="케이스명 / 통관번호 / 매출번호 검색..."
+                      value={caseSearch}
+                      onChange={e => setCaseSearch(e.target.value)}
+                    />
+                  </div>
+
+                  {casesLoading ? (
+                    <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {filteredCases.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectCase(c)}
+                          className={cn(
+                            'w-full text-left px-3 py-1.5 rounded-md text-xs flex items-center gap-2 transition-colors',
+                            selectedCase?.id === c.id
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'hover:bg-muted/50 border border-transparent'
+                          )}
+                        >
+                          <Package className="w-3 h-3 shrink-0 text-muted-foreground" />
+                          <span className="flex-1 font-medium truncate">{c.name}</span>
+                          {c.portFrom && c.portTo && (
+                            <span className="text-muted-foreground shrink-0">{c.portFrom}→{c.portTo}</span>
+                          )}
+                          <span className="text-muted-foreground shrink-0">{c.items.length}개 품목</span>
+                        </button>
+                      ))}
+                      {filteredCases.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-3">케이스가 없습니다. 먼저 원가계산기에서 케이스를 만들어 주세요.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedCase && (
+                    <div className="border rounded-lg bg-background p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold">{selectedCase.name}</span>
+                        <button type="button" onClick={() => setSelectedCase(null)} className="text-muted-foreground hover:text-foreground">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* 품목별 수량 */}
+                      <div className="space-y-1.5">
+                        {selectedCase.items.map(item => {
+                          const { ddpKrw, qtyPerContainer } = calcItemDdp(item, selectedCase);
+                          return (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <span className="text-xs flex-1 truncate">{item.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">DDP {fmtNum(Math.round(ddpKrw))}원</span>
+                              {item.sellingPrice && (
+                                <span className="text-xs text-green-600 shrink-0">
+                                  판매 {item.sellingCurrency || 'USD'} {item.sellingPrice}
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-xs text-muted-foreground">수량</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  className="w-20 h-6 text-xs text-right border rounded-md px-1.5 bg-background"
+                                  value={autoQtys[item.id] ?? qtyPerContainer}
+                                  onChange={e => setAutoQtys(q => ({ ...q, [item.id]: Number(e.target.value) || 0 }))}
+                                />
+                                <span className="text-xs text-muted-foreground">개</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* 분개 유형 */}
+                      <div className="flex gap-4 pt-1">
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input type="radio" checked={autoType === 'import'} onChange={() => setAutoType('import')} />
+                          <span className="font-medium">수입원가분개</span>
+                          <span className="text-muted-foreground">(재고자산↑ / 외상매입금↑)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input type="radio" checked={autoType === 'sale'} onChange={() => setAutoType('sale')} />
+                          <span className="font-medium">매출분개(복합)</span>
+                          <span className="text-muted-foreground">(외상매출금+원가 / 매출+재고↓)</span>
+                        </label>
+                      </div>
+
+                      <Button type="button" size="sm" onClick={generateLines} className="w-full h-8 text-xs gap-1.5">
+                        <Zap className="w-3.5 h-3.5" /> 분개 자동생성
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Type selector */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                전표유형 *
-              </label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">전표유형 *</label>
               <div className="flex flex-wrap gap-2">
                 {ENTRY_TYPES.map(t => (
                   <button
@@ -357,14 +656,9 @@ function JournalEntryModal({
                   </button>
                 ))}
               </div>
-              {/* Guide tip */}
               {guide && showGuide && (
                 <div className="mt-2 p-2.5 bg-blue-50 border border-blue-100 rounded-lg relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowGuide(false)}
-                    className="absolute top-1.5 right-1.5 text-blue-300 hover:text-blue-500"
-                  >
+                  <button type="button" onClick={() => setShowGuide(false)} className="absolute top-1.5 right-1.5 text-blue-300 hover:text-blue-500">
                     <X className="w-3 h-3" />
                   </button>
                   <p className="text-xs text-blue-700 font-medium">{guide.tip}</p>
@@ -377,21 +671,13 @@ function JournalEntryModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">전표일자 *</label>
-                <Input
-                  type="date"
-                  value={form.entry_date}
-                  onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))}
-                  required
-                  className="h-9 text-sm"
-                />
+                <Input type="date" value={form.entry_date}
+                  onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required className="h-9 text-sm" />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
-                <select
-                  value={form.status}
-                  onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                >
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="posted">확정</option>
                   <option value="draft">임시저장</option>
                   <option value="void">취소</option>
@@ -399,143 +685,157 @@ function JournalEntryModal({
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                적요 (내용) *
-                <span className="ml-1 text-muted-foreground/60 font-normal">— 거래 내용을 간단히 설명</span>
-              </label>
-              <Input
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="예: 11월 해상운임 지급, 거래처 매출 발생..."
-                required
-                className="h-9 text-sm"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  적요 (내용) *
+                </label>
+                <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="예: 11월 해상운임 지급, 거래처 매출 발생..." required className="h-9 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  통관번호 / 매출번호
+                  <span className="ml-1 text-muted-foreground/60 font-normal">— 인보이스, 수입신고번호 등</span>
+                </label>
+                <Input value={form.related_ref} onChange={e => setForm(f => ({ ...f, related_ref: e.target.value }))}
+                  placeholder="INV-2026-001 / 수입신고번호..." className="h-9 text-sm" />
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                관련참조
-                <span className="ml-1 text-muted-foreground/60 font-normal">— 인보이스 번호, 전표 번호 등</span>
-              </label>
-              <Input
-                value={form.related_ref}
-                onChange={e => setForm(f => ({ ...f, related_ref: e.target.value }))}
-                placeholder="INV-2026-001"
-                className="h-9 text-sm"
-              />
-            </div>
-
-            {/* Lines editor */}
+            {/* ── T계정 분개 편집기 ─────────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                  분개 행
-                  <span className="ml-1 text-muted-foreground/60 font-normal">— 차변(Debit)과 대변(Credit)의 합계가 일치해야 합니다</span>
+                <label className="text-xs font-medium text-muted-foreground">
+                  분개 — T계정 형식
+                  <span className="ml-1 font-normal text-muted-foreground/60">(차변 합계 = 대변 합계여야 합니다)</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={applyTemplate}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline"
-                >
+                <button type="button" onClick={applyTemplate} className="text-xs text-muted-foreground hover:text-blue-600 underline">
                   템플릿 적용
                 </button>
               </div>
 
-              {/* Table header */}
-              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_24px] gap-1 mb-1 px-1">
-                <span className="text-xs text-muted-foreground">계정과목</span>
-                <span className="text-xs text-muted-foreground text-right">차변 (Debit)</span>
-                <span className="text-xs text-muted-foreground text-right">대변 (Credit)</span>
-                <span className="text-xs text-muted-foreground">메모</span>
-                <span />
-              </div>
-
-              <div className="space-y-1.5">
-                {lines.map((line, i) => (
-                  <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_24px] gap-1 items-start">
-                    <AccountCombobox
-                      accounts={accounts}
-                      value={line.account_code}
-                      onChange={(code, name) => {
-                        updateLine(i, 'account_code', code);
-                        updateLine(i, 'account_name', name);
-                      }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-right"
-                      placeholder="0"
-                      value={line.debit || ''}
-                      onChange={e => updateLine(i, 'debit', Number(e.target.value) || 0)}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-right"
-                      placeholder="0"
-                      value={line.credit || ''}
-                      onChange={e => updateLine(i, 'credit', Number(e.target.value) || 0)}
-                    />
-                    <input
-                      type="text"
-                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-                      placeholder="메모"
-                      value={line.memo}
-                      onChange={e => updateLine(i, 'memo', e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeLine(i)}
-                      disabled={lines.length <= 2}
-                      className="mt-0.5 text-muted-foreground hover:text-red-500 disabled:opacity-30"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+              <div className="border rounded-lg overflow-hidden">
+                {/* T계정 헤더 */}
+                <div className="grid grid-cols-2 divide-x">
+                  <div className="bg-blue-50 px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-800">차변 (Debit)</span>
+                    <span className={cn('text-sm font-bold tabular-nums', debitTotal > 0 ? 'text-blue-800' : 'text-muted-foreground')}>
+                      {fmtNum(debitTotal)}
+                    </span>
                   </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={addLine}
-                className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> 행 추가
-              </button>
-
-              {/* Totals */}
-              <div className="mt-3 p-3 bg-muted/30 rounded-lg border">
-                <div className="grid grid-cols-3 gap-4 text-sm mb-2">
-                  <div>
-                    <span className="text-xs text-muted-foreground block mb-0.5">차변합계</span>
-                    <span className="font-semibold text-blue-700">{fmtNum(debitTotal)}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground block mb-0.5">대변합계</span>
-                    <span className="font-semibold text-red-600">{fmtNum(creditTotal)}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground block mb-0.5">차액</span>
-                    <span className={cn('font-semibold', diff !== 0 ? 'text-red-600' : 'text-green-600')}>
-                      {fmtNum(Math.abs(diff))}
+                  <div className="bg-red-50 px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-red-800">대변 (Credit)</span>
+                    <span className={cn('text-sm font-bold tabular-nums', creditTotal > 0 ? 'text-red-800' : 'text-muted-foreground')}>
+                      {fmtNum(creditTotal)}
                     </span>
                   </div>
                 </div>
-                {balanced ? (
-                  <div className="flex items-center gap-1.5 text-green-600 text-xs">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    <span>차대 균형 — 저장 가능합니다</span>
+
+                {/* T계정 본문 */}
+                <div className="grid grid-cols-2 divide-x min-h-32">
+                  {/* 차변 칸 */}
+                  <div className="p-2 space-y-2 bg-blue-50/20">
+                    {debitLineItems.map(({ line, idx }) => (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="flex gap-1 items-start">
+                          <div className="flex-1 min-w-0">
+                            <AccountCombobox
+                              accounts={accounts}
+                              value={line.account_code}
+                              onChange={(code, name) => {
+                                updateLine(idx, 'account_code', code);
+                                updateLine(idx, 'account_name', name);
+                              }}
+                            />
+                          </div>
+                          <input
+                            type="number" min="0" step="1"
+                            className="w-28 h-8 rounded-md border border-input bg-background px-2 text-xs text-right tabular-nums shrink-0"
+                            placeholder="금액"
+                            value={line.debit || ''}
+                            onChange={e => updateLine(idx, 'debit', Number(e.target.value) || 0)}
+                          />
+                          <button type="button" onClick={() => removeLine(idx)} disabled={lines.length <= 2}
+                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-red-500 disabled:opacity-20">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <input type="text"
+                          className="w-full h-6 rounded border border-input bg-background px-2 text-xs text-muted-foreground"
+                          placeholder="메모 (선택)"
+                          value={line.memo}
+                          onChange={e => updateLine(idx, 'memo', e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <button type="button" onClick={addDebitLine}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1">
+                      <Plus className="w-3 h-3" /> 차변 추가
+                    </button>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-red-600 text-xs">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>차변과 대변이 일치하지 않습니다 (차액: {fmtNum(Math.abs(diff))}원)</span>
+
+                  {/* 대변 칸 */}
+                  <div className="p-2 space-y-2 bg-red-50/20">
+                    {creditLineItems.map(({ line, idx }) => (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="flex gap-1 items-start">
+                          <div className="flex-1 min-w-0">
+                            <AccountCombobox
+                              accounts={accounts}
+                              value={line.account_code}
+                              onChange={(code, name) => {
+                                updateLine(idx, 'account_code', code);
+                                updateLine(idx, 'account_name', name);
+                              }}
+                            />
+                          </div>
+                          <input
+                            type="number" min="0" step="1"
+                            className="w-28 h-8 rounded-md border border-input bg-background px-2 text-xs text-right tabular-nums shrink-0"
+                            placeholder="금액"
+                            value={line.credit || ''}
+                            onChange={e => updateLine(idx, 'credit', Number(e.target.value) || 0)}
+                          />
+                          <button type="button" onClick={() => removeLine(idx)} disabled={lines.length <= 2}
+                            className="mt-0.5 shrink-0 text-muted-foreground hover:text-red-500 disabled:opacity-20">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <input type="text"
+                          className="w-full h-6 rounded border border-input bg-background px-2 text-xs text-muted-foreground"
+                          placeholder="메모 (선택)"
+                          value={line.memo}
+                          onChange={e => updateLine(idx, 'memo', e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <button type="button" onClick={addCreditLine}
+                      className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 mt-1">
+                      <Plus className="w-3 h-3" /> 대변 추가
+                    </button>
                   </div>
-                )}
+                </div>
+
+                {/* T계정 균형 표시 */}
+                <div className={cn('px-3 py-2 border-t flex items-center justify-between text-xs',
+                  balanced ? 'bg-green-50' : diff !== 0 && debitTotal > 0 ? 'bg-red-50' : 'bg-muted/20')}>
+                  {balanced ? (
+                    <span className="flex items-center gap-1.5 text-green-700 font-medium">
+                      <CheckCircle className="w-3.5 h-3.5" /> 차대 균형 — 저장 가능
+                    </span>
+                  ) : debitTotal > 0 ? (
+                    <span className="flex items-center gap-1.5 text-red-600 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      차액 {fmtNum(Math.abs(diff))}원 — {diff > 0 ? '대변에 추가 필요' : '차변에 추가 필요'}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">금액을 입력하세요</span>
+                  )}
+                  <span className="text-muted-foreground">
+                    차변 {fmtNum(debitTotal)} / 대변 {fmtNum(creditTotal)}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -558,12 +858,8 @@ function JournalEntryModal({
         {/* Footer */}
         <div className="p-4 border-t flex gap-2 shrink-0">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
-          <Button
-            type="submit"
-            className="flex-1"
-            disabled={saving || !balanced}
-            onClick={handleSubmit as unknown as React.MouseEventHandler}
-          >
+          <Button type="submit" className="flex-1" disabled={saving || !balanced}
+            onClick={handleSubmit as unknown as React.MouseEventHandler}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (entry ? '수정 저장' : '전표 등록')}
           </Button>
         </div>

@@ -15,6 +15,8 @@ export interface EstimatorCase {
   eprObligationRate: number;  // 재활용의무율 (예: 0.20 = 20%)
   portFrom?: string;
   portTo?: string;
+  customsNo?: string;
+  salesNo?: string;
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
@@ -58,6 +60,8 @@ function rowToCase(row: Record<string, unknown>): EstimatorCase {
     fxRmbSell: (row.fx_rmb_sell as number) || ((row.fx_rmb as number) || 195),
     portFrom: (row.port_from as string) || undefined,
     portTo: (row.port_to as string) || undefined,
+    customsNo: (row.customs_no as string) || undefined,
+    salesNo: (row.sales_no as string) || undefined,
     dutyRate: (row.duty_rate as number) ?? 0.024,
     eprRate: (row.epr_rate as number) ?? 0,
     eprObligationRate: (row.epr_obligation_rate as number) ?? 0.20,

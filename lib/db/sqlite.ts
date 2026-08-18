@@ -669,6 +669,8 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN notion_page_id TEXT`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN notion_synced_at TEXT`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN epr_obligation_rate REAL DEFAULT 0.20`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN customs_no TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN sales_no TEXT`); } catch {}
 
   // 복식부기 회계 테이블
   try {
