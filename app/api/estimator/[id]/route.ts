@@ -34,13 +34,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const ts = now();
   db.prepare(`UPDATE estimator_cases SET
     name=?, container_type=?, freight_sea_usd=?, freight_sea=?, freight_inland=?, freight_port=?, freight_misc=?,
-    fx_usd=?, fx_usd_sell=?, fx_rmb=?, duty_rate=?, epr_rate=?, cert_costs_json=?, sim_mode=?, items_json=?, notes=?, updated_at=?
+    fx_usd=?, fx_usd_sell=?, fx_rmb=?, duty_rate=?, epr_rate=?, sim_mode=?, items_json=?, notes=?, updated_at=?
     WHERE id=?`).run(
     body.name, body.containerType,
     body.freightSeaUsd ?? null, body.freightSea, body.freightInland, body.freightPort, body.freightMisc,
     body.fxUsd, body.fxUsdSell ?? body.fxUsd, body.fxRmb, body.dutyRate, body.eprRate ?? 0,
-    JSON.stringify(body.certCosts || []), body.simMode,
-    JSON.stringify(body.items || []), body.notes ?? null, ts, id
+    body.simMode, JSON.stringify(body.items || []), body.notes ?? null, ts, id
   );
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;
   return NextResponse.json({ data: toCase(row) });

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
 
-export interface CertCost {
-  id: string; name: string; costKrw: number;
-}
 export interface EstimatorCase {
   id: string; name: string;
   containerType: '20ft' | '40ft' | '40HQ';
@@ -14,21 +11,26 @@ export interface EstimatorCase {
   fxRmb: number;      // RMB/KRW
   dutyRate: number;
   eprRate: number;
-  certCosts: CertCost[];
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
   createdAt: string; updatedAt: string;
 }
 
+export interface ItemCert {
+  id: string; name: string;
+  totalCostKrw: number;  // 총 인증 비용 (원)
+  shipQty: number;       // 회수 물량 (개)
+}
 export interface EstimatorItem {
   id: string; name: string;
   currency: 'USD' | 'CNY';
+  sellingCurrency?: 'USD' | 'CNY' | 'KRW';
   fobPrice: number;
   boxL: number; boxW: number; boxH: number;
   qtyPerBox: number;
-  weightG?: number;                          // 단중 (g/pcs) — EPR 계산에도 사용
-  certAmortize?: Record<string, number>;     // certId → 회수물량(개)
+  weightG?: number;          // 단중 (g/pcs) — EPR 계산에 사용
+  certs?: ItemCert[];        // 제품별 인증비
   dutyRateOverride?: number;
   sellingPrice?: number;
   targetMargin?: number;
@@ -51,7 +53,6 @@ function rowToCase(row: Record<string, unknown>): EstimatorCase {
     fxRmb: (row.fx_rmb as number) || 195,
     dutyRate: (row.duty_rate as number) ?? 0.024,
     eprRate: (row.epr_rate as number) ?? 0,
-    certCosts: (() => { try { return JSON.parse((row.cert_costs_json as string) || '[]'); } catch { return []; } })(),
     simMode: (row.sim_mode as EstimatorCase['simMode']) || 'standard',
     items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
     notes: (row.notes as string) || undefined,
@@ -71,13 +72,12 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   const ts = now();
-  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,duty_rate,epr_rate,cert_costs_json,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,duty_rate,epr_rate,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, body.name || '새 케이스', body.containerType || '40ft',
       body.freightSeaUsd ?? null, body.freightSea ?? 930000,
       body.freightInland ?? 250000, body.freightPort ?? 280000, body.freightMisc ?? 0,
       body.fxUsd ?? 1430, body.fxUsdSell ?? 1380, body.fxRmb ?? 195,
       body.dutyRate ?? 0.024, body.eprRate ?? 0,
-      JSON.stringify(body.certCosts || []),
       body.simMode || 'standard', JSON.stringify(body.items || []), body.notes ?? null, ts, ts);
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;
   return NextResponse.json({ data: rowToCase(row) }, { status: 201 });
