@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   TruckIcon, Plus, Search, X, Loader2, Pencil, Trash2,
   FileText, File, Upload, Download, RefreshCw, CheckCircle2,
-  AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight,
+  AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -356,25 +356,26 @@ function ImportModal({
     const base: SettlementItem[] = [];
     // 물품 대금 (인보이스 금액) — 맨 위에 표시
     const invoiceKrwRounded = Math.round(invoiceKrw);
-    const invoiceLabelCurrency = itemsHaveData
-      ? `${totalItemCv.toLocaleString()} ${form.invoiceCurrency}`
-      : `${parseFloat(form.invoiceValue || '0').toLocaleString()} ${form.invoiceCurrency}`;
+    const fxLabel = exRate > 0 ? `× ${exRate.toLocaleString()}원` : '';
+    const foreignAmt = itemsHaveData
+      ? `${totalItemCv.toLocaleString()} ${form.invoiceCurrency || 'USD'}`
+      : `${parseFloat(form.invoiceValue || '0').toLocaleString()} ${form.invoiceCurrency || 'USD'}`;
     if (invoiceKrwRounded > 0) {
-      base.push({ category: `물품 대금 (${invoiceLabelCurrency} × ${exRate.toLocaleString()}원)`, calculated: invoiceKrwRounded });
+      base.push({ category: `물품 대금 (${foreignAmt} ${fxLabel})`, calculated: invoiceKrwRounded, costType: 'inventory' });
     }
-    if (dutyFinal > 0) base.push({ category: '관세', calculated: dutyFinal });
-    if (vatFinal > 0) base.push({ category: '수입부가세', calculated: vatFinal });
-    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal });
-    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', calculated: inspectionFeeVal });
-    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', calculated: warehouseFeeVal });
-    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', calculated: demurrageVal });
-    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', calculated: detentionFeeVal });
-    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal });
+    if (dutyFinal > 0) base.push({ category: '관세', calculated: dutyFinal, costType: 'inventory' });
+    if (vatFinal > 0) base.push({ category: '수입부가세', calculated: vatFinal, costType: 'vat' });
+    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal, costType: 'inventory' });
+    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', calculated: inspectionFeeVal, costType: 'expense' });
+    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', calculated: warehouseFeeVal, costType: 'expense' });
+    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', calculated: demurrageVal, costType: 'expense' });
+    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', calculated: detentionFeeVal, costType: 'expense' });
+    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal, costType: 'inventory' });
     customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
-      base.push({ category: c.name, calculated: parseFloat(c.amount) });
+      base.push({ category: c.name, calculated: parseFloat(c.amount), costType: 'inventory' });
     });
-    if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal });
-    if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', calculated: -inspectionRefundVal });
+    if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal, costType: 'refund' });
+    if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', calculated: -inspectionRefundVal, costType: 'refund' });
     return base;
   }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv]);
 
@@ -1238,15 +1239,39 @@ function ImportModal({
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border overflow-hidden text-xs">
-                    <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 2fr' }}>
-                      {['비용 항목', '계산금액', '조정금액', '차이', '조정사유'].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                    <div className="grid bg-muted/50 text-muted-foreground font-medium" style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
+                      {['비용 항목', '구분', '계산금액', '조정금액', '차이', '조정사유'].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
                     </div>
                     {settlementItems.map((si, idx) => {
                       const adj = si.adjusted !== undefined ? si.adjusted : si.calculated;
                       const diff = adj - si.calculated;
+                      const costTypeLabel: Record<string, { label: string; cls: string }> = {
+                        inventory: { label: '재고원가', cls: 'bg-blue-100 text-blue-700' },
+                        vat:       { label: '부가세',   cls: 'bg-purple-100 text-purple-700' },
+                        expense:   { label: '당기비용', cls: 'bg-orange-100 text-orange-700' },
+                        refund:    { label: '환급',     cls: 'bg-green-100 text-green-700' },
+                      };
+                      const ct = si.costType ? costTypeLabel[si.costType] : null;
                       return (
-                        <div key={idx} className={cn('grid border-t border-border', si.calculated < 0 ? 'bg-green-50' : '')} style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 2fr' }}>
+                        <div key={idx} className={cn('grid border-t border-border', si.calculated < 0 ? 'bg-green-50' : '')} style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
                           <div className="px-2 py-1.5 font-medium flex items-center">{si.category}</div>
+                          <div className="px-2 py-1.5 flex items-center">
+                            {canEdit && !isClosed ? (
+                              <select
+                                className="text-[10px] rounded px-1 py-0.5 border border-input bg-background"
+                                value={si.costType || ''}
+                                onChange={e => setSettlementItems(prev => prev.map((p, i) => i === idx ? { ...p, costType: e.target.value as 'inventory' | 'vat' | 'expense' | 'refund' || undefined } : p))}
+                              >
+                                <option value="">-</option>
+                                <option value="inventory">재고원가</option>
+                                <option value="vat">부가세</option>
+                                <option value="expense">당기비용</option>
+                                <option value="refund">환급</option>
+                              </select>
+                            ) : ct ? (
+                              <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium', ct.cls)}>{ct.label}</span>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </div>
                           <div className="px-2 py-1.5 flex items-center text-muted-foreground">{si.calculated.toLocaleString()}원</div>
                           <div className="px-2 py-1.5">
                             {canEdit && !isClosed
@@ -1267,22 +1292,85 @@ function ImportModal({
                         </div>
                       );
                     })}
-                    {/* 합계 */}
+                    {/* 4분류 합계 */}
                     {(() => {
-                      const totalCalc = settlementItems.reduce((s, si) => s + si.calculated, 0);
-                      const totalAdj = settlementItems.reduce((s, si) => s + (si.adjusted !== undefined ? si.adjusted : si.calculated), 0);
-                      const totalDiff = totalAdj - totalCalc;
+                      const adjVal = (si: typeof settlementItems[0]) => si.adjusted !== undefined ? si.adjusted : si.calculated;
+                      const totalAdj = settlementItems.reduce((s, si) => s + adjVal(si), 0);
+                      const inventorySum = settlementItems.filter(si => si.costType === 'inventory').reduce((s, si) => s + adjVal(si), 0);
+                      const vatSum = settlementItems.filter(si => si.costType === 'vat').reduce((s, si) => s + adjVal(si), 0);
+                      const expenseSum = settlementItems.filter(si => si.costType === 'expense').reduce((s, si) => s + adjVal(si), 0);
+                      const refundSum = settlementItems.filter(si => si.costType === 'refund').reduce((s, si) => s + adjVal(si), 0);
                       return (
-                        <div className="grid border-t-2 border-border bg-muted/40 font-semibold" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 2fr' }}>
-                          <div className="px-2 py-2">합계</div>
-                          <div className="px-2 py-2">{totalCalc.toLocaleString()}원</div>
-                          <div className="px-2 py-2">{totalAdj.toLocaleString()}원</div>
-                          <div className={cn('px-2 py-2', totalDiff > 0 ? 'text-red-600' : totalDiff < 0 ? 'text-green-600' : '')}>{totalDiff !== 0 ? `${totalDiff > 0 ? '+' : ''}${totalDiff.toLocaleString()}원` : '-'}</div>
-                          <div />
+                        <div className="border-t-2 border-border bg-muted/40">
+                          <div className="grid font-semibold" style={{ gridTemplateColumns: '1.5fr 80px 1.1fr 1.1fr 0.8fr 1.8fr' }}>
+                            <div className="px-2 py-2 col-span-2">총 정산금액</div>
+                            <div className="px-2 py-2 col-span-4 text-right pr-4">{totalAdj.toLocaleString()}원</div>
+                          </div>
+                          <div className="px-3 pb-2 space-y-1 text-[11px]">
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-blue-400" />재고 취득원가</span>
+                              <span className="font-medium">{inventorySum.toLocaleString()}원</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-purple-400" />공제대상 부가세</span>
+                              <span className="font-medium">{vatSum.toLocaleString()}원</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-orange-400" />당기비용</span>
+                              <span className="font-medium">{expenseSum.toLocaleString()}원</span>
+                            </div>
+                            {refundSum !== 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-400" />환급</span>
+                                <span className="font-medium text-green-600">{refundSum.toLocaleString()}원</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })()}
                   </div>
+                )}
+
+                {/* 전표 자동생성 버튼 */}
+                {settlementItems.length > 0 && (
+                  <Button type="button" variant="outline" className="w-full border-indigo-400 text-indigo-700 hover:bg-indigo-50"
+                    onClick={async () => {
+                      const adjVal = (si: SettlementItem) => si.adjusted !== undefined ? si.adjusted : si.calculated;
+                      const inventorySum = settlementItems.filter(s => s.costType === 'inventory').reduce((a, s) => a + adjVal(s), 0);
+                      const vatSum = settlementItems.filter(s => s.costType === 'vat').reduce((a, s) => a + adjVal(s), 0);
+                      const expenseSum = settlementItems.filter(s => s.costType === 'expense').reduce((a, s) => a + adjVal(s), 0);
+                      const totalAdj = settlementItems.reduce((a, s) => a + adjVal(s), 0);
+                      const invoiceKrw = Math.round((Number(form.invoiceValue) || 0) * (Number(form.exchangeRate) || 1));
+                      const cashPaid = totalAdj - invoiceKrw;
+                      const lines: { accountCode: string; accountName: string; debit: number; credit: number; note?: string }[] = [];
+                      if (inventorySum > 0) lines.push({ accountCode: '1460', accountName: '상품', debit: inventorySum, credit: 0 });
+                      if (vatSum > 0) lines.push({ accountCode: '1351', accountName: '부가세대급금', debit: vatSum, credit: 0 });
+                      if (expenseSum > 0) lines.push({ accountCode: '5440', accountName: '지급수수료', debit: expenseSum, credit: 0 });
+                      if (invoiceKrw > 0) lines.push({ accountCode: '2510', accountName: '외상매입금', debit: 0, credit: invoiceKrw });
+                      if (cashPaid > 0) lines.push({ accountCode: '1020', accountName: '보통예금', debit: 0, credit: cashPaid });
+                      try {
+                        const res = await fetch('/api/accounting/journals', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            entryDate: form.releaseDate || form.taxPaymentDate || new Date().toISOString().slice(0, 10),
+                            description: `수입통관 ${item?.businessId || ''} 비용 정산`,
+                            lines,
+                            memo: `수입통관 ID: ${item?.id}`,
+                          }),
+                        });
+                        if (res.ok) {
+                          alert('전표가 자동생성되었습니다. 회계 전표 메뉴에서 확인하세요.');
+                        } else {
+                          alert('전표 생성 실패: ' + (await res.text()));
+                        }
+                      } catch {
+                        alert('전표 생성 중 오류가 발생했습니다.');
+                      }
+                    }}>
+                    <BookOpen className="w-4 h-4 mr-2" />전표 자동생성
+                  </Button>
                 )}
 
                 {/* 마감 버튼 */}
