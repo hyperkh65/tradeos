@@ -302,8 +302,8 @@ function ImportModal({
   const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
   // 포워더 부대비용 타입 (includedInCif: true=CIF 과세가격 산입, false=국내비용 제외)
   type FreightItem = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number; includedInCif?: boolean };
-  // 과세가격 산입 부대비용만 합산 (기본값 true)
-  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.includedInCif !== false ? (h.amtKrw || 0) : 0), 0);
+  // 과세가격 산입 부대비용만 합산 (기본값 false — 수입항 이후 로컬차지는 기본 제외)
+  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.includedInCif === true ? (h.amtKrw || 0) : 0), 0);
   // 전체 부대비용 KRW 합계 (정산서용)
   const freightHandlingTotalAll = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.amtKrw || 0), 0);
   // 부대비용 부가세 합계
@@ -883,7 +883,7 @@ function ImportModal({
                         <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700"
                           onClick={() => {
                             const defaultExRate = parseFloat(form.freightExchangeRate || form.exchangeRate || '1');
-                            setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', currency: 'KRW', amtCur: 0, exRate: defaultExRate, amtKrw: 0, vat: 0, includedInCif: true }] }));
+                            setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', currency: 'KRW', amtCur: 0, exRate: defaultExRate, amtKrw: 0, vat: 0, includedInCif: false }] }));
                           }}>
                           + 항목추가
                         </button>
@@ -968,8 +968,11 @@ function ImportModal({
                         ? <div>품목합계: {totalItemCv.toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {totalItemCvKrw.toLocaleString()}원</div>
                         : <div>인보이스: {parseFloat(form.invoiceValue||'0').toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {Math.round(invoiceKrw).toLocaleString()}원</div>
                       }
-                      {effectiveFreightKrw > 0 && <div>해상운임: {effectiveFreightKrw.toLocaleString()}원{freightHandlingTotal > 0 ? ` + 부대비용 ${freightHandlingTotal.toLocaleString()}원` : ''}</div>}
-                      {freightHandlingVat > 0 && <div className="text-blue-500">└ 부대비용 VAT (매입세액공제 별도): {freightHandlingVat.toLocaleString()}원</div>}
+                      {effectiveFreightKrw > 0 && <div>해상운임: {effectiveFreightKrw.toLocaleString()}원</div>}
+                      {freightHandlingTotal > 0 && <div>부대비용(CIF산입): {freightHandlingTotal.toLocaleString()}원</div>}
+                      {freightHandlingTotalAll > freightHandlingTotal && (
+                        <div className="text-gray-500 text-[11px]">└ 부대비용(CIF제외) {(freightHandlingTotalAll - freightHandlingTotal).toLocaleString()}원 + VAT {freightHandlingVat.toLocaleString()}원 → 포워더 지급액</div>
+                      )}
                       {parseFloat(form.insuranceKrw||'0') > 0 && <div>보험료: {parseFloat(form.insuranceKrw).toLocaleString()}원</div>}
                     </div>
                     <div className="text-blue-900 font-bold text-sm border-t border-blue-200 pt-1">과세가격 합계 = {customsValueCalc.toLocaleString()}원</div>
