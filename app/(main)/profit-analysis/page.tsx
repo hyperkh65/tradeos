@@ -68,11 +68,13 @@ interface PA {
 interface SaleRecord {
   id: string;
   businessId: string;
-  companyName: string;
-  totalAmount?: number;
+  customer: string;
+  netAmount: number;
+  totalAmount: number;
   currency: string;
-  status: string;
-  quoteDate?: string;
+  saleDate?: string;
+  salesperson?: string;
+  poNo?: string;
 }
 
 interface ImportRecord {
@@ -216,10 +218,10 @@ export default function ProfitAnalysisPage() {
     if (linkSales.length === 0 || linkImports.length === 0) {
       setLinkLoading(true);
       const [sr, ir] = await Promise.all([
-        fetch('/api/quotes?type=customer&limit=200').then(r => r.json()),
+        fetch('/api/sales?limit=200').then(r => r.json()),
         fetch('/api/imports?limit=200').then(r => r.json()),
       ]);
-      setLinkSales((sr.data || []).filter((s: SaleRecord) => s.status !== 'draft'));
+      setLinkSales(sr.data || []);
       setLinkImports(ir.data || []);
       setLinkLoading(false);
     }
@@ -230,9 +232,9 @@ export default function ProfitAnalysisPage() {
       ...f,
       saleId: s.id,
       saleBusinessId: s.businessId,
-      saleAmount: s.totalAmount || 0,
+      saleAmount: s.netAmount || 0,  // VAT 제외 금액
       saleCurrency: s.currency || 'KRW',
-      title: f.title || `${s.companyName} 수익분석`,
+      title: f.title || `${s.customer} 수익분석`,
     }));
     setShowLinkPanel(false);
   }
@@ -404,7 +406,7 @@ export default function ProfitAnalysisPage() {
   // ── Filtered link lists ───────────────────────────────────────────────────────
 
   const filteredSales = linkSales.filter(s =>
-    !linkQ || s.businessId.includes(linkQ) || s.companyName.toLowerCase().includes(linkQ.toLowerCase())
+    !linkQ || s.businessId.includes(linkQ) || s.customer.toLowerCase().includes(linkQ.toLowerCase()) || (s.poNo || '').includes(linkQ)
   );
   const filteredImports = linkImports.filter(i =>
     !linkQ || i.businessId.includes(linkQ) || (i.declarationNo || '').includes(linkQ)
@@ -822,10 +824,13 @@ export default function ProfitAnalysisPage() {
                     <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-border hover:bg-muted/40 cursor-pointer" onClick={() => applySale(s)}>
                       <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">{s.companyName}</div>
-                        <div className="text-[10px] text-muted-foreground">{s.businessId} · {s.quoteDate || ''}</div>
+                        <div className="text-xs font-medium truncate">{s.customer}</div>
+                        <div className="text-[10px] text-muted-foreground">{s.businessId} · {s.saleDate || ''}{s.poNo ? ` · PO: ${s.poNo}` : ''}</div>
                       </div>
-                      <div className="text-xs font-semibold text-blue-600 shrink-0">{s.totalAmount ? fmt(s.totalAmount) : '-'} {s.currency}</div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-semibold text-blue-600">{fmt(s.netAmount)} {s.currency}</div>
+                        <div className="text-[10px] text-muted-foreground">VAT제외</div>
+                      </div>
                     </div>
                   ))
                 ) : (
