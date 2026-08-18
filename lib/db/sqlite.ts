@@ -660,6 +660,8 @@ function runMigrations(db: Database.Database) {
   // estimator_cases 컬럼 추가 (마이그레이션)
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN freight_sea_usd REAL`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN epr_rate REAL NOT NULL DEFAULT 0`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN fx_usd_sell REAL`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN cert_costs_json TEXT DEFAULT '[]'`); } catch {}
 
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
