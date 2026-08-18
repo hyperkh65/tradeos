@@ -166,16 +166,22 @@ function ImportDialog({ onImport, onClose }: { onImport: (items: EstimatorItem[]
   const [fileData, setFileData] = useState<File | null>(null);
   const [defaultCurrency, setDefaultCurrency] = useState<'USD' | 'CNY'>('USD');
 
+  const [parseError, setParseError] = useState<string | null>(null);
+
   const handleFile = async (file: File) => {
     setFileData(file);
     setLoading(true);
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('sheetIdx', '0');
-    const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
-    const data = await res.json();
-    setPreview(data);
-    setColTypes(data.colTypes || []);
+    setParseError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('sheetIdx', '0');
+      const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok || data.error) { setParseError(data.error || '파싱 실패'); setLoading(false); return; }
+      setPreview(data);
+      setColTypes(data.colTypes || []);
+    } catch (e) { setParseError(String(e)); }
     setLoading(false);
   };
 
@@ -183,13 +189,16 @@ function ImportDialog({ onImport, onClose }: { onImport: (items: EstimatorItem[]
     if (!fileData) return;
     setSelectedSheet(idx);
     setLoading(true);
-    const fd = new FormData();
-    fd.append('file', fileData);
-    fd.append('sheetIdx', String(idx));
-    const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
-    const data = await res.json();
-    setPreview(data);
-    setColTypes(data.colTypes || []);
+    try {
+      const fd = new FormData();
+      fd.append('file', fileData);
+      fd.append('sheetIdx', String(idx));
+      const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok || data.error) { setParseError(data.error || '파싱 실패'); setLoading(false); return; }
+      setPreview(data);
+      setColTypes(data.colTypes || []);
+    } catch (e) { setParseError(String(e)); }
     setLoading(false);
   };
 
@@ -245,6 +254,14 @@ function ImportDialog({ onImport, onClose }: { onImport: (items: EstimatorItem[]
           )}
 
           {loading && <div className="text-center py-8 text-muted-foreground text-sm">파일 분석 중...</div>}
+
+          {parseError && !loading && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+              <div className="font-medium mb-1">파일 읽기 실패</div>
+              <div className="text-xs text-red-500">{parseError}</div>
+              <button className="mt-2 text-xs underline" onClick={() => { setParseError(null); setFileData(null); }}>다시 시도</button>
+            </div>
+          )}
 
           {preview && !loading && (
             <div className="space-y-4">

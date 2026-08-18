@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 export async function POST(req: NextRequest) {
+  let tmpPath: string | null = null;
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     if (!file) return NextResponse.json({ error: '파일 없음' }, { status: 400 });
 
     const arrayBuf = await file.arrayBuffer();
-    const buffer = Buffer.from(new Uint8Array(arrayBuf));
+    tmpPath = join(tmpdir(), `est-${Date.now()}-${Math.random().toString(36).slice(2)}.xlsx`);
+    await writeFile(tmpPath, Buffer.from(new Uint8Array(arrayBuf)));
     const wb = new ExcelJS.Workbook();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await wb.xlsx.load(buffer as any);
+    await wb.xlsx.readFile(tmpPath);
 
     const sheetNames = wb.worksheets.map(ws => ws.name);
     const sheetIdx = parseInt(formData.get('sheetIdx') as string || '0');
@@ -86,5 +90,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('[parse-file]', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
+  } finally {
+    if (tmpPath) await unlink(tmpPath).catch(() => {});
   }
 }
