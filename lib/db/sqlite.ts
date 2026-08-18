@@ -657,6 +657,9 @@ function runMigrations(db: Database.Database) {
       updated_at TEXT NOT NULL
     )`);
   } catch { /* already exists */ }
+  // estimator_cases 컬럼 추가 (마이그레이션)
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN freight_sea_usd REAL`); } catch {}
+  try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN epr_rate REAL NOT NULL DEFAULT 0`); } catch {}
 
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }

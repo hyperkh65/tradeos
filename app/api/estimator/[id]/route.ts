@@ -5,10 +5,11 @@ function toCase(row: Record<string, unknown>) {
   return {
     id: row.id, name: row.name,
     containerType: row.container_type || '40ft',
+    freightSeaUsd: row.freight_sea_usd != null ? Number(row.freight_sea_usd) : undefined,
     freightSea: row.freight_sea || 0, freightInland: row.freight_inland || 0,
     freightPort: row.freight_port || 0, freightMisc: row.freight_misc || 0,
-    fxUsd: row.fx_usd || 1330, fxRmb: row.fx_rmb || 185,
-    dutyRate: row.duty_rate ?? 0.024,
+    fxUsd: row.fx_usd || 1430, fxRmb: row.fx_rmb || 195,
+    dutyRate: row.duty_rate ?? 0.024, eprRate: row.epr_rate ?? 0,
     simMode: row.sim_mode || 'standard',
     items: (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })(),
     notes: row.notes || undefined,
@@ -30,11 +31,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const db = getDb();
   const ts = now();
   db.prepare(`UPDATE estimator_cases SET
-    name=?, container_type=?, freight_sea=?, freight_inland=?, freight_port=?, freight_misc=?,
-    fx_usd=?, fx_rmb=?, duty_rate=?, sim_mode=?, items_json=?, notes=?, updated_at=?
+    name=?, container_type=?, freight_sea_usd=?, freight_sea=?, freight_inland=?, freight_port=?, freight_misc=?,
+    fx_usd=?, fx_rmb=?, duty_rate=?, epr_rate=?, sim_mode=?, items_json=?, notes=?, updated_at=?
     WHERE id=?`).run(
-    body.name, body.containerType, body.freightSea, body.freightInland, body.freightPort, body.freightMisc,
-    body.fxUsd, body.fxRmb, body.dutyRate, body.simMode,
+    body.name, body.containerType,
+    body.freightSeaUsd ?? null, body.freightSea, body.freightInland, body.freightPort, body.freightMisc,
+    body.fxUsd, body.fxRmb, body.dutyRate, body.eprRate ?? 0, body.simMode,
     JSON.stringify(body.items || []), body.notes ?? null, ts, id
   );
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;

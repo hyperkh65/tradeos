@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Plus, Trash2, Upload, ChevronDown, ChevronRight, Copy, RotateCcw, FileSpreadsheet, X, Check } from 'lucide-react';
+import { Plus, Trash2, Upload, Copy, FileSpreadsheet, X, Check } from 'lucide-react';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface EstimatorItem {
@@ -13,75 +13,89 @@ interface EstimatorItem {
   fobPrice: number;
   boxL: number; boxW: number; boxH: number;
   qtyPerBox: number;
+  weightG?: number;       // 단중 (g/pcs)
+  eprWeightG?: number;    // EPR 대상 소재 중량 (g/pcs) - PC·플라스틱 등
   dutyRateOverride?: number;
   sellingPrice?: number;
   targetMargin?: number;
-  mixedCbm?: number;  // 혼적: 이 아이템이 차지할 CBM
+  mixedCbm?: number;
   note?: string;
 }
+
 interface EstimatorCase {
   id: string; name: string;
   containerType: '20ft' | '40ft' | '40HQ';
-  freightSea: number; freightInland: number; freightPort: number; freightMisc: number;
-  fxUsd: number; fxRmb: number;
-  dutyRate: number;
+  freightSeaUsd?: number;  // 해상운임 (USD) — 우선 사용
+  freightSea: number;      // 해상운임 (KRW) — legacy fallback
+  freightInland: number;   // 내륙운송 (KRW)
+  freightPort: number;     // 포트차지 (KRW)
+  freightMisc: number;     // 기타 (KRW)
+  fxUsd: number;           // USD/KRW 적용환율
+  fxRmb: number;           // RMB/KRW 적용환율
+  dutyRate: number;        // 기본 관세율
+  eprRate: number;         // EPR 환경분담금 단가 (원/kg)
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
   createdAt: string; updatedAt: string;
 }
 
-// ── 계산 상수 ──────────────────────────────────────────────────────────────────
+// ── 상수 ──────────────────────────────────────────────────────────────────────
 const CONTAINER_CBM: Record<string, number> = { '20ft': 27, '40ft': 56, '40HQ': 68 };
+
+// ── 유틸 ──────────────────────────────────────────────────────────────────────
+function getSeaUsd(c: EstimatorCase): number {
+  return c.freightSeaUsd != null ? c.freightSeaUsd : Math.round((c.freightSea || 0) / (c.fxUsd || 1430));
+}
+function getSeaKrw(c: EstimatorCase): number {
+  return Math.round(getSeaUsd(c) * (c.fxUsd || 1430));
+}
+function getTotalFreightKrw(c: EstimatorCase): number {
+  return getSeaKrw(c) + (c.freightInland || 0) + (c.freightPort || 0) + (c.freightMisc || 0);
+}
 
 // ── 계산 함수 ──────────────────────────────────────────────────────────────────
 function calcItem(item: EstimatorItem, c: EstimatorCase) {
-  const fxUsd = c.fxUsd || 1330;
-  const fxRmb = c.fxRmb || 185;
+  const fxUsd = c.fxUsd || 1430;
+  const fxRmb = c.fxRmb || 195;
   const containerCbm = CONTAINER_CBM[c.containerType] || 56;
-  const totalFreightKrw = (c.freightSea || 0) + (c.freightInland || 0) + (c.freightPort || 0) + (c.freightMisc || 0);
 
   // FOB → USD
   const fobUsd = item.currency === 'CNY' ? item.fobPrice * (fxRmb / fxUsd) : item.fobPrice;
 
-  // CBM
+  // CBM/박스 (m³)
   const cbmPerBox = item.boxL > 0 && item.boxW > 0 && item.boxH > 0
-    ? (item.boxL * item.boxW * item.boxH) / 1_000_000  // cm → m³
-    : 0;
+    ? (item.boxL * item.boxW * item.boxH) / 1_000_000 : 0;
 
-  // 적재수량 (풀 컨 기준 또는 혼적 지정 CBM)
+  // 적재 수량
   let qtyPerContainer = 0;
   if (c.simMode === 'mixed' && item.mixedCbm && item.mixedCbm > 0) {
-    // 혼적: 지정한 CBM 비율로 계산
-    const boxesInMixed = cbmPerBox > 0 ? Math.floor(item.mixedCbm / cbmPerBox) : 0;
-    qtyPerContainer = boxesInMixed * item.qtyPerBox;
+    qtyPerContainer = cbmPerBox > 0 ? Math.floor(item.mixedCbm / cbmPerBox) * item.qtyPerBox : 0;
   } else {
-    // 표준: 풀 컨 기준
-    const boxesPerContainer = cbmPerBox > 0 ? Math.floor(containerCbm / cbmPerBox) : 0;
-    qtyPerContainer = boxesPerContainer * item.qtyPerBox;
+    qtyPerContainer = cbmPerBox > 0 ? Math.floor(containerCbm / cbmPerBox) * item.qtyPerBox : 0;
   }
 
-  // 운임/개
-  const freightPerUnit = qtyPerContainer > 0 ? totalFreightKrw / qtyPerContainer / fxUsd : 0;
+  // 해상운임 (KRW)
+  const freightSeaKrw = getSeaKrw(c);
+  // 내륙+포트+기타 (KRW) — 관세 과세 기준 제외, DDP에 직접 합산
+  const otherFreightKrw = (c.freightInland || 0) + (c.freightPort || 0) + (c.freightMisc || 0);
 
-  // CIF
-  const cifUsd = fobUsd + freightPerUnit;
+  const seaPerUnitUsd = qtyPerContainer > 0 ? freightSeaKrw / qtyPerContainer / fxUsd : 0;
+  const otherPerUnitKrw = qtyPerContainer > 0 ? otherFreightKrw / qtyPerContainer : 0;
+  const totalFreightPerUnitUsd = qtyPerContainer > 0
+    ? (freightSeaKrw + otherFreightKrw) / qtyPerContainer / fxUsd : 0;
 
-  // 관세
-  const duty = c.simMode !== 'reverse'
-    ? (item.dutyRateOverride ?? c.dutyRate)
-    : (item.dutyRateOverride ?? c.dutyRate);
-  const dutyPerUnit = cifUsd * duty;
+  // CIF = FOB + 해상운임/개 (관세 과세가격 기준)
+  const cifUsd = fobUsd + seaPerUnitUsd;
+  const dutyRate = item.dutyRateOverride ?? c.dutyRate;
+  const dutyPerUnitUsd = cifUsd * dutyRate;
 
-  // 내륙+포트/개 (already included in freightPerUnit above — split for display)
-  const seaPerUnit = qtyPerContainer > 0 ? (c.freightSea || 0) / qtyPerContainer / fxUsd : 0;
-  const inlandPerUnit = qtyPerContainer > 0 ? (c.freightInland || 0) / qtyPerContainer / fxUsd : 0;
-  const portPerUnit = qtyPerContainer > 0 ? (c.freightPort || 0) / qtyPerContainer / fxUsd : 0;
-  const miscPerUnit = qtyPerContainer > 0 ? (c.freightMisc || 0) / qtyPerContainer / fxUsd : 0;
+  // 환경분담금 (KRW/개) = EPR 소재 중량(kg) × 단가(원/kg)
+  const eprPerUnitKrw = ((item.eprWeightG || 0) / 1000) * (c.eprRate || 0);
 
-  // DDP
-  const ddpUsd = cifUsd + dutyPerUnit + inlandPerUnit + portPerUnit + miscPerUnit;
-  const ddpKrw = ddpUsd * fxUsd;
+  // DDP = (CIF + 관세) × 환율 + 내륙/포트 + EPR
+  const ddpKrw = (cifUsd + dutyPerUnitUsd) * fxUsd + otherPerUnitKrw + eprPerUnitKrw;
+  const ddpUsd = ddpKrw / fxUsd;
 
   // 판매가 / 이익
   let sellingUsd: number | undefined;
@@ -89,7 +103,6 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
   let marginPct: number | undefined;
 
   if (c.simMode === 'reverse' && item.targetMargin !== undefined) {
-    // 판매가 역산: DDP / (1 - target_margin)
     const m = Math.min(Math.max(item.targetMargin, 0), 0.99);
     sellingUsd = ddpUsd / (1 - m);
     profitUsd = sellingUsd - ddpUsd;
@@ -101,32 +114,28 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
   }
 
   const sellingKrw = sellingUsd !== undefined ? sellingUsd * fxUsd : undefined;
-  const freightRatio = sellingUsd && sellingUsd > 0 ? freightPerUnit / sellingUsd : undefined;
+  const freightRatio = sellingUsd && sellingUsd > 0 ? totalFreightPerUnitUsd / sellingUsd : undefined;
 
   return {
     fobUsd, cbmPerBox, qtyPerContainer,
-    seaPerUnit, inlandPerUnit, portPerUnit, miscPerUnit, freightPerUnit,
-    cifUsd, dutyPerUnit, ddpUsd, ddpKrw,
+    seaPerUnitUsd, otherPerUnitKrw, totalFreightPerUnitUsd,
+    cifUsd, dutyPerUnitUsd, dutyRate,
+    eprPerUnitKrw, ddpUsd, ddpKrw,
     sellingUsd, sellingKrw, profitUsd, marginPct, freightRatio,
-    dutyRate: item.dutyRateOverride ?? c.dutyRate,
   };
 }
 
 function fmtUsd(n?: number) {
-  if (n === undefined || isNaN(n)) return '-';
+  if (n === undefined || isNaN(n) || !isFinite(n)) return '-';
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtKrw(n?: number) {
-  if (n === undefined || isNaN(n)) return '-';
+  if (n === undefined || isNaN(n) || !isFinite(n)) return '-';
   return Math.round(n).toLocaleString() + '원';
 }
 function fmtPct(n?: number) {
-  if (n === undefined || isNaN(n)) return '-';
+  if (n === undefined || isNaN(n) || !isFinite(n)) return '-';
   return (n * 100).toFixed(1) + '%';
-}
-function fmtNum(n?: number, digits = 3) {
-  if (n === undefined || isNaN(n)) return '-';
-  return n.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 const newItem = (): EstimatorItem => ({
@@ -141,11 +150,12 @@ const COL_TYPE_OPTIONS = [
   { value: 'name', label: '제품명' },
   { value: 'currency', label: '통화' },
   { value: 'fob', label: 'FOB 가격' },
-  { value: 'size', label: '박스사이즈 (LxWxH)' },
+  { value: 'size', label: '박스사이즈(LxWxH)' },
   { value: 'sizeL', label: '박스 L(cm)' },
   { value: 'sizeW', label: '박스 W(cm)' },
   { value: 'sizeH', label: '박스 H(cm)' },
   { value: 'qtyPerBox', label: '입수(/박스)' },
+  { value: 'weightG', label: '단중(g)' },
   { value: 'selling', label: '판매가' },
   { value: 'note', label: '비고' },
 ];
@@ -156,77 +166,85 @@ function parseSize(s: string): [number, number, number] | null {
   return null;
 }
 
+type SheetData = { name: string; rows: (string | number | null)[][]; maxCols: number };
+
 function ImportDialog({ onImport, onClose }: { onImport: (items: EstimatorItem[]) => void; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState<{ sheetNames: string[]; rows: (string | number | null)[][]; colTypes: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
+  const [selectedSheetIdx, setSelectedSheetIdx] = useState(0);
+  const [headerRowIdx, setHeaderRowIdx] = useState<number | null>(null);
   const [colTypes, setColTypes] = useState<string[]>([]);
-  const [headerRow, setHeaderRow] = useState(0);
-  const [dataStartRow, setDataStartRow] = useState(1);
-  const [selectedSheet, setSelectedSheet] = useState(0);
-  const [fileData, setFileData] = useState<File | null>(null);
   const [defaultCurrency, setDefaultCurrency] = useState<'USD' | 'CNY'>('USD');
+  const [step, setStep] = useState<'upload' | 'select'>('upload');
 
-  const [parseError, setParseError] = useState<string | null>(null);
+  const currentSheet = sheets[selectedSheetIdx];
 
   const handleFile = async (file: File) => {
-    setFileData(file);
-    setLoading(true);
-    setParseError(null);
+    setLoading(true); setError(null);
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('sheetIdx', '0');
       const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
       const data = await res.json();
-      if (!res.ok || data.error) { setParseError(data.error || '파싱 실패'); setLoading(false); return; }
-      setPreview(data);
-      setColTypes(data.colTypes || []);
-    } catch (e) { setParseError(String(e)); }
+      if (!res.ok || data.error) { setError(data.error || '파싱 실패'); setLoading(false); return; }
+      setSheets(data.sheets || []);
+      setSheetNames(data.sheetNames || []);
+      setSelectedSheetIdx(0);
+      setHeaderRowIdx(null);
+      setColTypes([]);
+      setStep('select');
+    } catch (e) { setError(String(e)); }
     setLoading(false);
   };
 
-  const handleSheetChange = async (idx: number) => {
-    if (!fileData) return;
-    setSelectedSheet(idx);
-    setLoading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', fileData);
-      fd.append('sheetIdx', String(idx));
-      const res = await fetch('/api/estimator/parse-file', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok || data.error) { setParseError(data.error || '파싱 실패'); setLoading(false); return; }
-      setPreview(data);
-      setColTypes(data.colTypes || []);
-    } catch (e) { setParseError(String(e)); }
-    setLoading(false);
+  const changeSheet = (idx: number) => { setSelectedSheetIdx(idx); setHeaderRowIdx(null); setColTypes([]); };
+
+  const selectHeaderRow = (rowIdx: number) => {
+    setHeaderRowIdx(rowIdx);
+    if (!currentSheet) return;
+    const headerRow = currentSheet.rows[rowIdx] || [];
+    const types = headerRow.map(v => {
+      const h = String(v ?? '').toLowerCase();
+      if (/품명|제품명|name|item|model|모델|description/.test(h)) return 'name';
+      if (/fob|가격|price|단가|unit.?price/.test(h)) return 'fob';
+      if (/사이즈|size|carton|박스|box/.test(h)) return 'size';
+      if (/입수|pcs.*box|per.*box|qty.*box/.test(h)) return 'qtyPerBox';
+      if (/통화|currency/.test(h)) return 'currency';
+      if (/무게|weight|중량/.test(h)) return 'weightG';
+      if (/판매가|selling/.test(h)) return 'selling';
+      if (/비고|remark|note|memo/.test(h)) return 'note';
+      return 'ignore';
+    });
+    setColTypes(types);
   };
 
   const doImport = () => {
-    if (!preview) return;
+    if (!currentSheet || headerRowIdx === null) return;
     const items: EstimatorItem[] = [];
-    for (let ri = dataStartRow; ri < preview.rows.length; ri++) {
-      const row = preview.rows[ri];
+    for (const row of currentSheet.rows.slice(headerRowIdx + 1)) {
       const item: EstimatorItem = { ...newItem() };
       let hasData = false;
       let sizeL = 0, sizeW = 0, sizeH = 0;
-
       colTypes.forEach((ct, ci) => {
         const val = row[ci];
         if (val === null || val === undefined || val === '') return;
         hasData = true;
-        if (ct === 'name') item.name = String(val);
-        else if (ct === 'currency') item.currency = String(val).toUpperCase().includes('RMB') || String(val).toUpperCase().includes('CNY') ? 'CNY' : 'USD';
-        else if (ct === 'fob') item.fobPrice = typeof val === 'number' ? val : parseFloat(String(val)) || 0;
-        else if (ct === 'size') { const sz = parseSize(String(val)); if (sz) { [item.boxL, item.boxW, item.boxH] = sz; } }
-        else if (ct === 'sizeL') sizeL = typeof val === 'number' ? val : parseFloat(String(val)) || 0;
-        else if (ct === 'sizeW') sizeW = typeof val === 'number' ? val : parseFloat(String(val)) || 0;
-        else if (ct === 'sizeH') sizeH = typeof val === 'number' ? val : parseFloat(String(val)) || 0;
-        else if (ct === 'qtyPerBox') item.qtyPerBox = typeof val === 'number' ? val : parseFloat(String(val)) || 1;
-        else if (ct === 'selling') item.sellingPrice = typeof val === 'number' ? val : parseFloat(String(val)) || undefined;
-        else if (ct === 'note') item.note = String(val);
+        const str = String(val).trim();
+        const num = parseFloat(str);
+        if (ct === 'name') item.name = str;
+        else if (ct === 'currency') item.currency = /rmb|cny|위안|元/.test(str.toLowerCase()) ? 'CNY' : 'USD';
+        else if (ct === 'fob' && !isNaN(num)) item.fobPrice = num;
+        else if (ct === 'size') { const sz = parseSize(str); if (sz) [item.boxL, item.boxW, item.boxH] = sz; }
+        else if (ct === 'sizeL' && !isNaN(num)) sizeL = num;
+        else if (ct === 'sizeW' && !isNaN(num)) sizeW = num;
+        else if (ct === 'sizeH' && !isNaN(num)) sizeH = num;
+        else if (ct === 'qtyPerBox' && !isNaN(num)) item.qtyPerBox = num || 1;
+        else if (ct === 'weightG' && !isNaN(num)) item.weightG = num;
+        else if (ct === 'selling' && !isNaN(num)) item.sellingPrice = num;
+        else if (ct === 'note') item.note = str;
       });
-
       if (sizeL > 0) { item.boxL = sizeL; item.boxW = sizeW; item.boxH = sizeH; }
       if (!item.currency) item.currency = defaultCurrency;
       if (hasData && (item.name || item.fobPrice > 0)) items.push(item);
@@ -236,123 +254,168 @@ function ImportDialog({ onImport, onClose }: { onImport: (items: EstimatorItem[]
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b">
-          <div className="flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" /><span className="font-semibold text-sm">파일에서 제품 가져오기</span></div>
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4" />
+            <span className="font-semibold text-sm">파일에서 제품 가져오기</span>
+          </div>
           <button onClick={onClose}><X className="w-4 h-4" /></button>
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-4">
-          {/* 파일 드롭 */}
-          {!preview && (
-            <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-12 cursor-pointer hover:bg-muted/30 transition-colors">
-              <Upload className="w-10 h-10 text-muted-foreground mb-3" />
-              <div className="text-sm font-medium">Excel 파일(.xlsx)을 클릭하거나 드래그하세요</div>
-              <div className="text-xs text-muted-foreground mt-1">공급사 원가시트, 견적서 등 지원</div>
-              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
-            </label>
-          )}
-
-          {loading && <div className="text-center py-8 text-muted-foreground text-sm">파일 분석 중...</div>}
-
-          {parseError && !loading && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-              <div className="font-medium mb-1">파일 읽기 실패</div>
-              <div className="text-xs text-red-500">{parseError}</div>
-              <button className="mt-2 text-xs underline" onClick={() => { setParseError(null); setFileData(null); }}>다시 시도</button>
-            </div>
-          )}
-
-          {preview && !loading && (
-            <div className="space-y-4">
-              {/* 시트 선택 */}
-              {preview.sheetNames.length > 1 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-muted-foreground font-medium">시트 선택:</span>
-                  {preview.sheetNames.map((name, i) => (
-                    <button key={i} onClick={() => handleSheetChange(i)}
-                      className={cn('text-xs px-2 py-1 rounded border', i === selectedSheet ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted')}>
-                      {name}
-                    </button>
-                  ))}
+          {step === 'upload' && (
+            <>
+              <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-12 cursor-pointer hover:bg-muted/30 transition-colors">
+                <Upload className="w-10 h-10 text-muted-foreground mb-3" />
+                <div className="text-sm font-medium">Excel(.xlsx, .xls) 파일을 클릭하거나 드래그하세요</div>
+                <div className="text-xs text-muted-foreground mt-1">공급사 원가시트, 견적서 등 — 병합 셀 포함 지원</div>
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+              </label>
+              {loading && <div className="text-center py-4 text-muted-foreground text-sm">파일 읽는 중...</div>}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                  <div className="font-medium">읽기 실패: {error}</div>
                 </div>
               )}
+            </>
+          )}
 
-              {/* 설정 */}
-              <div className="flex gap-4 flex-wrap items-center text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">헤더 행:</span>
-                  <select className="border rounded px-1.5 py-1" value={headerRow} onChange={e => { setHeaderRow(+e.target.value); setDataStartRow(+e.target.value + 1); }}>
-                    {preview.rows.slice(0, 10).map((_, i) => <option key={i} value={i}>{i + 1}행</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">데이터 시작:</span>
-                  <select className="border rounded px-1.5 py-1" value={dataStartRow} onChange={e => setDataStartRow(+e.target.value)}>
-                    {preview.rows.slice(0, 20).map((_, i) => <option key={i} value={i}>{i + 1}행</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center gap-1.5">
+          {step === 'select' && currentSheet && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {sheetNames.length > 1 && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="text-muted-foreground">시트:</span>
+                    {sheetNames.map((name, i) => (
+                      <button key={i} onClick={() => changeSheet(i)}
+                        className={cn('px-2 py-1 rounded border text-xs', i === selectedSheetIdx ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 text-xs ml-auto">
                   <span className="text-muted-foreground">기본 통화:</span>
-                  <select className="border rounded px-1.5 py-1" value={defaultCurrency} onChange={e => setDefaultCurrency(e.target.value as 'USD' | 'CNY')}>
+                  <select className="border rounded px-1.5 py-1 text-xs" value={defaultCurrency}
+                    onChange={e => setDefaultCurrency(e.target.value as 'USD' | 'CNY')}>
                     <option value="USD">USD</option>
                     <option value="CNY">RMB/CNY</option>
                   </select>
                 </div>
-                <button className="text-xs text-muted-foreground underline" onClick={() => { setPreview(null); setFileData(null); }}>다른 파일</button>
+                <button className="text-xs text-muted-foreground underline"
+                  onClick={() => { setStep('upload'); setSheets([]); }}>다른 파일</button>
               </div>
 
-              {/* 컬럼 매핑 + 미리보기 */}
-              <div className="border rounded-lg overflow-auto max-h-72">
-                <table className="text-xs w-max min-w-full">
-                  <thead className="bg-muted/60 sticky top-0 z-10">
+              <div className="text-xs bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-800">
+                <strong>① 헤더 행 클릭</strong> → 컬럼 자동 감지 &nbsp;→&nbsp;
+                <strong>② 드롭다운</strong>으로 항목 확인/수정 &nbsp;→&nbsp;
+                <strong>③ 가져오기</strong> 클릭
+                {headerRowIdx !== null && <span className="ml-2 text-green-700 font-medium">✓ {headerRowIdx + 1}행 선택 → {headerRowIdx + 2}행부터 가져옵니다</span>}
+              </div>
+
+              {headerRowIdx !== null && (
+                <div className="border rounded-lg overflow-auto max-h-12 bg-amber-50/50">
+                  <table className="text-[10px] w-max">
+                    <tbody>
+                      <tr>
+                        <td className="px-2 py-1 text-muted-foreground border-r w-10">컬럼</td>
+                        {colTypes.map((ct, ci) => (
+                          <td key={ci} className="px-1 py-1 border-r min-w-[100px]">
+                            <select className="text-[10px] border rounded px-1 w-full"
+                              value={ct} onChange={e => setColTypes(prev => { const n = [...prev]; n[ci] = e.target.value; return n; })}>
+                              {COL_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="border rounded-lg overflow-auto" style={{ maxHeight: '55vh' }}>
+                <table className="text-[10px] border-collapse w-max">
+                  <thead className="sticky top-0 z-10 bg-muted/80">
                     <tr>
-                      <td className="px-2 py-1 text-muted-foreground w-8">#</td>
-                      {colTypes.map((ct, ci) => (
-                        <td key={ci} className="px-1 py-1 min-w-[100px]">
-                          <select className="text-[10px] border rounded px-1 w-full"
-                            value={ct} onChange={e => setColTypes(prev => { const next = [...prev]; next[ci] = e.target.value; return next; })}>
-                            {COL_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                          </select>
-                        </td>
-                      ))}
-                    </tr>
-                    <tr className="bg-amber-50">
-                      <td className="px-2 py-1 text-[10px] text-muted-foreground">{headerRow + 1}</td>
-                      {(preview.rows[headerRow] || []).map((v, ci) => (
-                        <td key={ci} className="px-2 py-1 text-[10px] font-medium text-amber-800 truncate max-w-[120px]">{String(v ?? '')}</td>
+                      <th className="border px-1 py-1 w-8 text-muted-foreground font-normal sticky left-0 bg-muted/80">#</th>
+                      {Array.from({ length: currentSheet.maxCols }, (_, ci) => (
+                        <th key={ci} className="border px-2 py-1 font-normal text-muted-foreground min-w-[80px]">
+                          {headerRowIdx !== null ? (
+                            <span className={cn('text-[9px] font-bold', colTypes[ci] !== 'ignore' ? 'text-primary' : '')}>
+                              {COL_TYPE_OPTIONS.find(o => o.value === (colTypes[ci] || 'ignore'))?.label}
+                            </span>
+                          ) : String.fromCharCode(65 + ci)}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.rows.slice(dataStartRow, dataStartRow + 15).map((row, ri) => (
-                      <tr key={ri} className={cn('border-t', ri % 2 === 0 ? '' : 'bg-muted/20')}>
-                        <td className="px-2 py-1 text-[10px] text-muted-foreground">{dataStartRow + ri + 1}</td>
-                        {row.map((v, ci) => (
-                          <td key={ci} className={cn('px-2 py-1 text-[10px] truncate max-w-[120px]', colTypes[ci] === 'ignore' ? 'text-muted-foreground/40' : '')}>{String(v ?? '')}</td>
-                        ))}
-                      </tr>
-                    ))}
+                    {currentSheet.rows.map((row, ri) => {
+                      const isHeader = ri === headerRowIdx;
+                      const isData = headerRowIdx !== null && ri > headerRowIdx;
+                      return (
+                        <tr key={ri} onClick={() => selectHeaderRow(ri)}
+                          className={cn('border-b cursor-pointer transition-colors',
+                            isHeader ? 'bg-amber-100 hover:bg-amber-200' : '',
+                            isData ? 'hover:bg-blue-50/50' : 'hover:bg-muted/40',
+                          )}>
+                          <td className={cn('border px-1 py-0.5 text-muted-foreground text-[9px] sticky left-0', isHeader ? 'bg-amber-100' : 'bg-background')}>
+                            {ri + 1}
+                          </td>
+                          {Array.from({ length: currentSheet.maxCols }, (_, ci) => {
+                            const val = row[ci];
+                            const ct = colTypes[ci];
+                            return (
+                              <td key={ci} className={cn('border px-2 py-0.5 truncate max-w-[150px]',
+                                isHeader ? 'font-bold text-amber-900' : '',
+                                ct && ct !== 'ignore' && isData ? 'bg-blue-50/30' : '',
+                              )}>
+                                {val !== null && val !== undefined ? String(val) : ''}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-
-              <div className="text-xs text-muted-foreground bg-blue-50 border border-blue-200 rounded px-3 py-2">
-                💡 <strong>박스 사이즈</strong>: 하나의 컬럼에 "670×670×30" 형식이면 "박스사이즈(LxWxH)" 선택. 분리된 컬럼이면 각각 L/W/H 선택.<br />
-                FOB 가격이 RMB면 통화 컬럼을 "통화"로 매핑하거나, 위에서 기본 통화를 RMB로 설정하세요.
               </div>
             </div>
           )}
         </div>
 
-        <div className="flex gap-2 px-5 py-3.5 border-t">
+        <div className="flex gap-2 px-5 py-3.5 border-t shrink-0">
           <Button variant="outline" onClick={onClose} className="flex-1">취소</Button>
-          <Button onClick={doImport} disabled={!preview} className="flex-1">
-            <Check className="w-3.5 h-3.5 mr-1" />가져오기
+          <Button onClick={doImport} disabled={step !== 'select' || headerRowIdx === null} className="flex-1">
+            <Check className="w-3.5 h-3.5 mr-1" />
+            {headerRowIdx !== null && currentSheet
+              ? `${currentSheet.rows.slice(headerRowIdx + 1).filter(r => r.some(v => v !== null && v !== '')).length}개 제품 가져오기`
+              : '헤더 행을 클릭해 선택하세요'}
           </Button>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── 숫자 입력 헬퍼 ─────────────────────────────────────────────────────────────
+function NumInput({
+  value, onChange, className = '', step = 1, placeholder = '',
+  min,
+}: {
+  value: number | undefined; onChange: (v: number) => void;
+  className?: string; step?: number; placeholder?: string; min?: number;
+}) {
+  return (
+    <input
+      type="number" step={step} min={min}
+      value={value ?? ''}
+      placeholder={placeholder}
+      onChange={e => onChange(parseFloat(e.target.value) || 0)}
+      className={cn('border rounded text-right', className)}
+    />
   );
 }
 
@@ -367,12 +430,11 @@ export default function EstimatorPage() {
   const [showNewCase, setShowNewCase] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeCase = draft;
-
   useEffect(() => {
     fetch('/api/estimator').then(r => r.json()).then(d => {
-      setCases(d.data || []);
-      if (d.data?.length > 0) { setActiveId(d.data[0].id); setDraft(d.data[0]); }
+      const list = d.data || [];
+      setCases(list);
+      if (list.length > 0) { setActiveId(list[0].id); setDraft(list[0]); }
     });
   }, []);
 
@@ -381,14 +443,22 @@ export default function EstimatorPage() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      await fetch(`/api/estimator/${next.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
+      await fetch(`/api/estimator/${next.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
       setSaving(false);
     }, 800);
   }, []);
 
   const createCase = async () => {
     const name = newCaseName.trim() || '새 케이스';
-    const res = await fetch('/api/estimator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const res = await fetch('/api/estimator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
     const data = await res.json();
     setCases(prev => [data.data, ...prev]);
     setActiveId(data.data.id);
@@ -412,15 +482,11 @@ export default function EstimatorPage() {
     saveDraft({ ...draft, [key]: val });
   };
 
-  const addItem = () => {
-    if (!draft) return;
-    saveDraft({ ...draft, items: [...draft.items, newItem()] });
-  };
+  const addItem = () => { if (!draft) return; saveDraft({ ...draft, items: [...draft.items, newItem()] }); };
 
   const updateItem = (idx: number, patch: Partial<EstimatorItem>) => {
     if (!draft) return;
-    const items = draft.items.map((it, i) => i === idx ? { ...it, ...patch } : it);
-    saveDraft({ ...draft, items });
+    saveDraft({ ...draft, items: draft.items.map((it, i) => i === idx ? { ...it, ...patch } : it) });
   };
 
   const removeItem = (idx: number) => {
@@ -441,9 +507,10 @@ export default function EstimatorPage() {
     setShowImport(false);
   };
 
-  const inputCls = 'h-7 text-xs px-1.5 w-full';
+  // 공통 입력 스타일
+  const inCls = 'h-7 text-xs px-1.5 w-full';
 
-  if (!activeCase) return (
+  if (!draft) return (
     <div className="flex flex-col h-full">
       <AppHeader title="원가계산기" />
       <div className="flex-1 flex items-center justify-center flex-col gap-4">
@@ -451,7 +518,8 @@ export default function EstimatorPage() {
         <Button onClick={() => setShowNewCase(true)}><Plus className="w-3.5 h-3.5 mr-1" />새 케이스 만들기</Button>
         {showNewCase && (
           <div className="flex gap-2 mt-2">
-            <Input value={newCaseName} onChange={e => setNewCaseName(e.target.value)} placeholder="케이스명" className="h-9 w-48" autoFocus onKeyDown={e => e.key === 'Enter' && createCase()} />
+            <Input value={newCaseName} onChange={e => setNewCaseName(e.target.value)} placeholder="케이스명"
+              className="h-9 w-48" autoFocus onKeyDown={e => e.key === 'Enter' && createCase()} />
             <Button onClick={createCase}>만들기</Button>
           </div>
         )}
@@ -459,7 +527,10 @@ export default function EstimatorPage() {
     </div>
   );
 
-  const c = activeCase;
+  const c = draft;
+  const seaUsd = getSeaUsd(c);
+  const seaKrw = getSeaKrw(c);
+  const totalFreightKrw = getTotalFreightKrw(c);
 
   return (
     <div className="flex flex-col h-full">
@@ -476,16 +547,20 @@ export default function EstimatorPage() {
           </div>
           {showNewCase && (
             <div className="p-2 border-b">
-              <Input value={newCaseName} onChange={e => setNewCaseName(e.target.value)} placeholder="케이스명" className="h-7 text-xs mb-1" autoFocus onKeyDown={e => { if (e.key === 'Enter') createCase(); if (e.key === 'Escape') setShowNewCase(false); }} />
+              <Input value={newCaseName} onChange={e => setNewCaseName(e.target.value)} placeholder="케이스명"
+                className="h-7 text-xs mb-1" autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') createCase(); if (e.key === 'Escape') setShowNewCase(false); }} />
               <Button size="sm" className="w-full h-6 text-xs" onClick={createCase}>만들기</Button>
             </div>
           )}
           <div className="flex-1 overflow-y-auto">
-            {cases.map(c => (
-              <div key={c.id} onClick={() => switchCase(c)}
-                className={cn('px-2 py-2 cursor-pointer border-b text-xs group flex items-start justify-between gap-1', activeId === c.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50')}>
-                <div className="truncate flex-1">{c.name}</div>
-                <button onClick={e => { e.stopPropagation(); deleteCase(c.id); }} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">
+            {cases.map(cc => (
+              <div key={cc.id} onClick={() => switchCase(cc)}
+                className={cn('px-2 py-2 cursor-pointer border-b text-xs group flex items-start justify-between gap-1',
+                  activeId === cc.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50')}>
+                <div className="truncate flex-1">{cc.name}</div>
+                <button onClick={e => { e.stopPropagation(); deleteCase(cc.id); }}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive">
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
@@ -497,81 +572,160 @@ export default function EstimatorPage() {
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* ── 설정 패널 ──────────────────────────────────────────── */}
-          <div className="border-b px-4 py-3 bg-background shrink-0">
-            <div className="flex items-start gap-6 flex-wrap">
+          <div className="border-b px-4 py-3 bg-background shrink-0 space-y-3">
 
-              {/* 케이스명 + 저장상태 */}
-              <div className="min-w-[140px]">
-                <div className="text-[10px] text-muted-foreground mb-1">케이스명</div>
-                <Input value={c.name} onChange={e => updateField('name', e.target.value)} className="h-7 text-xs font-semibold" />
-                {saving && <div className="text-[10px] text-muted-foreground mt-0.5">저장 중...</div>}
-              </div>
-
-              {/* 컨테이너 */}
+            {/* 1행: 케이스명 / 컨테이너 / 모드 */}
+            <div className="flex items-end gap-4 flex-wrap">
               <div>
-                <div className="text-[10px] text-muted-foreground mb-1">컨테이너</div>
-                <select className="h-7 border rounded text-xs px-2" value={c.containerType} onChange={e => updateField('containerType', e.target.value as EstimatorCase['containerType'])}>
-                  {(['20ft', '40ft', '40HQ'] as const).map(t => <option key={t} value={t}>{t} ({CONTAINER_CBM[t]}CBM)</option>)}
+                <div className="text-[10px] text-muted-foreground mb-0.5">케이스명</div>
+                <div className="flex items-center gap-2">
+                  <Input value={c.name} onChange={e => updateField('name', e.target.value)}
+                    className="h-7 text-xs font-semibold w-40" />
+                  {saving && <span className="text-[10px] text-muted-foreground">저장 중...</span>}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground mb-0.5">컨테이너</div>
+                <select className="h-7 border rounded text-xs px-2" value={c.containerType}
+                  onChange={e => updateField('containerType', e.target.value as EstimatorCase['containerType'])}>
+                  {(['20ft', '40ft', '40HQ'] as const).map(t =>
+                    <option key={t} value={t}>{t} ({CONTAINER_CBM[t]}CBM)</option>)}
                 </select>
               </div>
-
-              {/* 운임 */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground font-medium">운임 (원화)</div>
-                <div className="grid grid-cols-4 gap-1 text-[10px]">
-                  {([['freightSea', '해상운임'], ['freightInland', '내륙운송'], ['freightPort', '포트차지'], ['freightMisc', '기타']] as const).map(([k, label]) => (
-                    <div key={k}>
-                      <div className="text-muted-foreground mb-0.5">{label}</div>
-                      <input type="number" value={c[k]} onChange={e => updateField(k, parseInt(e.target.value) || 0)}
-                        className="h-7 border rounded text-xs px-1.5 w-24 text-right" />
-                    </div>
+              <div className="ml-auto">
+                <div className="text-[10px] text-muted-foreground mb-0.5">시뮬레이션 모드</div>
+                <div className="flex gap-1">
+                  {([
+                    ['standard', '표준계산', 'FOB→DDP 원가 산출'],
+                    ['reverse', '판매가역산', '목표이익률 → 판매가 계산'],
+                    ['mixed', '혼적', '여러 제품을 한 컨테이너에 혼적'],
+                  ] as const).map(([mode, label, desc]) => (
+                    <button key={mode} onClick={() => updateField('simMode', mode)}
+                      title={desc}
+                      className={cn('px-2.5 py-1 rounded text-xs border transition-colors',
+                        c.simMode === mode ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted')}>
+                      {label}
+                    </button>
                   ))}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
-                  운임합계: <strong>{((c.freightSea || 0) + (c.freightInland || 0) + (c.freightPort || 0) + (c.freightMisc || 0)).toLocaleString()}원</strong>
+              </div>
+            </div>
+
+            {/* 2행: 운임 | 환율 | 관세·EPR */}
+            <div className="grid grid-cols-3 gap-5 border-t pt-2.5">
+
+              {/* 운임 */}
+              <div>
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">운임</div>
+                <div className="space-y-1.5">
+                  {/* 해상운임 (USD) */}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-10">해상</span>
+                      <input type="number" step="10" value={seaUsd || ''}
+                        placeholder="0"
+                        onChange={e => updateField('freightSeaUsd', parseFloat(e.target.value) || 0)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">USD</span>
+                      <span className="text-[10px] text-muted-foreground/60">≈ {seaKrw.toLocaleString()}원</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 ml-10">💡 해상운임은 USD 견적 기준</div>
+                  </div>
+                  {/* 내륙 / 포트 / 기타 (KRW) */}
+                  {([
+                    ['freightInland', '내륙'] as const,
+                    ['freightPort', '포트'] as const,
+                    ['freightMisc', '기타'] as const,
+                  ]).map(([k, label]) => (
+                    <div key={k} className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-10">{label}</span>
+                      <input type="number" step="10000" value={c[k] || ''}
+                        placeholder="0"
+                        onChange={e => updateField(k, parseInt(e.target.value) || 0)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-24 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-muted-foreground border-t pt-1 mt-0.5">
+                    합계: <strong className="text-foreground">{totalFreightKrw.toLocaleString()}원</strong>
+                    <span className="text-muted-foreground/60 ml-1">(≈ ${Math.round(totalFreightKrw / (c.fxUsd || 1430)).toLocaleString()})</span>
+                  </div>
                 </div>
               </div>
 
               {/* 환율 */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground font-medium">환율</div>
-                <div className="flex gap-2 text-[10px]">
+              <div>
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">환율 (계산 적용)</div>
+                <div className="space-y-2">
                   <div>
-                    <div className="text-muted-foreground mb-0.5">USD/KRW</div>
-                    <input type="number" value={c.fxUsd} onChange={e => updateField('fxUsd', parseInt(e.target.value) || 1330)}
-                      className="h-7 border rounded text-xs px-1.5 w-20 text-right" />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-16">USD/KRW</span>
+                      <input type="number" step="10" value={c.fxUsd || ''}
+                        onChange={e => updateField('fxUsd', parseInt(e.target.value) || 1430)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
+                    <div className="flex gap-1 mt-1 ml-16">
+                      {[[-50, '공격적'], [0, '중립'], [50, '보수적+50'], [100, '보수적+100']].map(([delta, label]) => (
+                        <button key={label} title={String(label)}
+                          onClick={() => {
+                            const base = 1390;
+                            updateField('fxUsd', base + (delta as number));
+                          }}
+                          className="text-[9px] px-1 py-0.5 border rounded hover:bg-muted text-muted-foreground">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">💡 최근 시세 약 1,370~1,420원 · 보수적 적용 권장</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground mb-0.5">RMB/KRW</div>
-                    <input type="number" value={c.fxRmb} onChange={e => updateField('fxRmb', parseInt(e.target.value) || 185)}
-                      className="h-7 border rounded text-xs px-1.5 w-20 text-right" />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
+                      <input type="number" step="5" value={c.fxRmb || ''}
+                        onChange={e => updateField('fxRmb', parseInt(e.target.value) || 195)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">💡 최근 시세 약 188~200원</div>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground pt-0.5 border-t">
+                    1 USD = {((c.fxUsd || 1430) / (c.fxRmb || 195)).toFixed(3)} RMB (적용환율 기준)
                   </div>
                 </div>
-                <div className="text-[10px] text-muted-foreground">1 USD ≈ {(c.fxUsd / c.fxRmb).toFixed(2)} RMB</div>
               </div>
 
-              {/* 관세율 */}
+              {/* 관세 / EPR */}
               <div>
-                <div className="text-[10px] text-muted-foreground mb-1">기본 관세율</div>
-                <div className="flex items-center gap-1">
-                  <input type="number" step="0.1" value={(c.dutyRate * 100).toFixed(1)}
-                    onChange={e => updateField('dutyRate', parseFloat(e.target.value) / 100 || 0)}
-                    className="h-7 border rounded text-xs px-1.5 w-16 text-right" />
-                  <span className="text-xs text-muted-foreground">%</span>
-                </div>
-              </div>
-
-              {/* 시뮬레이션 모드 */}
-              <div>
-                <div className="text-[10px] text-muted-foreground mb-1">시뮬레이션 모드</div>
-                <div className="flex gap-1">
-                  {([['standard', '표준계산', 'FOB→DDP 산출'], ['reverse', '판매가역산', '목표이익률→판매가 산출'], ['mixed', '혼적', '여러 제품 한 컨테이너']] as const).map(([mode, label, desc]) => (
-                    <button key={mode} onClick={() => updateField('simMode', mode)}
-                      className={cn('px-2 py-1 rounded text-[10px] border transition-colors', c.simMode === mode ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted')}
-                      title={desc}>
-                      {label}
-                    </button>
-                  ))}
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">관세 / 환경분담금(EPR)</div>
+                <div className="space-y-2.5">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground mb-0.5">
+                      기본 관세율 <span className="text-muted-foreground/60">(품목별 개별 설정 가능)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input type="number" step="0.1" value={(c.dutyRate * 100).toFixed(1)}
+                        onChange={e => updateField('dutyRate', parseFloat(e.target.value) / 100 || 0)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-16 text-right" />
+                      <span className="text-[10px] text-muted-foreground">%</span>
+                      <span className="text-[10px] text-muted-foreground/50">(CIF 기준 과세)</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground mb-0.5">EPR 환경분담금 단가</div>
+                    <div className="flex items-center gap-1.5">
+                      <input type="number" step="1" min="0" value={c.eprRate || ''}
+                        placeholder="0"
+                        onChange={e => updateField('eprRate', parseFloat(e.target.value) || 0)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원/kg</span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5 space-y-0.5">
+                      <div>💡 LED조명: ~32원/kg · 형광램프: ~63원/kg</div>
+                      <div>💡 모니터: ~25원/kg · PC·노트북: ~22원/kg</div>
+                      <div>제품별 EPR 소재 중량(g)을 표에서 입력</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -580,13 +734,13 @@ export default function EstimatorPage() {
           {/* ── 툴바 ───────────────────────────────────────────────── */}
           <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
             {c.simMode === 'mixed' && (
-              <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 mr-2">
+              <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1">
                 혼적 모드: 각 제품이 담당할 CBM을 직접 입력하세요 (합계 {CONTAINER_CBM[c.containerType]}CBM 이하)
               </div>
             )}
             {c.simMode === 'reverse' && (
-              <div className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded px-2 py-1 mr-2">
-                역산 모드: 목표 이익률을 입력하면 판매가를 자동 계산합니다
+              <div className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded px-2 py-1">
+                역산 모드: 목표 이익률 입력 → 판매가 자동 계산
               </div>
             )}
             <div className="ml-auto flex gap-2">
@@ -605,51 +759,57 @@ export default function EstimatorPage() {
               <thead className="bg-muted/70 sticky top-0 z-10">
                 <tr>
                   {/* 입력 컬럼 */}
-                  <th className="border px-2 py-1.5 text-left font-medium min-w-[160px] sticky left-0 bg-muted/70 z-20">제품명</th>
+                  <th className="border px-2 py-1.5 text-left font-medium min-w-[150px] sticky left-0 bg-muted/70 z-20">제품명</th>
                   <th className="border px-2 py-1.5 font-medium w-14">통화</th>
                   <th className="border px-2 py-1.5 font-medium w-20">FOB가</th>
-                  {c.simMode === 'standard' || c.simMode === 'reverse' ? null : null}
-                  <th className="border px-2 py-1.5 font-medium w-28">박스 L×W×H (cm)</th>
+                  <th className="border px-2 py-1.5 font-medium w-32">박스 L×W×H(cm)</th>
                   <th className="border px-2 py-1.5 font-medium w-14">입수</th>
+                  <th className="border px-2 py-1.5 font-medium w-16" title="단품 무게(g/pcs)">단중(g)</th>
+                  <th className="border px-2 py-1.5 font-medium w-16 bg-green-50/50" title="EPR 환경분담금 부과 대상 소재 중량(g/pcs). PC·플라스틱 등">EPR소재(g)</th>
                   {c.simMode === 'mixed' && <th className="border px-2 py-1.5 font-medium w-16 bg-blue-50">CBM할당</th>}
-                  <th className="border px-2 py-1.5 font-medium w-14">관세율</th>
+                  <th className="border px-2 py-1.5 font-medium w-16" title="개별 관세율. 비워두면 기본값 사용">관세율</th>
                   {c.simMode !== 'reverse'
                     ? <th className="border px-2 py-1.5 font-medium w-20">판매가(USD)</th>
                     : <th className="border px-2 py-1.5 font-medium w-20 bg-purple-50">목표이익률</th>
                   }
                   {/* 계산 결과 */}
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">FOB USD</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">CBM/박스</th>
-                  <th className="border px-2 py-1.5 font-medium w-18 bg-sky-50">컨 적재수</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">운임/개</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">CIF</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">관세/개</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50">내륙+포트</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-green-50">DDP (USD)</th>
-                  <th className="border px-2 py-1.5 font-medium w-20 bg-green-50">DDP (KRW)</th>
+                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50/70" title="FOB 가격을 USD로 환산 (CNY 입력 시)">FOB USD</th>
+                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50/70">CBM/박스</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-sky-50/70">적재수</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-sky-50/70" title="CIF = FOB + 해상운임/개 (관세 과세 기준)">CIF(USD)</th>
+                  <th className="border px-2 py-1.5 font-medium w-16 bg-sky-50/70">관세/개</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-sky-50/70" title="내륙운송+포트차지+기타 (원화)">내륙+포트</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-green-50/70" title="EPR 환경분담금 (원/개)">EPR/개(원)</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-green-50">DDP(USD)</th>
+                  <th className="border px-2 py-1.5 font-medium w-22 bg-green-50">DDP(KRW)</th>
                   <th className="border px-2 py-1.5 font-medium w-20 bg-amber-50">판매가(USD)</th>
-                  <th className="border px-2 py-1.5 font-medium w-20 bg-amber-50">판매가(KRW)</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50">이익(USD)</th>
+                  <th className="border px-2 py-1.5 font-medium w-22 bg-amber-50">판매가(KRW)</th>
+                  <th className="border px-2 py-1.5 font-medium w-18 bg-amber-50">이익(USD)</th>
                   <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50">이익률</th>
-                  <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50">물류비%</th>
+                  <th className="border px-2 py-1.5 font-medium w-16 bg-amber-50" title="총 물류비 / 판매가">물류비%</th>
                   <th className="border px-1 py-1.5 w-14 sticky right-0 bg-muted/70"></th>
                 </tr>
               </thead>
               <tbody>
                 {c.items.map((item, idx) => {
                   const r = calcItem(item, c);
-                  const marginColor = r.marginPct !== undefined ? (r.marginPct >= 0.15 ? 'text-green-700' : r.marginPct >= 0.08 ? 'text-amber-700' : 'text-red-600') : '';
+                  const marginColor = r.marginPct !== undefined
+                    ? (r.marginPct >= 0.15 ? 'text-green-700' : r.marginPct >= 0.08 ? 'text-amber-700' : 'text-red-600')
+                    : '';
 
                   return (
                     <tr key={item.id} className="border-b hover:bg-muted/20">
                       {/* 제품명 */}
                       <td className="border px-1 py-1 sticky left-0 bg-background">
-                        <input value={item.name} onChange={e => updateItem(idx, { name: e.target.value })}
-                          placeholder="제품명" className={cn(inputCls, 'min-w-[150px]')} />
+                        <input value={item.name}
+                          onChange={e => updateItem(idx, { name: e.target.value })}
+                          placeholder="제품명"
+                          className={cn(inCls, 'min-w-[140px]')} />
                       </td>
                       {/* 통화 */}
                       <td className="border px-1 py-1">
-                        <select value={item.currency} onChange={e => updateItem(idx, { currency: e.target.value as 'USD' | 'CNY' })}
+                        <select value={item.currency}
+                          onChange={e => updateItem(idx, { currency: e.target.value as 'USD' | 'CNY' })}
                           className="h-7 border-0 rounded text-xs w-full">
                           <option value="USD">USD</option>
                           <option value="CNY">RMB</option>
@@ -659,7 +819,7 @@ export default function EstimatorPage() {
                       <td className="border px-1 py-1">
                         <input type="number" step="0.01" value={item.fobPrice || ''}
                           onChange={e => updateItem(idx, { fobPrice: parseFloat(e.target.value) || 0 })}
-                          className={cn(inputCls, 'text-right')} placeholder="0.00" />
+                          className={cn(inCls, 'text-right')} placeholder="0.00" />
                       </td>
                       {/* 박스 사이즈 */}
                       <td className="border px-1 py-1">
@@ -668,7 +828,8 @@ export default function EstimatorPage() {
                             <React.Fragment key={k}>
                               <input type="number" value={item[k] || ''}
                                 onChange={e => updateItem(idx, { [k]: parseFloat(e.target.value) || 0 })}
-                                className="h-7 border rounded text-[10px] px-1 w-16 text-right" placeholder={['L', 'W', 'H'][i]} />
+                                className="h-7 border rounded text-[10px] px-1 w-14 text-right"
+                                placeholder={['L', 'W', 'H'][i]} />
                               {i < 2 && <span className="text-muted-foreground text-[10px]">×</span>}
                             </React.Fragment>
                           ))}
@@ -678,14 +839,28 @@ export default function EstimatorPage() {
                       <td className="border px-1 py-1">
                         <input type="number" value={item.qtyPerBox || ''}
                           onChange={e => updateItem(idx, { qtyPerBox: parseInt(e.target.value) || 1 })}
-                          className={cn(inputCls, 'text-right')} />
+                          className={cn(inCls, 'text-right')} />
+                      </td>
+                      {/* 단중(g) */}
+                      <td className="border px-1 py-1">
+                        <input type="number" step="1" value={item.weightG || ''}
+                          placeholder="g"
+                          onChange={e => updateItem(idx, { weightG: parseFloat(e.target.value) || undefined })}
+                          className={cn(inCls, 'text-right')} />
+                      </td>
+                      {/* EPR 소재 중량(g) */}
+                      <td className="border px-1 py-1 bg-green-50/20">
+                        <input type="number" step="1" value={item.eprWeightG || ''}
+                          placeholder="g"
+                          onChange={e => updateItem(idx, { eprWeightG: parseFloat(e.target.value) || undefined })}
+                          className={cn(inCls, 'text-right bg-green-50/40')} />
                       </td>
                       {/* 혼적 CBM */}
                       {c.simMode === 'mixed' && (
                         <td className="border px-1 py-1 bg-blue-50/30">
                           <input type="number" step="0.1" value={item.mixedCbm || ''}
                             onChange={e => updateItem(idx, { mixedCbm: parseFloat(e.target.value) || 0 })}
-                            className={cn(inputCls, 'text-right bg-blue-50')} placeholder="CBM" />
+                            className={cn(inCls, 'text-right bg-blue-50')} placeholder="CBM" />
                         </td>
                       )}
                       {/* 관세율 개별 */}
@@ -695,7 +870,7 @@ export default function EstimatorPage() {
                             value={item.dutyRateOverride !== undefined ? (item.dutyRateOverride * 100).toFixed(1) : ''}
                             placeholder={`${(c.dutyRate * 100).toFixed(1)}`}
                             onChange={e => updateItem(idx, { dutyRateOverride: e.target.value ? parseFloat(e.target.value) / 100 : undefined })}
-                            className={cn(inputCls, 'text-right w-12')} />
+                            className={cn(inCls, 'text-right w-12')} />
                           <span className="text-[10px] text-muted-foreground">%</span>
                         </div>
                       </td>
@@ -704,45 +879,78 @@ export default function EstimatorPage() {
                         <td className="border px-1 py-1">
                           <input type="number" step="0.01" value={item.sellingPrice || ''}
                             onChange={e => updateItem(idx, { sellingPrice: parseFloat(e.target.value) || undefined })}
-                            className={cn(inputCls, 'text-right')} placeholder="0.00" />
+                            className={cn(inCls, 'text-right')} placeholder="0.00" />
                         </td>
                       ) : (
                         <td className="border px-1 py-1 bg-purple-50/30">
                           <div className="flex items-center gap-0.5">
-                            <input type="number" step="0.1" value={item.targetMargin !== undefined ? (item.targetMargin * 100).toFixed(1) : ''}
+                            <input type="number" step="0.1"
+                              value={item.targetMargin !== undefined ? (item.targetMargin * 100).toFixed(1) : ''}
                               onChange={e => updateItem(idx, { targetMargin: e.target.value ? parseFloat(e.target.value) / 100 : undefined })}
-                              className={cn(inputCls, 'text-right w-14 bg-purple-50')} placeholder="15.0" />
+                              className={cn(inCls, 'text-right w-14 bg-purple-50')} placeholder="15.0" />
                             <span className="text-[10px] text-muted-foreground">%</span>
                           </div>
                         </td>
                       )}
 
-                      {/* ── 계산 결과 컬럼 ── */}
-                      <td className="border px-2 py-1 text-right bg-sky-50/30">{item.currency === 'CNY' ? fmtUsd(r.fobUsd) : '-'}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30 text-muted-foreground">{r.cbmPerBox > 0 ? r.cbmPerBox.toFixed(4) : '-'}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30 font-medium">{r.qtyPerContainer > 0 ? r.qtyPerContainer.toLocaleString() : '-'}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30">{fmtUsd(r.freightPerUnit)}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30 font-medium">{fmtUsd(r.cifUsd)}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30">{fmtUsd(r.dutyPerUnit)}</td>
-                      <td className="border px-2 py-1 text-right bg-sky-50/30">{fmtUsd((r.inlandPerUnit || 0) + (r.portPerUnit || 0))}</td>
-                      <td className="border px-2 py-1 text-right bg-green-50/40 font-bold text-green-800">{fmtUsd(r.ddpUsd)}</td>
-                      <td className="border px-2 py-1 text-right bg-green-50/40 text-green-700">{fmtKrw(r.ddpKrw)}</td>
-                      <td className="border px-2 py-1 text-right bg-amber-50/40 font-medium">{r.sellingUsd !== undefined ? fmtUsd(r.sellingUsd) : <span className="text-muted-foreground">-</span>}</td>
-                      <td className="border px-2 py-1 text-right bg-amber-50/40">{r.sellingKrw !== undefined ? fmtKrw(r.sellingKrw) : '-'}</td>
-                      <td className={cn('border px-2 py-1 text-right bg-amber-50/40', r.profitUsd !== undefined && r.profitUsd < 0 ? 'text-red-600' : 'text-green-700')}>
+                      {/* ── 계산 결과 ── */}
+                      <td className="border px-2 py-1 text-right bg-sky-50/30 text-muted-foreground">
+                        {item.currency === 'CNY' ? fmtUsd(r.fobUsd) : '-'}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-sky-50/30 text-muted-foreground">
+                        {r.cbmPerBox > 0 ? r.cbmPerBox.toFixed(4) : '-'}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-sky-50/30 font-medium">
+                        {r.qtyPerContainer > 0 ? r.qtyPerContainer.toLocaleString() : '-'}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-sky-50/30 font-medium" title="FOB + 해상운임/개">
+                        {fmtUsd(r.cifUsd)}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-sky-50/30">
+                        {fmtUsd(r.dutyPerUnitUsd)}
+                        <div className="text-[9px] text-muted-foreground">{fmtPct(r.dutyRate)}</div>
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-sky-50/30 text-muted-foreground">
+                        {r.otherPerUnitKrw > 0 ? fmtKrw(r.otherPerUnitKrw) : '-'}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-green-50/30">
+                        {r.eprPerUnitKrw > 0
+                          ? <span className="text-emerald-700">{fmtKrw(r.eprPerUnitKrw)}</span>
+                          : <span className="text-muted-foreground">-</span>}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-green-50/50 font-bold text-green-800">
+                        {fmtUsd(r.ddpUsd)}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-green-50/50 text-green-700">
+                        {fmtKrw(r.ddpKrw)}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-amber-50/50 font-medium">
+                        {r.sellingUsd !== undefined ? fmtUsd(r.sellingUsd) : <span className="text-muted-foreground">-</span>}
+                      </td>
+                      <td className="border px-2 py-1 text-right bg-amber-50/50">
+                        {r.sellingKrw !== undefined ? fmtKrw(r.sellingKrw) : '-'}
+                      </td>
+                      <td className={cn('border px-2 py-1 text-right bg-amber-50/50',
+                        r.profitUsd !== undefined && r.profitUsd < 0 ? 'text-red-600' : 'text-green-700')}>
                         {r.profitUsd !== undefined ? fmtUsd(r.profitUsd) : '-'}
                       </td>
-                      <td className={cn('border px-2 py-1 text-right bg-amber-50/40 font-bold', marginColor)}>
+                      <td className={cn('border px-2 py-1 text-right bg-amber-50/50 font-bold', marginColor)}>
                         {fmtPct(r.marginPct)}
                       </td>
-                      <td className="border px-2 py-1 text-right bg-amber-50/40 text-muted-foreground text-[10px]">
+                      <td className="border px-2 py-1 text-right bg-amber-50/50 text-[10px] text-muted-foreground">
                         {r.freightRatio !== undefined ? fmtPct(r.freightRatio) : '-'}
                       </td>
                       {/* 액션 */}
                       <td className="border px-1 py-1 sticky right-0 bg-background">
                         <div className="flex gap-1">
-                          <button onClick={() => duplicateItem(idx)} className="text-muted-foreground hover:text-primary p-0.5" title="복사"><Copy className="w-3 h-3" /></button>
-                          <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive p-0.5" title="삭제"><Trash2 className="w-3 h-3" /></button>
+                          <button onClick={() => duplicateItem(idx)}
+                            className="text-muted-foreground hover:text-primary p-0.5" title="복사">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => removeItem(idx)}
+                            className="text-muted-foreground hover:text-destructive p-0.5" title="삭제">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -750,24 +958,34 @@ export default function EstimatorPage() {
                 })}
 
                 {/* 합계 행 */}
-                {c.items.length > 1 && c.simMode !== 'standard' && (
+                {c.items.length > 1 && (
                   <tr className="bg-muted/50 font-semibold border-t-2">
-                    <td className="border px-2 py-1.5 sticky left-0 bg-muted/50 text-xs">합계 / 평균</td>
-                    <td colSpan={c.simMode === 'mixed' ? 7 : 6} className="border"></td>
+                    <td className="border px-2 py-1.5 sticky left-0 bg-muted/50 text-xs" colSpan={2}>합계 / 평균</td>
+                    <td colSpan={c.simMode === 'mixed' ? 9 : 8} className="border"></td>
                     {c.simMode === 'mixed' && (
                       <td className="border px-2 py-1.5 text-right text-xs bg-blue-50/50">
                         {c.items.reduce((s, it) => s + (it.mixedCbm || 0), 0).toFixed(1)} / {CONTAINER_CBM[c.containerType]} CBM
                       </td>
                     )}
-                    <td colSpan={5} className="border"></td>
+                    <td colSpan={6} className="border"></td>
+                    {/* EPR 합계 */}
+                    <td className="border px-2 py-1.5 text-right text-xs bg-green-50/40 text-emerald-700">
+                      {(() => {
+                        const total = c.items.reduce((s, it) => s + calcItem(it, c).eprPerUnitKrw, 0);
+                        return total > 0 ? fmtKrw(total / c.items.length) + '/개 평균' : '-';
+                      })()}
+                    </td>
+                    <td colSpan={2} className="border"></td>
+                    {/* 이익률 평균 */}
+                    <td colSpan={2} className="border"></td>
                     <td className="border px-2 py-1.5 text-right text-xs bg-amber-50/60">
                       {fmtPct((() => {
                         const calcs = c.items.map(it => calcItem(it, c));
-                        const profits = calcs.filter(r => r.profitUsd !== undefined && r.sellingUsd !== undefined);
-                        if (!profits.length) return undefined;
-                        const totalProfit = profits.reduce((s, r) => s + (r.profitUsd || 0), 0);
-                        const totalSelling = profits.reduce((s, r) => s + (r.sellingUsd || 0), 0);
-                        return totalSelling > 0 ? totalProfit / totalSelling : undefined;
+                        const valid = calcs.filter(r => r.profitUsd !== undefined && r.sellingUsd !== undefined);
+                        if (!valid.length) return undefined;
+                        const totalP = valid.reduce((s, r) => s + (r.profitUsd || 0), 0);
+                        const totalS = valid.reduce((s, r) => s + (r.sellingUsd || 0), 0);
+                        return totalS > 0 ? totalP / totalS : undefined;
                       })())}
                     </td>
                     <td colSpan={2} className="border sticky right-0 bg-muted/50"></td>
@@ -776,11 +994,15 @@ export default function EstimatorPage() {
 
                 {c.items.length === 0 && (
                   <tr>
-                    <td colSpan={20} className="text-center py-12 text-muted-foreground text-sm">
+                    <td colSpan={24} className="text-center py-12 text-muted-foreground text-sm">
                       <div>제품을 추가하거나 파일에서 가져오세요</div>
                       <div className="flex gap-2 justify-center mt-3">
-                        <Button size="sm" variant="outline" onClick={() => setShowImport(true)}><Upload className="w-3 h-3 mr-1" />파일 가져오기</Button>
-                        <Button size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" />제품 추가</Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
+                          <Upload className="w-3 h-3 mr-1" />파일 가져오기
+                        </Button>
+                        <Button size="sm" onClick={addItem}>
+                          <Plus className="w-3 h-3 mr-1" />제품 추가
+                        </Button>
                       </div>
                     </td>
                   </tr>
