@@ -602,20 +602,51 @@ export default function EstimatorPage() {
     <div className="flex flex-col h-full">
       <style>{`
         @media print {
-          @page { size: A4 landscape; margin: 8mm; }
-          body { background: white !important; }
+          @page { size: A4 landscape; margin: 6mm; }
+          body, html { background: white !important; height: auto !important; overflow: visible !important; }
           .no-print { display: none !important; }
           .print-only { display: block !important; }
-          .print-overflow { overflow: visible !important; height: auto !important; max-height: none !important; }
-          .print-table-wrap { overflow: visible !important; }
-          table { font-size: 9px !important; }
-          th, td { padding: 2px 4px !important; }
+
+          /* 레이아웃 잠금 해제 */
+          .print-root,
+          .print-root > * {
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            flex: none !important;
+          }
+          .print-main {
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+          }
+
+          /* 테이블 축소해서 가로 맞춤 */
+          .print-table-wrap {
+            overflow: visible !important;
+            width: 100% !important;
+          }
+          table {
+            font-size: 7.5px !important;
+            width: 100% !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto !important;
+          }
+          th, td { padding: 1px 3px !important; }
+          tr { page-break-inside: avoid !important; }
+
+          /* 비고 textarea → 텍스트로 */
+          .notes-textarea { display: none !important; }
+          .notes-print { display: block !important; }
         }
         .print-only { display: none; }
+        .notes-print { display: none; }
       `}</style>
 
       <AppHeader title="원가계산기" />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden print-root">
 
         {/* 사이드바 */}
         <div className="w-44 shrink-0 border-r flex flex-col bg-muted/20 no-print">
@@ -645,7 +676,7 @@ export default function EstimatorPage() {
         </div>
 
         {/* 메인 */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden print-main">
 
           {/* 설정 패널 */}
           <div className="border-b px-4 py-3 bg-background shrink-0 space-y-3 no-print">
@@ -1113,9 +1144,15 @@ export default function EstimatorPage() {
 
           {/* 비고 */}
           <div className="border-t px-4 py-2 shrink-0">
+            {/* 인쇄용 비고 (화면에서는 숨김) */}
+            <div className="notes-print text-xs">
+              <span className="font-semibold">비고:</span>{' '}
+              <span className="whitespace-pre-wrap">{c.notes || ''}</span>
+            </div>
+            {/* 편집용 textarea (인쇄 시 숨김) */}
             <textarea value={c.notes || ''} onChange={e => updateField('notes', e.target.value)}
               placeholder="비고 / 메모" rows={2}
-              className="w-full text-xs border rounded px-2 py-1.5 resize-none text-muted-foreground focus:text-foreground" />
+              className="notes-textarea w-full text-xs border rounded px-2 py-1.5 resize-none text-muted-foreground focus:text-foreground" />
           </div>
         </div>
       </div>
