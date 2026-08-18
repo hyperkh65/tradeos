@@ -300,13 +300,15 @@ function ImportModal({
     : 0;
   // 수동으로 직접입력한 freightKrw가 있으면 우선, 없으면 자동계산
   const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
-  // 포워더 부대비용 타입
-  type FreightItem = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number };
-  // 부대비용 KRW 합계 (부가세 제외 — 과세가격 산입)
-  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.amtKrw || 0), 0);
+  // 포워더 부대비용 타입 (includedInCif: true=CIF 과세가격 산입, false=국내비용 제외)
+  type FreightItem = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number; includedInCif?: boolean };
+  // 과세가격 산입 부대비용만 합산 (기본값 true)
+  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.includedInCif !== false ? (h.amtKrw || 0) : 0), 0);
+  // 전체 부대비용 KRW 합계 (정산서용)
+  const freightHandlingTotalAll = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.amtKrw || 0), 0);
   // 부대비용 부가세 합계
   const freightHandlingVat = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.vat || 0), 0);
-  // 과세가격 포함용 운임: 운임KRW + 부대비용KRW (부가세 제외)
+  // 과세가격 포함용 운임: 운임KRW + CIF산입 부대비용KRW (부가세 제외)
   const totalFreightForCustoms = effectiveFreightKrw + freightHandlingTotal;
   const exRate = parseFloat(form.exchangeRate || '0');
   const itemsWithCalc = items.map(it => {
@@ -335,7 +337,8 @@ function ImportModal({
   const customsValueCalc = Math.round(invoiceKrw + totalFreightForCustoms + parseFloat(form.insuranceKrw || '0'));
 
   const dutyCalc = itemsHaveData ? totalItemDuty : Math.round(customsValueCalc * (parseFloat(form.dutyRate || '0') / 100));
-  const vatCalc  = itemsHaveData ? totalItemVat  : Math.round((customsValueCalc + dutyCalc) * 0.1);
+  // 수입부가세 = (CIF 과세가격 + 관세) × 10% (부가가치세법 제29조 제2항)
+  const vatCalc  = Math.round((customsValueCalc + dutyCalc) * 0.1);
 
   const inspectionFeeVal = parseFloat(form.inspectionFee || '0');
   const inspectionRefundVal = form.inspectionRefund !== '' ? parseFloat(form.inspectionRefund) : undefined;
@@ -880,7 +883,7 @@ function ImportModal({
                         <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700"
                           onClick={() => {
                             const defaultExRate = parseFloat(form.freightExchangeRate || form.exchangeRate || '1');
-                            setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', currency: 'KRW', amtCur: 0, exRate: defaultExRate, amtKrw: 0, vat: 0 }] }));
+                            setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', currency: 'KRW', amtCur: 0, exRate: defaultExRate, amtKrw: 0, vat: 0, includedInCif: true }] }));
                           }}>
                           + 항목추가
                         </button>
@@ -888,13 +891,14 @@ function ImportModal({
                     </div>
                     {(form.freightHandling || []).length > 0 && (
                       <div className="rounded border border-border overflow-hidden text-xs">
-                        <div className="grid bg-muted/50 font-medium text-muted-foreground text-[10px]" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
-                          {['항목명','통화','공급가(외화)','환율','공급가(KRW)','부가세(KRW)',''].map(h => <div key={h} className="px-1.5 py-1.5">{h}</div>)}
+                        <div className="grid bg-muted/50 font-medium text-muted-foreground text-[10px]" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
+                          {['항목명','통화','공급가(외화)','환율','공급가(KRW)','부가세(KRW)','CIF산입',''].map(h => <div key={h} className="px-1.5 py-1.5">{h}</div>)}
                         </div>
                         {(form.freightHandling || []).map((h: FreightItem, idx: number) => {
                           const autoKrw = h.currency === 'KRW' ? (h.amtCur || 0) : Math.round((h.amtCur || 0) * (h.exRate || 1));
+                          const inCif = h.includedInCif !== false;
                           return (
-                            <div key={idx} className="grid border-t border-border" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
+                            <div key={idx} className={`grid border-t border-border ${!inCif ? 'bg-orange-50/40' : ''}`} style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
                               <input className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.name} placeholder="항목명" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, name: e.target.value} : x) }))} />
@@ -926,17 +930,21 @@ function ImportModal({
                               <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.vat||''} placeholder="0" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, vat: Number(e.target.value)||0} : x) }))} />
+                              <div className="flex items-center justify-center border-r border-border" title={inCif ? 'CIF 과세가격에 포함 (수입항 이전 비용)' : '과세가격 제외 (수입항 이후 국내비용)'}>
+                                <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer" checked={inCif} disabled={!canEdit}
+                                  onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, includedInCif: e.target.checked} : x) }))} />
+                              </div>
                               {canEdit && <button type="button" className="flex items-center justify-center text-muted-foreground hover:text-red-500"
                                 onClick={() => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).filter((_: unknown, i: number) => i!==idx) }))}>
                                 <X className="w-3 h-3" /></button>}
                             </div>
                           );
                         })}
-                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
-                          <div className="px-1.5 py-1.5 col-span-4">소계</div>
-                          <div className="px-1.5 py-1.5">{freightHandlingTotal.toLocaleString()}원</div>
+                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
+                          <div className="px-1.5 py-1.5 col-span-4 text-muted-foreground">소계 (CIF산입: {freightHandlingTotal.toLocaleString()}원)</div>
+                          <div className="px-1.5 py-1.5">{freightHandlingTotalAll.toLocaleString()}원</div>
                           <div className="px-1.5 py-1.5 text-orange-600">{freightHandlingVat > 0 ? `VAT ${freightHandlingVat.toLocaleString()}` : '-'}</div>
-                          <div />
+                          <div /><div />
                         </div>
                       </div>
                     )}
@@ -1173,11 +1181,12 @@ function ImportModal({
                           : <span className="text-blue-500 ml-1 font-normal">자동 계산</span>}
                       </label>
                       <div className="flex gap-1">
-                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-2 text-sm flex items-center gap-1 font-medium text-blue-900 overflow-hidden">
-                          <span className="truncate text-xs">{totalItemVat > 0 ? totalItemVat.toLocaleString() + '원' : '-'}</span>
-                          {canEdit && totalItemVat > 0 && (
+                        <div className="flex-1 h-9 rounded-md border border-blue-200 bg-blue-50 px-2 text-sm flex items-center gap-1 font-medium text-blue-900 overflow-hidden"
+                          title={`(CIF 과세가격 ${customsValueCalc.toLocaleString()} + 관세 ${dutyCalc.toLocaleString()}) × 10%`}>
+                          <span className="truncate text-xs">{vatCalc > 0 ? vatCalc.toLocaleString() + '원' : '-'}</span>
+                          {canEdit && vatCalc > 0 && (
                             <button type="button" title="자동계산값 적용"
-                              onClick={() => setForm(f => ({ ...f, vat: String(totalItemVat) }))}
+                              onClick={() => setForm(f => ({ ...f, vat: String(vatCalc) }))}
                               className="ml-auto shrink-0 text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-1.5 py-0.5 rounded whitespace-nowrap">
                               ↓적용
                             </button>
