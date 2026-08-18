@@ -35,9 +35,10 @@ interface EstimatorCase {
   containerType: '20ft' | '40ft' | '40HQ';
   freightSeaUsd?: number;
   freightSea: number; freightInland: number; freightPort: number; freightMisc: number;
-  fxUsd: number;      // 구매·비용 환율
-  fxUsdSell: number;  // 판매·견적 환율
-  fxRmb: number;
+  fxUsd: number;      // 구매·비용 USD/KRW
+  fxUsdSell: number;  // 판매·견적 USD/KRW
+  fxRmb: number;      // 구매·비용 RMB/KRW
+  fxRmbSell: number;  // 판매·견적 RMB/KRW
   dutyRate: number;
   eprRate: number;
   simMode: 'standard' | 'reverse' | 'mixed';
@@ -69,6 +70,7 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
   const fxUsd = c.fxUsd || 1430;
   const fxUsdSell = c.fxUsdSell || fxUsd;
   const fxRmb = c.fxRmb || 195;
+  const fxRmbSell = c.fxRmbSell || fxRmb;
   const containerCbm = CONTAINER_CBM[c.containerType] || 56;
 
   const fobUsd = item.currency === 'CNY' ? item.fobPrice * (fxRmb / fxUsd) : item.fobPrice;
@@ -108,23 +110,35 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
 
   if (c.simMode === 'reverse' && item.targetMargin !== undefined) {
     const m = Math.min(Math.max(item.targetMargin, 0), 0.99);
-    sellingUsd = ddpUsd / (1 - m);
-    sellingKrw = sellingUsd * fxUsdSell;
-    sellingRmb = sellingUsd * fxUsd / fxRmb;
+    // 판매통화에 따라 역산
+    const sc = item.sellingCurrency || 'USD';
+    if (sc === 'CNY') {
+      sellingKrw = ddpKrw / (1 - m);
+      sellingRmb = sellingKrw / fxRmbSell;
+      sellingUsd = sellingKrw / fxUsdSell;
+    } else if (sc === 'KRW') {
+      sellingKrw = ddpKrw / (1 - m);
+      sellingUsd = sellingKrw / fxUsdSell;
+      sellingRmb = sellingKrw / fxRmbSell;
+    } else {
+      sellingUsd = ddpUsd / (1 - m);
+      sellingKrw = sellingUsd * fxUsdSell;
+      sellingRmb = sellingKrw / fxRmbSell;
+    }
   } else if (item.sellingPrice && item.sellingPrice > 0) {
     const sc = item.sellingCurrency || 'USD';
     if (sc === 'USD') {
       sellingUsd = item.sellingPrice;
       sellingKrw = sellingUsd * fxUsdSell;
-      sellingRmb = sellingUsd * fxUsd / fxRmb;
+      sellingRmb = sellingKrw / fxRmbSell;
     } else if (sc === 'CNY') {
       sellingRmb = item.sellingPrice;
-      sellingKrw = sellingRmb * fxRmb;
+      sellingKrw = sellingRmb * fxRmbSell;
       sellingUsd = sellingKrw / fxUsdSell;
     } else {
       sellingKrw = item.sellingPrice;
       sellingUsd = sellingKrw / fxUsdSell;
-      sellingRmb = sellingKrw / fxRmb;
+      sellingRmb = sellingKrw / fxRmbSell;
     }
   }
 
@@ -782,7 +796,13 @@ export default function EstimatorPage() {
                         className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
                       <span className="text-[10px] text-muted-foreground">원</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">RMB 판매가는 위 구매 RMB/KRW 적용</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
+                      <input type="number" step="1" value={c.fxRmbSell || ''}
+                        onChange={e => updateField('fxRmbSell', parseInt(e.target.value) || 195)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -812,6 +832,48 @@ export default function EstimatorPage() {
                       무게(g) 제품 행에 입력 → 자동 계산
                     </div>
                   </div>
+                </div>
+              </div>
+              {/* 판매가 일괄 적용 */}
+              <div>
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">판매가 일괄 적용</div>
+                <div className="text-[10px] text-muted-foreground mb-1.5">목표 마진율 선택 → 역산 모드로 전환</div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {[5,10,15,20,25,30,40,50].map(pct => (
+                    <button key={pct}
+                      onClick={() => {
+                        const m = pct / 100;
+                        setDraft(prev => prev ? {
+                          ...prev,
+                          simMode: 'reverse',
+                          items: prev.items.map(it => ({ ...it, targetMargin: m }))
+                        } : prev);
+                      }}
+                      className="px-2 py-0.5 text-[10px] border rounded hover:bg-primary hover:text-primary-foreground transition-colors">
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground">직접입력</span>
+                  <input type="number" min="1" max="99" step="1" placeholder="%" id="bulk-margin-input"
+                    className="h-6 border rounded text-[10px] px-1.5 w-14 text-right" />
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('bulk-margin-input') as HTMLInputElement;
+                      const pct = parseFloat(el?.value);
+                      if (!pct || pct <= 0 || pct >= 100) return;
+                      const m = pct / 100;
+                      setDraft(prev => prev ? {
+                        ...prev,
+                        simMode: 'reverse',
+                        items: prev.items.map(it => ({ ...it, targetMargin: m }))
+                      } : prev);
+                      el.value = '';
+                    }}
+                    className="h-6 px-2 text-[10px] bg-primary text-primary-foreground rounded hover:bg-primary/90">
+                    적용
+                  </button>
                 </div>
               </div>
             </div>
