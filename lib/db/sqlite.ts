@@ -670,6 +670,115 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN notion_synced_at TEXT`); } catch {}
   try { db.exec(`ALTER TABLE estimator_cases ADD COLUMN epr_obligation_rate REAL DEFAULT 0.20`); } catch {}
 
+  // 복식부기 회계 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS chart_of_accounts (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      normal_balance TEXT NOT NULL,
+      group_name TEXT,
+      description TEXT,
+      is_active INTEGER DEFAULT 1
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS journal_entries (
+      id TEXT PRIMARY KEY,
+      entry_no TEXT NOT NULL,
+      entry_date TEXT NOT NULL,
+      entry_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT DEFAULT 'draft',
+      created_by TEXT,
+      related_ref TEXT,
+      debit_total REAL DEFAULT 0,
+      credit_total REAL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS journal_lines (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL,
+      line_no INTEGER NOT NULL,
+      account_code TEXT NOT NULL,
+      account_name TEXT NOT NULL,
+      debit REAL DEFAULT 0,
+      credit REAL DEFAULT 0,
+      currency TEXT DEFAULT 'KRW',
+      fx_rate REAL DEFAULT 1,
+      memo TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 계정과목 기초 데이터 삽입
+  const acctCount = (db.prepare('SELECT COUNT(*) as n FROM chart_of_accounts').get() as {n:number}).n;
+  if (acctCount === 0) {
+    const insertAcct = db.prepare('INSERT INTO chart_of_accounts (id,code,name,type,normal_balance,group_name,description) VALUES (?,?,?,?,?,?,?)');
+    const accounts: string[][] = [
+      ['ac001','1010','현금','asset','debit','유동자산','현금 및 현금성 자산'],
+      ['ac002','1020','보통예금','asset','debit','유동자산','은행 보통예금 계좌'],
+      ['ac003','1030','외화예금','asset','debit','유동자산','외화 예금 계좌 (USD, CNY 등)'],
+      ['ac004','1040','외상매출금','asset','debit','유동자산','외상으로 판매한 금액 (매출채권)'],
+      ['ac005','1050','미수금','asset','debit','유동자산','아직 받지 못한 돈'],
+      ['ac006','1060','선급금','asset','debit','유동자산','미리 지급한 금액'],
+      ['ac007','1070','부가세대급금','asset','debit','유동자산','매입 시 납부한 부가세 (환급 예정)'],
+      ['ac008','1080','선급비용','asset','debit','유동자산','미리 지급한 비용 (보험료 등)'],
+      ['ac009','1090','재고자산','asset','debit','유동자산','판매용 상품/제품 재고'],
+      ['ac010','1310','토지','asset','debit','비유동자산','토지'],
+      ['ac011','1320','건물','asset','debit','비유동자산','건물 및 구조물'],
+      ['ac012','1330','차량운반구','asset','debit','비유동자산','업무용 차량'],
+      ['ac013','1340','비품','asset','debit','비유동자산','사무용 비품, 집기 등'],
+      ['ac014','1350','감가상각누계액','asset','credit','비유동자산','자산 가치 감소 누계 (차감)'],
+      ['ac015','2010','외상매입금','liability','credit','유동부채','외상으로 구입한 금액 (매입채무)'],
+      ['ac016','2020','미지급금','liability','credit','유동부채','아직 지급하지 않은 금액'],
+      ['ac017','2030','선수금','liability','credit','유동부채','미리 받은 대금'],
+      ['ac018','2040','예수금','liability','credit','유동부채','급여 공제액 (4대보험, 세금)'],
+      ['ac019','2050','부가세예수금','liability','credit','유동부채','매출 시 수령한 부가세'],
+      ['ac020','2060','미지급비용','liability','credit','유동부채','발생했지만 미지급 비용'],
+      ['ac021','2070','단기차입금','liability','credit','유동부채','1년 이내 상환 차입금'],
+      ['ac022','2210','장기차입금','liability','credit','비유동부채','1년 이상 차입금'],
+      ['ac023','3010','자본금','equity','credit','자본','출자한 자본금'],
+      ['ac024','3020','이익잉여금','equity','credit','자본','누적된 이익'],
+      ['ac025','4010','국내매출','revenue','credit','매출','국내 판매 수익'],
+      ['ac026','4020','수출매출','revenue','credit','매출','수출 판매 수익'],
+      ['ac027','4030','기타수익','revenue','credit','영업외수익','기타 잡수익'],
+      ['ac028','4040','이자수익','revenue','credit','영업외수익','예금/대여금 이자'],
+      ['ac029','4050','환차익','revenue','credit','영업외수익','외환 환율 변동 이익'],
+      ['ac030','5010','매출원가','expense','debit','매출원가','판매 상품의 원가'],
+      ['ac031','5110','급여','expense','debit','판매관리비','임직원 급여'],
+      ['ac032','5120','복리후생비','expense','debit','판매관리비','식대, 경조사비 등'],
+      ['ac033','5130','여비교통비','expense','debit','판매관리비','출장비, 교통비'],
+      ['ac034','5140','접대비','expense','debit','판매관리비','거래처 접대 비용'],
+      ['ac035','5150','통신비','expense','debit','판매관리비','전화, 인터넷 요금'],
+      ['ac036','5160','수도광열비','expense','debit','판매관리비','수도, 전기, 가스'],
+      ['ac037','5170','임차료','expense','debit','판매관리비','사무실/창고 임대료'],
+      ['ac038','5180','보험료','expense','debit','판매관리비','각종 보험료'],
+      ['ac039','5190','소모품비','expense','debit','판매관리비','소모성 자재'],
+      ['ac040','5200','광고선전비','expense','debit','판매관리비','광고, 마케팅 비용'],
+      ['ac041','5210','운반비','expense','debit','판매관리비','국내 운송비'],
+      ['ac042','5220','해상운임','expense','debit','수입원가','수입 해상 운임'],
+      ['ac043','5230','관세','expense','debit','수입원가','수입 관세'],
+      ['ac044','5240','통관수수료','expense','debit','수입원가','관세사 통관 수수료'],
+      ['ac045','5250','검품비','expense','debit','수입원가','검품 비용'],
+      ['ac046','5260','창고비','expense','debit','수입원가','보관/창고 비용'],
+      ['ac047','5270','수수료','expense','debit','판매관리비','각종 수수료'],
+      ['ac048','5280','감가상각비','expense','debit','판매관리비','자산 감가상각'],
+      ['ac049','5290','잡비','expense','debit','판매관리비','기타 잡비'],
+      ['ac050','5300','이자비용','expense','debit','영업외비용','차입금 이자'],
+      ['ac051','5310','환차손','expense','debit','영업외비용','외환 환율 변동 손실'],
+      ['ac052','5320','세금과공과','expense','debit','판매관리비','세금, 공과금'],
+    ];
+    const insertMany = db.transaction(() => { accounts.forEach(a => insertAcct.run(...a)); });
+    insertMany();
+  }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
