@@ -553,6 +553,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN freight_vat REAL DEFAULT 0`,
     // cost_records 확장
     `ALTER TABLE expenses ADD COLUMN cost_record_id TEXT`,
+    // 수익분석: 두 환율 컬럼 추가
+    `ALTER TABLE profit_analyses ADD COLUMN customs_ex_rate REAL DEFAULT 0`,
+    `ALTER TABLE profit_analyses ADD COLUMN wire_ex_rate REAL DEFAULT 0`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

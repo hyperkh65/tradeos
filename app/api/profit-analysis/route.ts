@@ -14,6 +14,8 @@ function rowToPA(row: Record<string, unknown>) {
     saleAmount: (row.sale_amount as number) || 0,
     saleCurrency: (row.sale_currency as string) || 'KRW',
     exchangeRate: (row.exchange_rate as number) || 1,
+    customsExRate: (row.customs_ex_rate as number) || 0,
+    wireExRate: (row.wire_ex_rate as number) || 0,
     productItems: (() => { try { return JSON.parse((row.product_items_json as string) || '[]'); } catch { return []; } })(),
     freightCost: (row.freight_cost as number) || 0,
     inlandFreight: (row.inland_freight as number) || 0,
@@ -56,10 +58,10 @@ export async function POST(req: NextRequest) {
 
   db.prepare(`INSERT INTO profit_analyses
     (id,business_id,title,analysis_date,sale_id,sale_business_id,import_id,import_business_id,
-     sale_amount,sale_currency,exchange_rate,product_items_json,
+     sale_amount,sale_currency,exchange_rate,customs_ex_rate,wire_ex_rate,product_items_json,
      freight_cost,inland_freight,broker_fee,duty,vat_import,wire_fee,extra_costs_json,
      memo,status,history_json,created_by,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, bizId,
       body.title || '새 수익분석',
@@ -69,6 +71,8 @@ export async function POST(req: NextRequest) {
       body.saleAmount || 0,
       body.saleCurrency || 'KRW',
       body.exchangeRate || 1,
+      body.customsExRate || 0,
+      body.wireExRate || 0,
       JSON.stringify(body.productItems || []),
       body.freightCost || 0,
       body.inlandFreight || 0,
