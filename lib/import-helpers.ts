@@ -37,11 +37,6 @@ export function syncImportExpenses(
   importBusinessId: string,
   fields: ImportExpenseFields,
 ) {
-  // 기존 expenses 삭제
-  db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
-  // 기존 cost_records (import 연결) 삭제
-  db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(importId);
-
   const entries: { cat: string; amt: number | undefined }[] = [
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
@@ -57,39 +52,44 @@ export function syncImportExpenses(
   const ts = now();
   const incurredDate = fields.incurredDate || ts.slice(0, 10);
 
-  for (const { cat, amt } of entries) {
-    if (!amt || amt <= 0) continue;
+  const sync = db.transaction(() => {
+    // 기존 expenses/cost_records 삭제 후 재삽입 (atomic)
+    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
+    db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(importId);
 
-    // expenses 테이블 (기존 호환)
-    const expId = newId();
-    const expBizId = nextBizId('EXP');
-    db.prepare(`INSERT INTO expenses
-      (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
+    for (const { cat, amt } of entries) {
+      if (!amt || amt <= 0) continue;
 
-    // cost_records 테이블 (새 비용 원장)
-    const crId = newId();
-    const crBizId = nextBizId('CST');
-    const costType = COST_TYPE_MAP[cat] || 'other';
-    db.prepare(`INSERT INTO cost_records
-      (id,business_id,cost_type,description,
-       import_id,import_business_id,shipment_id,shipment_business_id,
-       cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
-       incurred_date,disposition,bill_status,
-       linked_expense_id,is_auto_allocated,
-       created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(
-        crId, crBizId, costType, `${importBusinessId} ${cat}`,
-        importId, importBusinessId,
-        fields.shipmentId ?? null, fields.shipmentBusinessId ?? null,
-        amt, 'KRW', 1, amt,
-        incurredDate, 'pending', 'unbilled',
-        expId, 1,
-        fields.createdBy || 'unknown', ts, ts,
-      );
-  }
+      const expId = newId();
+      const expBizId = nextBizId('EXP');
+      db.prepare(`INSERT INTO expenses
+        (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
+
+      const crId = newId();
+      const crBizId = nextBizId('CST');
+      const costType = COST_TYPE_MAP[cat] || 'other';
+      db.prepare(`INSERT INTO cost_records
+        (id,business_id,cost_type,description,
+         import_id,import_business_id,shipment_id,shipment_business_id,
+         cost_amount,cost_currency,fx_rate_at_cost,cost_amount_krw,
+         incurred_date,disposition,bill_status,
+         linked_expense_id,is_auto_allocated,
+         created_by,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(
+          crId, crBizId, costType, `${importBusinessId} ${cat}`,
+          importId, importBusinessId,
+          fields.shipmentId ?? null, fields.shipmentBusinessId ?? null,
+          amt, 'KRW', 1, amt,
+          incurredDate, 'pending', 'unbilled',
+          expId, 1,
+          fields.createdBy || 'unknown', ts, ts,
+        );
+    }
+  });
+  sync();
 }
 
 export function updateLinkedShipmentStatus(db: Db, shipmentId: string | undefined, importStatus: string) {
