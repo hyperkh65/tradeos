@@ -100,8 +100,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ data: dbToImport(updated) });
   } catch (e) {
-    console.error('[imports PUT]', e);
-    return NextResponse.json({ error: '수정 실패' }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[imports PUT]', msg);
+    return NextResponse.json({ error: `수정 실패: ${msg}` }, { status: 500 });
   }
 }
 
