@@ -41,6 +41,8 @@ interface EstimatorCase {
   fxRmbSell: number;  // 판매·견적 RMB/KRW
   dutyRate: number;
   eprRate: number;
+  portFrom?: string;
+  portTo?: string;
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
@@ -687,6 +689,9 @@ export default function EstimatorPage() {
                 {c.freightSeaUsd
                   ? <span>해상운임: ${c.freightSeaUsd.toLocaleString()} (≈{Math.round(c.freightSeaUsd * c.fxUsd).toLocaleString()}원)</span>
                   : c.freightSea > 0 ? <span>해상운임: {c.freightSea.toLocaleString()}원</span> : null}
+                {(c.portFrom || c.portTo) && (
+                  <span style={{ fontWeight: 600 }}>운송구간: {c.portFrom || '?'} → {c.portTo || '?'}</span>
+                )}
                 {c.freightInland > 0 && <span>내륙운송: {c.freightInland.toLocaleString()}원</span>}
                 {c.freightPort > 0 && <span>포트비: {c.freightPort.toLocaleString()}원</span>}
                 {c.freightMisc > 0 && <span>기타비용: {c.freightMisc.toLocaleString()}원</span>}
@@ -769,6 +774,25 @@ export default function EstimatorPage() {
             {c.notes && (
               <div style={{ marginTop: '10px', borderTop: '1px solid #ccc', paddingTop: '6px', fontSize: '9px' }}>
                 <strong>비고:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{c.notes}</span>
+              </div>
+            )}
+
+            {/* 첨부파일 목록 */}
+            {attachments.length > 0 && (
+              <div style={{ marginTop: '8px', borderTop: '1px solid #ccc', paddingTop: '6px', fontSize: '9px' }}>
+                <strong>첨부파일 ({attachments.length}개):</strong>
+                <div style={{ marginTop: '3px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {attachments.map((att, i) => (
+                    <span key={att.id} style={{ background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '3px', padding: '1px 6px' }}>
+                      {i + 1}. {att.name}
+                      <span style={{ color: '#888', marginLeft: '4px' }}>
+                        ({att.size < 1024 * 1024
+                          ? (att.size / 1024).toFixed(0) + 'KB'
+                          : (att.size / 1024 / 1024).toFixed(1) + 'MB'})
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -878,6 +902,21 @@ export default function EstimatorPage() {
                   ))}
                   <div className="text-[10px] text-muted-foreground border-t pt-1">
                     합계: <strong className="text-foreground">{totalFreightKrw.toLocaleString()}원</strong>
+                  </div>
+                  {/* 출발/도착 항구 */}
+                  <div className="border-t pt-1.5 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-10">출발항</span>
+                      <input type="text" value={c.portFrom || ''} placeholder="예) 상해항"
+                        onChange={e => updateField('portFrom', e.target.value || undefined)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-28" />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground w-10">도착항</span>
+                      <input type="text" value={c.portTo || ''} placeholder="예) 부산항"
+                        onChange={e => updateField('portTo', e.target.value || undefined)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-28" />
+                    </div>
                   </div>
                 </div>
               </div>

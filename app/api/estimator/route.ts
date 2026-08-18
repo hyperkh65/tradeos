@@ -12,6 +12,8 @@ export interface EstimatorCase {
   fxRmbSell: number;  // 판매·견적 RMB/KRW
   dutyRate: number;
   eprRate: number;
+  portFrom?: string;
+  portTo?: string;
   simMode: 'standard' | 'reverse' | 'mixed';
   items: EstimatorItem[];
   notes?: string;
@@ -53,6 +55,8 @@ function rowToCase(row: Record<string, unknown>): EstimatorCase {
     fxUsdSell: (row.fx_usd_sell as number) || fxUsd,
     fxRmb: (row.fx_rmb as number) || 195,
     fxRmbSell: (row.fx_rmb_sell as number) || ((row.fx_rmb as number) || 195),
+    portFrom: (row.port_from as string) || undefined,
+    portTo: (row.port_to as string) || undefined,
     dutyRate: (row.duty_rate as number) ?? 0.024,
     eprRate: (row.epr_rate as number) ?? 0,
     simMode: (row.sim_mode as EstimatorCase['simMode']) || 'standard',
@@ -74,12 +78,13 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   const ts = now();
-  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,fx_rmb_sell,duty_rate,epr_rate,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+  db.prepare(`INSERT INTO estimator_cases (id,name,container_type,freight_sea_usd,freight_sea,freight_inland,freight_port,freight_misc,fx_usd,fx_usd_sell,fx_rmb,fx_rmb_sell,duty_rate,epr_rate,port_from,port_to,sim_mode,items_json,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, body.name || '새 케이스', body.containerType || '40ft',
       body.freightSeaUsd ?? null, body.freightSea ?? 930000,
       body.freightInland ?? 250000, body.freightPort ?? 280000, body.freightMisc ?? 0,
       body.fxUsd ?? 1430, body.fxUsdSell ?? 1380, body.fxRmb ?? 195, body.fxRmbSell ?? 195,
       body.dutyRate ?? 0.024, body.eprRate ?? 0,
+      body.portFrom ?? null, body.portTo ?? null,
       body.simMode || 'standard', JSON.stringify(body.items || []), body.notes ?? null, ts, ts);
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;
   return NextResponse.json({ data: rowToCase(row) }, { status: 201 });

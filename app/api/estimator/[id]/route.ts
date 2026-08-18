@@ -12,6 +12,8 @@ function toCase(row: Record<string, unknown>) {
     fxUsd, fxUsdSell: Number(row.fx_usd_sell) || fxUsd,
     fxRmb: Number(row.fx_rmb) || 195,
     fxRmbSell: Number(row.fx_rmb_sell) || Number(row.fx_rmb) || 195,
+    portFrom: (row.port_from as string) || undefined,
+    portTo: (row.port_to as string) || undefined,
     dutyRate: row.duty_rate ?? 0.024, eprRate: row.epr_rate ?? 0,
     certCosts: (() => { try { return JSON.parse((row.cert_costs_json as string) || '[]'); } catch { return []; } })(),
     simMode: row.sim_mode || 'standard',
@@ -36,11 +38,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const ts = now();
   db.prepare(`UPDATE estimator_cases SET
     name=?, container_type=?, freight_sea_usd=?, freight_sea=?, freight_inland=?, freight_port=?, freight_misc=?,
-    fx_usd=?, fx_usd_sell=?, fx_rmb=?, fx_rmb_sell=?, duty_rate=?, epr_rate=?, sim_mode=?, items_json=?, notes=?, updated_at=?
+    fx_usd=?, fx_usd_sell=?, fx_rmb=?, fx_rmb_sell=?, duty_rate=?, epr_rate=?, port_from=?, port_to=?, sim_mode=?, items_json=?, notes=?, updated_at=?
     WHERE id=?`).run(
     body.name, body.containerType,
     body.freightSeaUsd ?? null, body.freightSea, body.freightInland, body.freightPort, body.freightMisc,
     body.fxUsd, body.fxUsdSell ?? body.fxUsd, body.fxRmb, body.fxRmbSell ?? body.fxRmb, body.dutyRate, body.eprRate ?? 0,
+    body.portFrom ?? null, body.portTo ?? null,
     body.simMode, JSON.stringify(body.items || []), body.notes ?? null, ts, id
   );
   const row = db.prepare('SELECT * FROM estimator_cases WHERE id=?').get(id) as Record<string, unknown>;
