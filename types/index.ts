@@ -299,6 +299,7 @@ export interface SettlementItem {
   calculated: number;
   adjusted?: number;
   reason?: string;
+  costType?: 'inventory' | 'vat' | 'expense' | 'refund';
 }
 
 export interface SettlementHistoryEntry {
