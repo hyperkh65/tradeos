@@ -846,12 +846,16 @@ function CostModal({ record, onClose, onSave }: {
       isAutoAllocated: true,
     };
 
+    // 처리방향 선택이 필요한 유형은 pending으로 생성 (목록에서 내부/국내/외화/판관 선택 가능)
+    const PENDING_TYPES = new Set(['ocean_freight', 'inland_freight', 'other']);
+
     for (const cost of toCreate) {
       await fetch('/api/cost-records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...baseBody,
+          disposition: PENDING_TYPES.has(cost.type) ? 'pending' : 'internal',
           costType: cost.type,
           description: COST_TYPE_LABELS[cost.type],
           costAmount: cost.amount,
@@ -2033,7 +2037,12 @@ export default function CostsPage() {
                               <button onClick={() => handleQuickDisposition(r.id, 'selling_admin')} className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">판관</button>
                             </div>
                           ) : (
-                            <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', disp?.color)}>{disp?.label}</span>
+                            <span
+                              className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium cursor-pointer hover:opacity-70', disp?.color)}
+                              title="클릭하여 처리방향 변경"
+                              onClick={e => { e.stopPropagation(); handleQuickDisposition(r.id, 'pending'); }}>
+                              {disp?.label}
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
