@@ -547,6 +547,10 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN settlement_history_json TEXT DEFAULT '[]'`,
     `ALTER TABLE imports ADD COLUMN closed_at TEXT`,
     `ALTER TABLE imports ADD COLUMN closed_by TEXT`,
+    // 운임 통화 + 포워더 부대비용
+    `ALTER TABLE imports ADD COLUMN freight_currency TEXT DEFAULT 'USD'`,
+    `ALTER TABLE imports ADD COLUMN freight_handling_json TEXT DEFAULT '[]'`,
+    `ALTER TABLE imports ADD COLUMN freight_vat REAL DEFAULT 0`,
     // cost_records 확장
     `ALTER TABLE expenses ADD COLUMN cost_record_id TEXT`,
   ];

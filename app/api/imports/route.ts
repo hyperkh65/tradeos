@@ -20,8 +20,11 @@ export function dbToImport(row: Record<string, unknown>): Import {
     invoiceCurrency: (row.invoice_currency as string) || 'USD',
     exchangeRate: (row.exchange_rate as number) || undefined,
     freightUsd: (row.freight_usd as number) || undefined,
+    freightCurrency: (row.freight_currency as string) || 'USD',
     freightExchangeRate: (row.freight_exchange_rate as number) || undefined,
     freightKrw: (row.freight_krw as number) || undefined,
+    freightHandling: (() => { try { return JSON.parse((row.freight_handling_json as string) || '[]'); } catch { return []; } })(),
+    freightVat: (row.freight_vat as number) || undefined,
     insuranceKrw: (row.insurance_krw as number) || undefined,
     customsValue: (row.customs_value as number) || undefined,
     inspectionFee: (row.inspection_fee as number) || undefined,
@@ -81,12 +84,12 @@ export async function POST(req: NextRequest) {
     db.prepare(`INSERT INTO imports
       (id,business_id,shipment_id,shipment_business_id,broker_name,declaration_no,
        arrival_date,declaration_date,tax_payment_date,release_date,
-       invoice_value,invoice_currency,exchange_rate,freight_usd,freight_exchange_rate,freight_krw,insurance_krw,customs_value,
+       invoice_value,invoice_currency,exchange_rate,freight_usd,freight_currency,freight_exchange_rate,freight_krw,freight_handling_json,freight_vat,insurance_krw,customs_value,
        inspection_fee,inspection_refund,warehouse_fee,detention_fee,demurrage,inland_freight,inland_freight_region,inland_carrier_id,inland_carrier_name,custom_costs_json,
        hs_code,duty_rate,duty,vat,broker_fee,items_json,
        fta_applicable,fta_type,co_status,co_no,inspection_type,
        refund_amount,refund_status,bl_no,documents_json,remark,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 
       .run(
         id, bizId,
@@ -102,8 +105,11 @@ export async function POST(req: NextRequest) {
         body.invoiceCurrency || 'USD',
         body.exchangeRate ?? null,
         body.freightUsd ?? null,
+        body.freightCurrency || 'USD',
         body.freightExchangeRate ?? null,
         body.freightKrw ?? null,
+        JSON.stringify(body.freightHandling || []),
+        body.freightVat ?? null,
         body.insuranceKrw ?? null,
         body.customsValue ?? null,
         body.inspectionFee ?? null,

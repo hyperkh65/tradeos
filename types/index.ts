@@ -337,8 +337,11 @@ export interface Import {
   invoiceCurrency?: string;
   exchangeRate?: number;
   freightUsd?: number;
+  freightCurrency?: string;
   freightExchangeRate?: number;
   freightKrw?: number;
+  freightHandling?: { name: string; amount: number }[];
+  freightVat?: number;
   insuranceKrw?: number;
   customsValue?: number;
   inspectionFee?: number;

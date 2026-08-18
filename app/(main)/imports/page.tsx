@@ -177,8 +177,11 @@ function ImportModal({
     invoiceCurrency: item?.invoiceCurrency || 'USD',
     exchangeRate: item?.exchangeRate?.toString() || '',
     freightUsd: item?.freightUsd?.toString() || '',
+    freightCurrency: item?.freightCurrency || 'USD',
     freightExchangeRate: item?.freightExchangeRate?.toString() || '',
     freightKrw: item?.freightKrw?.toString() || '',
+    freightHandling: item?.freightHandling || [],
+    freightVat: item?.freightVat?.toString() || '',
     insuranceKrw: item?.insuranceKrw?.toString() || '',
     inspectionFee: item?.inspectionFee?.toString() || '',
     inspectionRefund: item?.inspectionRefund !== undefined ? item.inspectionRefund.toString() : '',
@@ -290,8 +293,17 @@ function ImportModal({
 
   // 계산값
   const freightExRate = parseFloat(form.freightExchangeRate || form.exchangeRate || '0');
-  const freightKrwCalc = form.freightUsd ? Math.round(parseFloat(form.freightUsd) * freightExRate) : 0;
-  const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : (freightKrwCalc || 0);
+  const freightAmt = parseFloat(form.freightUsd || '0');
+  // KRW 통화면 환율 불필요, 그 외엔 환율 적용
+  const freightKrwCalc = freightAmt > 0
+    ? (form.freightCurrency === 'KRW' ? Math.round(freightAmt) : (freightExRate > 0 ? Math.round(freightAmt * freightExRate) : 0))
+    : 0;
+  // 수동으로 직접입력한 freightKrw가 있으면 우선, 없으면 자동계산
+  const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
+  // 포워더 부대비용 합계 (핸들링차지 등)
+  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: { name: string; amount: number }) => s + (h.amount || 0), 0);
+  // 과세가격 포함용 운임: 운임KRW + 부대비용 (부가세 제외)
+  const totalFreightForCustoms = effectiveFreightKrw + freightHandlingTotal;
   const exRate = parseFloat(form.exchangeRate || '0');
   const itemsWithCalc = items.map(it => {
     const cvManual = parseFloat(it.customsValueStr || '0');
@@ -316,7 +328,7 @@ function ImportModal({
   const invoiceKrw = itemsHaveData
     ? totalItemCvKrw
     : parseFloat(form.invoiceValue || '0') * exRate;
-  const customsValueCalc = Math.round(invoiceKrw + effectiveFreightKrw + parseFloat(form.insuranceKrw || '0'));
+  const customsValueCalc = Math.round(invoiceKrw + totalFreightForCustoms + parseFloat(form.insuranceKrw || '0'));
 
   const dutyCalc = itemsHaveData ? totalItemDuty : Math.round(customsValueCalc * (parseFloat(form.dutyRate || '0') / 100));
   const vatCalc  = itemsHaveData ? totalItemVat  : Math.round((customsValueCalc + dutyCalc) * 0.1);
@@ -436,8 +448,11 @@ function ImportModal({
         invoiceValue: itemsHaveData ? totalItemCv : (form.invoiceValue ? Number(form.invoiceValue) : undefined),
         exchangeRate: form.exchangeRate ? Number(form.exchangeRate) : undefined,
         freightUsd: form.freightUsd ? Number(form.freightUsd) : undefined,
+        freightCurrency: form.freightCurrency || 'USD',
         freightExchangeRate: form.freightExchangeRate ? Number(form.freightExchangeRate) : undefined,
         freightKrw: form.freightKrw ? Number(form.freightKrw) : (freightKrwCalc || undefined),
+        freightHandling: form.freightHandling || [],
+        freightVat: form.freightVat ? Number(form.freightVat) : undefined,
         insuranceKrw: form.insuranceKrw ? Number(form.insuranceKrw) : undefined,
         customsValue: customsValueCalc || undefined,  // 항상 KRW CIF 값
         dutyRate: form.dutyRate ? Number(form.dutyRate) : undefined,
@@ -805,20 +820,90 @@ function ImportModal({
 
                 {/* 운임 */}
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">③ 운임</div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">③ 운임 (포워더 지급)</div>
                   {linkedShipment?.freightCost && (
-                    <div className="text-xs text-blue-600">
+                    <div className="text-xs text-blue-600 flex items-center gap-2">
                       선적 운임: {linkedShipment.freightCurrency||'USD'} {linkedShipment.freightCost.toLocaleString()}
-                      {linkedShipment.freightCurrency === 'USD' && <button type="button" className="ml-2 underline hover:text-blue-800" onClick={() => setForm(f => ({ ...f, freightUsd: String(linkedShipment.freightCost) }))}>적용</button>}
+                      <button type="button" className="underline hover:text-blue-800" onClick={() => setForm(f => ({ ...f, freightUsd: String(linkedShipment.freightCost), freightCurrency: linkedShipment.freightCurrency || 'USD', freightKrw: '' }))}>적용</button>
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div><label className={labelCls}>운임 (USD)</label><Input type="number" value={form.freightUsd} onChange={e => setForm(f => ({ ...f, freightUsd: e.target.value }))} placeholder="1000" disabled={!canEdit} /></div>
-                    <div><label className={labelCls}>운임환율</label><Input type="number" value={form.freightExchangeRate} onChange={e => setForm(f => ({ ...f, freightExchangeRate: e.target.value }))} placeholder={form.exchangeRate || '1380'} disabled={!canEdit} /></div>
-                    <div><label className={labelCls}>운임 KRW (자동)</label><Input type="number" value={form.freightKrw || (freightKrwCalc > 0 ? String(freightKrwCalc) : '')} readOnly className="bg-muted" /></div>
+                  {/* 운임 금액 + 통화 + 환율 + KRW */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <label className={labelCls}>운임 금액</label>
+                      <Input type="number" value={form.freightUsd}
+                        onChange={e => setForm(f => ({ ...f, freightUsd: e.target.value, freightKrw: '' }))}
+                        placeholder="1000" disabled={!canEdit} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>통화</label>
+                      <select value={form.freightCurrency || 'USD'}
+                        onChange={e => setForm(f => ({ ...f, freightCurrency: e.target.value, freightKrw: '' }))}
+                        className={inputCls} disabled={!canEdit}>
+                        {['USD','CNY','EUR','JPY','KRW'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>{form.freightCurrency === 'KRW' ? '환율 (불필요)' : `환율 (원/${form.freightCurrency || 'USD'})`}</label>
+                      <Input type="number" value={form.freightExchangeRate}
+                        onChange={e => setForm(f => ({ ...f, freightExchangeRate: e.target.value, freightKrw: '' }))}
+                        placeholder={form.exchangeRate || '1380'}
+                        disabled={!canEdit || form.freightCurrency === 'KRW'} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>운임 KRW</label>
+                      <Input type="number"
+                        value={form.freightKrw || (freightKrwCalc > 0 ? String(freightKrwCalc) : '')}
+                        onChange={e => setForm(f => ({ ...f, freightKrw: e.target.value }))}
+                        placeholder={freightKrwCalc > 0 ? String(freightKrwCalc) : '자동계산'}
+                        disabled={!canEdit}
+                        className={!form.freightKrw && freightKrwCalc > 0 ? 'bg-blue-50 text-blue-800' : ''} />
+                    </div>
                   </div>
+                  {/* 부가세 */}
                   <div className="grid grid-cols-2 gap-2">
-                    <div><label className={labelCls}>보험료 (원)</label><Input type="number" value={form.insuranceKrw} onChange={e => setForm(f => ({ ...f, insuranceKrw: e.target.value }))} placeholder="0" disabled={!canEdit} /></div>
+                    <div>
+                      <label className={labelCls}>운임 부가세 (원) — 포워더 청구 VAT</label>
+                      <Input type="number" value={form.freightVat}
+                        onChange={e => setForm(f => ({ ...f, freightVat: e.target.value }))}
+                        placeholder="0" disabled={!canEdit} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>보험료 (원)</label>
+                      <Input type="number" value={form.insuranceKrw} onChange={e => setForm(f => ({ ...f, insuranceKrw: e.target.value }))} placeholder="0" disabled={!canEdit} />
+                    </div>
+                  </div>
+                  {/* 포워더 부대비용 (핸들링차지, THC 등) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className={labelCls}>포워더 부대비용 (핸들링차지·THC·D/O 등)</label>
+                      {canEdit && (
+                        <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                          onClick={() => setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', amount: 0 }] }))}>
+                          + 항목추가
+                        </button>
+                      )}
+                    </div>
+                    {(form.freightHandling || []).map((h: { name: string; amount: number }, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input className="h-7 text-xs flex-1" value={h.name} placeholder="항목명 (예: H/C, THC, D/O Charge)"
+                          disabled={!canEdit}
+                          onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).map((x: { name: string; amount: number }, i: number) => i === idx ? { ...x, name: e.target.value } : x) }))} />
+                        <Input type="number" className="h-7 text-xs w-32" value={h.amount || ''} placeholder="0 (원)"
+                          disabled={!canEdit}
+                          onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).map((x: { name: string; amount: number }, i: number) => i === idx ? { ...x, amount: Number(e.target.value) || 0 } : x) }))} />
+                        <span className="text-xs text-muted-foreground shrink-0">원</span>
+                        {canEdit && <button type="button" className="text-muted-foreground hover:text-red-500"
+                          onClick={() => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).filter((_: unknown, i: number) => i !== idx) }))}>
+                          <X className="w-3.5 h-3.5" /></button>}
+                      </div>
+                    ))}
+                    {(form.freightHandling || []).length > 0 && (
+                      <div className="text-xs text-muted-foreground flex justify-between px-1">
+                        <span>부대비용 소계</span>
+                        <span className="font-medium">{freightHandlingTotal.toLocaleString()}원</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -831,7 +916,8 @@ function ImportModal({
                         ? <div>품목합계: {totalItemCv.toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {totalItemCvKrw.toLocaleString()}원</div>
                         : <div>인보이스: {parseFloat(form.invoiceValue||'0').toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {Math.round(invoiceKrw).toLocaleString()}원</div>
                       }
-                      {effectiveFreightKrw > 0 && <div>운임: {effectiveFreightKrw.toLocaleString()}원</div>}
+                      {effectiveFreightKrw > 0 && <div>운임: {effectiveFreightKrw.toLocaleString()}원{freightHandlingTotal > 0 ? ` + 부대비용 ${freightHandlingTotal.toLocaleString()}원` : ''}</div>}
+                      {Number(form.freightVat || 0) > 0 && <div className="text-blue-500">└ 운임 부가세 (공제 별도): {Number(form.freightVat).toLocaleString()}원</div>}
                       {parseFloat(form.insuranceKrw||'0') > 0 && <div>보험료: {parseFloat(form.insuranceKrw).toLocaleString()}원</div>}
                     </div>
                     <div className="text-blue-900 font-bold text-sm border-t border-blue-200 pt-1">과세가격 합계 = {customsValueCalc.toLocaleString()}원</div>
