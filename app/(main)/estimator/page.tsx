@@ -684,7 +684,12 @@ export default function EstimatorPage() {
                 <span>판매환율: USD {c.fxUsdSell}원 / RMB {c.fxRmbSell}원</span>
                 <span>기본관세율: {(c.dutyRate * 100).toFixed(1)}%</span>
                 {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg</span>}
-                {c.freightSeaUsd && <span>해상운임: ${c.freightSeaUsd.toLocaleString()}</span>}
+                {c.freightSeaUsd
+                  ? <span>해상운임: ${c.freightSeaUsd.toLocaleString()} (≈{Math.round(c.freightSeaUsd * c.fxUsd).toLocaleString()}원)</span>
+                  : c.freightSea > 0 ? <span>해상운임: {c.freightSea.toLocaleString()}원</span> : null}
+                {c.freightInland > 0 && <span>내륙운송: {c.freightInland.toLocaleString()}원</span>}
+                {c.freightPort > 0 && <span>포트비: {c.freightPort.toLocaleString()}원</span>}
+                {c.freightMisc > 0 && <span>기타비용: {c.freightMisc.toLocaleString()}원</span>}
               </div>
             </div>
 
