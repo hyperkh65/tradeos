@@ -616,51 +616,154 @@ export default function EstimatorPage() {
     <div className="flex flex-col h-full">
       <style>{`
         @media print {
-          @page { size: A4 landscape; margin: 6mm; }
-          body, html { background: white !important; height: auto !important; overflow: visible !important; }
+          @page { size: A4 landscape; margin: 8mm; }
+          body, html { background: white !important; }
+
+          /* 화면 UI 전체 숨김 */
           .no-print { display: none !important; }
           .print-only { display: block !important; }
+          .screen-only { display: none !important; }
 
-          /* 레이아웃 잠금 해제 */
-          .print-root,
-          .print-root > * {
+          /* 인쇄 전용 레포트만 표시 */
+          .print-report {
             display: block !important;
-            overflow: visible !important;
-            height: auto !important;
-            max-height: none !important;
-            flex: none !important;
+            position: fixed; top: 0; left: 0; width: 100%; height: auto;
+            background: white; z-index: 9999;
           }
-          .print-main {
-            display: block !important;
-            overflow: visible !important;
-            height: auto !important;
-            max-height: none !important;
+          .print-report table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 7.5px;
+            table-layout: auto;
           }
+          .print-report th, .print-report td {
+            border: 1px solid #bbb;
+            padding: 2px 4px;
+            white-space: nowrap;
+          }
+          .print-report thead tr {
+            background: #f0f0f0 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-report tr { page-break-inside: avoid; }
 
-          /* 테이블 축소해서 가로 맞춤 */
-          .print-table-wrap {
-            overflow: visible !important;
-            width: 100% !important;
-          }
-          table {
-            font-size: 7.5px !important;
-            width: 100% !important;
-            border-collapse: collapse !important;
-            page-break-inside: auto !important;
-          }
-          th, td { padding: 1px 3px !important; }
-          tr { page-break-inside: avoid !important; }
-
-          /* 비고 textarea → 텍스트로 */
+          /* 비고 textarea 숨김 */
           .notes-textarea { display: none !important; }
           .notes-print { display: block !important; }
         }
         .print-only { display: none; }
         .notes-print { display: none; }
+        .print-report { display: none; }
       `}</style>
 
+      {/* ───── 인쇄 전용 레포트 ───── */}
+      {c && (() => {
+        const today2 = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+        const thStyle: React.CSSProperties = { background: '#f0f0f0', fontWeight: 600, textAlign: 'center' };
+        const tdR: React.CSSProperties = { textAlign: 'right' };
+        const tdC: React.CSSProperties = { textAlign: 'center' };
+        return (
+          <div className="print-report" style={{ padding: '4mm', fontFamily: 'sans-serif', fontSize: '8px' }}>
+            {/* 레포트 헤더 */}
+            <div style={{ borderBottom: '2px solid #333', paddingBottom: '6px', marginBottom: '8px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold' }}>{c.name} — 원가계산서</div>
+              <div style={{ fontSize: '9px', marginTop: '4px', display: 'flex', gap: '16px', flexWrap: 'wrap', color: '#444' }}>
+                <span>인쇄일: {today2}</span>
+                {userName && <span>작성인: {userName}</span>}
+                <span>컨테이너: {c.containerType} ({CONTAINER_CBM[c.containerType]}CBM)</span>
+                <span>구매환율: USD {c.fxUsd}원 / RMB {c.fxRmb}원</span>
+                <span>판매환율: USD {c.fxUsdSell}원 / RMB {c.fxRmbSell}원</span>
+                <span>기본관세율: {(c.dutyRate * 100).toFixed(1)}%</span>
+                {c.eprRate > 0 && <span>EPR: {c.eprRate}원/kg</span>}
+                {c.freightSeaUsd && <span>해상운임: ${c.freightSeaUsd.toLocaleString()}</span>}
+              </div>
+            </div>
+
+            {/* 메인 테이블 */}
+            <table>
+              <thead>
+                <tr>
+                  <th style={thStyle}>제품명</th>
+                  <th style={thStyle}>통화</th>
+                  <th style={thStyle}>FOB가</th>
+                  <th style={thStyle}>박스(mm) L×W×H</th>
+                  <th style={thStyle}>입수</th>
+                  <th style={thStyle}>무게(g)</th>
+                  <th style={thStyle}>관세율</th>
+                  <th style={thStyle}>CBM/박스</th>
+                  <th style={thStyle}>적재수</th>
+                  <th style={thStyle}>CIF(USD)</th>
+                  <th style={thStyle}>관세/개</th>
+                  <th style={thStyle}>내륙·항/개</th>
+                  {c.eprRate > 0 && <th style={thStyle}>EPR/개</th>}
+                  <th style={thStyle}>인증비/개</th>
+                  <th style={thStyle}>DDP(USD)</th>
+                  <th style={thStyle}>DDP(KRW)</th>
+                  <th style={thStyle}>DDP(RMB)</th>
+                  <th style={thStyle}>판매통화/가</th>
+                  <th style={thStyle}>판매가(KRW)</th>
+                  <th style={thStyle}>이익(KRW)</th>
+                  <th style={thStyle}>마진율</th>
+                  <th style={thStyle}>비고</th>
+                </tr>
+              </thead>
+              <tbody>
+                {c.items.map((item, idx) => {
+                  const r = calcItem(item, c);
+                  const autoBigo: string[] = [];
+                  if (r.certPerUnitKrw > 0) {
+                    const names = (item.certs || []).map(ce => ce.name).join(', ');
+                    autoBigo.push(`인증비 ${Math.round(r.certPerUnitKrw).toLocaleString()}원/개${names ? ` (${names})` : ''}`);
+                  }
+                  if (r.eprPerUnitKrw > 0) autoBigo.push(`EPR ${Math.round(r.eprPerUnitKrw).toLocaleString()}원/개`);
+                  if (item.dutyRateOverride !== undefined) autoBigo.push(`관세 개별${fmtPct(item.dutyRateOverride)}`);
+                  const bigoText = [...autoBigo, item.note || ''].filter(Boolean).join(' | ');
+                  const profitColor = r.profitKrw !== undefined && r.profitKrw < 0 ? '#cc0000' : '#006600';
+                  const marginColor = r.marginKrw !== undefined
+                    ? (r.marginKrw < 0.05 ? '#cc0000' : r.marginKrw < 0.1 ? '#cc6600' : '#006600') : '#333';
+                  return (
+                    <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ fontWeight: 500 }}>{item.name}</td>
+                      <td style={tdC}>{item.currency}</td>
+                      <td style={tdR}>{item.fobPrice}</td>
+                      <td style={tdC}>{item.boxL}×{item.boxW}×{item.boxH}</td>
+                      <td style={tdR}>{item.qtyPerBox}</td>
+                      <td style={tdR}>{item.weightG || '-'}</td>
+                      <td style={tdR}>{fmtPct(r.dutyRate)}</td>
+                      <td style={tdR}>{r.cbmPerBox > 0 ? r.cbmPerBox.toFixed(4) : '-'}</td>
+                      <td style={tdR}>{r.qtyPerContainer > 0 ? r.qtyPerContainer.toLocaleString() : '-'}</td>
+                      <td style={tdR}>{fmtUsd(r.cifUsd)}</td>
+                      <td style={tdR}>{fmtUsd(r.dutyPerUnitUsd)}</td>
+                      <td style={tdR}>{r.otherPerUnitKrw > 0 ? fmtKrw(r.otherPerUnitKrw) : '-'}</td>
+                      {c.eprRate > 0 && <td style={{ ...tdR, color: '#006600' }}>{r.eprPerUnitKrw > 0 ? fmtKrw(r.eprPerUnitKrw) : '-'}</td>}
+                      <td style={{ ...tdR, color: '#c05000' }}>{r.certPerUnitKrw > 0 ? fmtKrw(r.certPerUnitKrw) : '-'}</td>
+                      <td style={{ ...tdR, fontWeight: 600, color: '#004400' }}>{fmtUsd(r.ddpUsd)}</td>
+                      <td style={{ ...tdR, fontWeight: 600, color: '#004400' }}>{fmtKrw(r.ddpKrw)}</td>
+                      <td style={{ ...tdR, color: '#004400' }}>{fmtRmb(r.ddpRmb)}</td>
+                      <td style={tdR}>{item.sellingPrice ? `${item.sellingCurrency || 'USD'} ${item.sellingPrice}` : '-'}</td>
+                      <td style={{ ...tdR, color: '#884400' }}>{r.sellingKrw !== undefined ? fmtKrw(r.sellingKrw) : '-'}</td>
+                      <td style={{ ...tdR, color: profitColor, fontWeight: 600 }}>{r.profitKrw !== undefined ? fmtKrw(r.profitKrw) : '-'}</td>
+                      <td style={{ ...tdR, color: marginColor, fontWeight: 700 }}>{fmtPct(r.marginKrw)}</td>
+                      <td style={{ fontSize: '7px', color: '#444', whiteSpace: 'normal', maxWidth: '80px' }}>{bigoText}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* 비고/메모 */}
+            {c.notes && (
+              <div style={{ marginTop: '10px', borderTop: '1px solid #ccc', paddingTop: '6px', fontSize: '9px' }}>
+                <strong>비고:</strong> <span style={{ whiteSpace: 'pre-wrap' }}>{c.notes}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <AppHeader title="원가계산기" />
-      <div className="flex flex-1 overflow-hidden print-root">
+      <div className="flex flex-1 overflow-hidden print-root screen-only">
 
         {/* 사이드바 */}
         <div className="w-44 shrink-0 border-r flex flex-col bg-muted/20 no-print">
