@@ -340,38 +340,62 @@ function JournalEntryModal({
   const [success, setSuccess] = useState('');
   const [showGuide, setShowGuide] = useState(true);
 
-  // 원가계산기 연동 state
-  const [showCaseLink, setShowCaseLink] = useState(false);
-  const [cases, setCases] = useState<EstimatorCaseSummary[]>([]);
-  const [caseSearch, setCaseSearch] = useState('');
-  const [selectedCase, setSelectedCase] = useState<EstimatorCaseSummary | null>(null);
-  const [autoQtys, setAutoQtys] = useState<Record<string, number>>({});
-  const [autoType, setAutoType] = useState<'import' | 'sale'>('import');
-  const [casesLoading, setCasesLoading] = useState(false);
+  // 수입통관·매출 연동 state
+  const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [linkTab, setLinkTab] = useState<'import' | 'sale'>('import');
+  const [linkSearch, setLinkSearch] = useState('');
+  const [imports, setImports] = useState<Array<{
+    id: string; businessId: string; declarationNo?: string; blNo?: string;
+    arrivalDate?: string; declarationDate?: string;
+    invoiceValue?: number; invoiceCurrency?: string; exchangeRate?: number;
+    freightKrw?: number; duty?: number; vat?: number; brokerFee?: number;
+    inlandFreight?: number; warehouseFee?: number; inspectionFee?: number;
+    status: string;
+  }>>([]);
+  const [quotes, setQuotes] = useState<Array<{
+    id: string; businessId: string; companyName: string;
+    totalAmount: number; currency: string; docType: string; status: string; quoteDate?: string;
+  }>>([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const debitTotal = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
   const creditTotal = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
   const diff = Math.round((debitTotal - creditTotal) * 100) / 100;
   const balanced = diff === 0 && debitTotal > 0;
 
-  // 케이스 목록 로드
+  // 수입통관·매출 데이터 로드
   useEffect(() => {
-    if (!showCaseLink || cases.length > 0) return;
-    setCasesLoading(true);
-    fetch('/api/estimator').then(r => r.json()).then(d => {
-      setCases(Array.isArray(d.data) ? d.data : []);
-    }).finally(() => setCasesLoading(false));
-  }, [showCaseLink, cases.length]);
+    if (!showLinkPanel || dataLoaded) return;
+    setDataLoading(true);
+    Promise.all([
+      fetch('/api/imports').then(r => r.json()),
+      fetch('/api/quotes').then(r => r.json()),
+    ]).then(([imp, qt]) => {
+      setImports(Array.isArray(imp.data) ? imp.data : []);
+      setQuotes(Array.isArray(qt.data) ? qt.data.filter((q: { type: string }) => q.type === 'customer') : []);
+      setDataLoaded(true);
+    }).finally(() => setDataLoading(false));
+  }, [showLinkPanel, dataLoaded]);
 
-  const filteredCases = useMemo(() => {
-    const q = caseSearch.toLowerCase();
-    if (!q) return cases.slice(0, 8);
-    return cases.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      (c.customsNo || '').toLowerCase().includes(q) ||
-      (c.salesNo || '').toLowerCase().includes(q)
-    ).slice(0, 8);
-  }, [cases, caseSearch]);
+  const filteredImports = useMemo(() => {
+    const q = linkSearch.toLowerCase();
+    if (!q) return imports.slice(0, 10);
+    return imports.filter(imp =>
+      (imp.declarationNo || '').toLowerCase().includes(q) ||
+      (imp.businessId || '').toLowerCase().includes(q) ||
+      (imp.blNo || '').toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [imports, linkSearch]);
+
+  const filteredQuotes = useMemo(() => {
+    const q = linkSearch.toLowerCase();
+    if (!q) return quotes.slice(0, 10);
+    return quotes.filter(qt =>
+      qt.companyName.toLowerCase().includes(q) ||
+      (qt.businessId || '').toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [quotes, linkSearch]);
 
   const handleTypeChange = (type: string) => {
     setForm(f => ({ ...f, entry_type: type }));
@@ -404,73 +428,66 @@ function JournalEntryModal({
     setSides(TEMPLATE_SIDES[form.entry_type] || ['debit', 'credit']);
   };
 
-  // 원가계산기 케이스 선택
-  const selectCase = (c: EstimatorCaseSummary) => {
-    setSelectedCase(c);
-    const qtys: Record<string, number> = {};
-    for (const item of c.items) {
-      const { qtyPerContainer } = calcItemDdp(item, c);
-      qtys[item.id] = qtyPerContainer;
+  // 수입통관 자동분개
+  const generateImportLines = (imp: typeof imports[0]) => {
+    const fx = imp.exchangeRate || 1430;
+    const invoiceKrw = Math.round((imp.invoiceValue || 0) * fx);
+    const freightKrw = Math.round(imp.freightKrw || 0);
+    const duty = Math.round(imp.duty || 0);
+    const vat = Math.round(imp.vat || 0);
+    const fees = Math.round((imp.brokerFee || 0) + (imp.inlandFreight || 0) + (imp.warehouseFee || 0) + (imp.inspectionFee || 0));
+    const cashTotal = freightKrw + duty + vat + fees;
+
+    const newLines: JournalLine[] = [
+      { account_code: '1090', account_name: '재고자산', debit: invoiceKrw + freightKrw, credit: 0, currency: 'KRW', fx_rate: 1, memo: `인보이스${imp.invoiceCurrency || 'USD'} ${imp.invoiceValue || 0} × ${fx}` },
+    ];
+    const newSides: ('debit' | 'credit')[] = ['debit'];
+
+    if (duty > 0) {
+      newLines.push({ account_code: '5220', account_name: '세금과공과', debit: duty, credit: 0, currency: 'KRW', fx_rate: 1, memo: '관세' });
+      newSides.push('debit');
     }
-    setAutoQtys(qtys);
-  };
+    if (vat > 0) {
+      newLines.push({ account_code: '1060', account_name: '부가세대급금', debit: vat, credit: 0, currency: 'KRW', fx_rate: 1, memo: '수입부가세' });
+      newSides.push('debit');
+    }
+    newLines.push({ account_code: '2010', account_name: '외상매입금', debit: 0, credit: invoiceKrw, currency: 'KRW', fx_rate: 1, memo: '공급업체 외상 대금' });
+    newSides.push('credit');
 
-  // 자동분개 생성
-  const generateLines = () => {
-    if (!selectedCase) return;
-    const newLines: JournalLine[] = [];
-    const newSides: ('debit' | 'credit')[] = [];
-
-    if (autoType === 'import') {
-      let totalDdp = 0;
-      for (const item of selectedCase.items) {
-        const qty = autoQtys[item.id] || 0;
-        const { ddpKrw } = calcItemDdp(item, selectedCase);
-        totalDdp += ddpKrw * qty;
-      }
-      newLines.push(
-        { account_code: '1090', account_name: '재고자산', debit: Math.round(totalDdp), credit: 0, currency: 'KRW', fx_rate: 1, memo: 'DDP원가 기준 수입원가' },
-        { account_code: '2010', account_name: '외상매입금', debit: 0, credit: Math.round(totalDdp), currency: 'KRW', fx_rate: 1, memo: '공급업체 외상 매입' },
-      );
-      newSides.push('debit', 'credit');
-      setForm(f => ({
-        ...f, entry_type: 'import_cost',
-        description: f.description || `${selectedCase.name} 수입원가 (통관)`,
-        related_ref: f.related_ref || (selectedCase.customsNo || ''),
-      }));
-    } else {
-      let totalSell = 0;
-      let totalDdp = 0;
-      for (const item of selectedCase.items) {
-        const qty = autoQtys[item.id] || 0;
-        const { ddpKrw } = calcItemDdp(item, selectedCase);
-        totalDdp += ddpKrw * qty;
-        if (item.sellingPrice && qty > 0) {
-          const sc = item.sellingCurrency || 'USD';
-          let sellKrw = item.sellingPrice;
-          if (sc === 'USD') sellKrw = item.sellingPrice * selectedCase.fxUsdSell;
-          else if (sc === 'CNY') sellKrw = item.sellingPrice * selectedCase.fxRmbSell;
-          totalSell += sellKrw * qty;
-        }
-      }
-      newLines.push(
-        { account_code: '1040', account_name: '외상매출금', debit: Math.round(totalSell), credit: 0, currency: 'KRW', fx_rate: 1, memo: '매출채권 발생' },
-        { account_code: '5010', account_name: '매출원가', debit: Math.round(totalDdp), credit: 0, currency: 'KRW', fx_rate: 1, memo: 'DDP원가 기준' },
-        { account_code: '4010', account_name: '국내매출', debit: 0, credit: Math.round(totalSell), currency: 'KRW', fx_rate: 1, memo: '' },
-        { account_code: '1090', account_name: '재고자산', debit: 0, credit: Math.round(totalDdp), currency: 'KRW', fx_rate: 1, memo: '원가 대체' },
-      );
-      newSides.push('debit', 'debit', 'credit', 'credit');
-      setForm(f => ({
-        ...f, entry_type: 'sale_full',
-        description: f.description || `${selectedCase.name} 매출 (복합분개)`,
-        related_ref: f.related_ref || (selectedCase.salesNo || ''),
-      }));
+    if (cashTotal > 0) {
+      newLines.push({ account_code: '1020', account_name: '보통예금', debit: 0, credit: cashTotal, currency: 'KRW', fx_rate: 1, memo: `운임·관세·수수료 현금 납부` });
+      newSides.push('credit');
     }
 
     setLines(newLines);
     setSides(newSides);
-    setShowCaseLink(false);
-    setSelectedCase(null);
+    setForm(f => ({
+      ...f, entry_type: 'import_cost',
+      description: f.description || `수입통관 ${imp.declarationNo || imp.businessId}`,
+      related_ref: f.related_ref || imp.declarationNo || imp.businessId,
+    }));
+    setShowLinkPanel(false);
+  };
+
+  // 매출 자동분개
+  const generateSaleLines = (qt: typeof quotes[0]) => {
+    const fx = 1430;
+    const totalKrw = qt.currency === 'KRW' ? Math.round(qt.totalAmount) : Math.round(qt.totalAmount * fx);
+    const accountCode = qt.currency === 'USD' ? '4020' : '4010';
+    const accountName = qt.currency === 'USD' ? '수출매출' : '국내매출';
+
+    const newLines: JournalLine[] = [
+      { account_code: '1040', account_name: '외상매출금', debit: totalKrw, credit: 0, currency: 'KRW', fx_rate: 1, memo: `${qt.companyName} 매출채권` },
+      { account_code: accountCode, account_name: accountName, debit: 0, credit: totalKrw, currency: 'KRW', fx_rate: 1, memo: qt.businessId },
+    ];
+    setLines(newLines);
+    setSides(['debit', 'credit']);
+    setForm(f => ({
+      ...f, entry_type: 'revenue',
+      description: f.description || `${qt.companyName} 매출발생 (${qt.businessId})`,
+      related_ref: f.related_ref || qt.businessId,
+    }));
+    setShowLinkPanel(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -520,118 +537,128 @@ function JournalEntryModal({
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
           <div className="p-4 space-y-4">
 
-            {/* 원가계산기 연동 패널 */}
+            {/* 수입통관·매출 연동 패널 */}
             <div className="border rounded-lg overflow-hidden">
               <button
                 type="button"
-                onClick={() => setShowCaseLink(v => !v)}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 bg-muted/10"
+                onClick={() => setShowLinkPanel(v => !v)}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium hover:bg-muted/30 bg-muted/10"
               >
                 <Link2 className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-blue-700 font-semibold">원가계산기 연동</span>
-                <span className="text-muted-foreground font-normal">— 통관번호·매출번호로 분개 자동생성</span>
-                <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showCaseLink && 'rotate-180')} />
+                <span className="text-blue-700 font-semibold">수입통관 · 매출 연동</span>
+                <span className="text-muted-foreground font-normal">— 리스트에서 선택하면 분개 자동생성</span>
+                <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showLinkPanel && 'rotate-180')} />
               </button>
 
-              {showCaseLink && (
-                <div className="p-3 border-t bg-blue-50/30 space-y-3">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <input
-                      className="w-full h-8 pl-8 pr-3 text-xs border border-input rounded-md bg-background"
-                      placeholder="케이스명 / 통관번호 / 매출번호 검색..."
-                      value={caseSearch}
-                      onChange={e => setCaseSearch(e.target.value)}
-                    />
+              {showLinkPanel && (
+                <div className="border-t bg-muted/5">
+                  {/* 탭 */}
+                  <div className="flex border-b">
+                    <button type="button"
+                      onClick={() => { setLinkTab('import'); setLinkSearch(''); }}
+                      className={cn('flex-1 py-2 text-xs font-medium transition-colors',
+                        linkTab === 'import' ? 'bg-background text-cyan-700 border-b-2 border-cyan-500' : 'text-muted-foreground hover:bg-muted/30')}>
+                      수입통관 (Import)
+                    </button>
+                    <button type="button"
+                      onClick={() => { setLinkTab('sale'); setLinkSearch(''); }}
+                      className={cn('flex-1 py-2 text-xs font-medium transition-colors',
+                        linkTab === 'sale' ? 'bg-background text-green-700 border-b-2 border-green-500' : 'text-muted-foreground hover:bg-muted/30')}>
+                      매출관리 (Sales)
+                    </button>
                   </div>
 
-                  {casesLoading ? (
-                    <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
-                  ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {filteredCases.map(c => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => selectCase(c)}
-                          className={cn(
-                            'w-full text-left px-3 py-1.5 rounded-md text-xs flex items-center gap-2 transition-colors',
-                            selectedCase?.id === c.id
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : 'hover:bg-muted/50 border border-transparent'
-                          )}
-                        >
-                          <Package className="w-3 h-3 shrink-0 text-muted-foreground" />
-                          <span className="flex-1 font-medium truncate">{c.name}</span>
-                          {c.portFrom && c.portTo && (
-                            <span className="text-muted-foreground shrink-0">{c.portFrom}→{c.portTo}</span>
-                          )}
-                          <span className="text-muted-foreground shrink-0">{c.items.length}개 품목</span>
-                        </button>
-                      ))}
-                      {filteredCases.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-3">케이스가 없습니다. 먼저 원가계산기에서 케이스를 만들어 주세요.</p>
-                      )}
+                  <div className="p-3 space-y-2">
+                    {/* 검색 */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <input
+                        className="w-full h-8 pl-8 pr-3 text-xs border border-input rounded-md bg-background"
+                        placeholder={linkTab === 'import' ? '수입번호 / 통관번호(신고번호) / BL번호 검색...' : '거래처명 / 매출번호 검색...'}
+                        value={linkSearch}
+                        onChange={e => setLinkSearch(e.target.value)}
+                      />
                     </div>
-                  )}
 
-                  {selectedCase && (
-                    <div className="border rounded-lg bg-background p-3 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold">{selectedCase.name}</span>
-                        <button type="button" onClick={() => setSelectedCase(null)} className="text-muted-foreground hover:text-foreground">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* 품목별 수량 */}
-                      <div className="space-y-1.5">
-                        {selectedCase.items.map(item => {
-                          const { ddpKrw, qtyPerContainer } = calcItemDdp(item, selectedCase);
+                    {dataLoading ? (
+                      <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+                    ) : linkTab === 'import' ? (
+                      /* 수입통관 리스트 */
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {filteredImports.map(imp => {
+                          const fx = imp.exchangeRate || 1430;
+                          const invoiceKrw = Math.round((imp.invoiceValue || 0) * fx);
+                          const totalCosts = Math.round((imp.duty || 0) + (imp.vat || 0) + (imp.brokerFee || 0) + (imp.freightKrw || 0) + (imp.inlandFreight || 0));
                           return (
-                            <div key={item.id} className="flex items-center gap-2">
-                              <span className="text-xs flex-1 truncate">{item.name}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">DDP {fmtNum(Math.round(ddpKrw))}원</span>
-                              {item.sellingPrice && (
-                                <span className="text-xs text-green-600 shrink-0">
-                                  판매 {item.sellingCurrency || 'USD'} {item.sellingPrice}
+                            <button key={imp.id} type="button" onClick={() => generateImportLines(imp)}
+                              className="w-full text-left px-3 py-2 rounded-md border border-transparent hover:bg-cyan-50 hover:border-cyan-200 transition-colors">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono font-semibold text-cyan-700 shrink-0">{imp.businessId}</span>
+                                {imp.declarationNo && (
+                                  <span className="text-xs text-muted-foreground shrink-0">신고번호: {imp.declarationNo}</span>
+                                )}
+                                {imp.blNo && <span className="text-xs text-muted-foreground shrink-0">BL: {imp.blNo}</span>}
+                                <span className="flex-1" />
+                                <span className="text-xs tabular-nums text-muted-foreground shrink-0">
+                                  {imp.arrivalDate || imp.declarationDate || ''}
                                 </span>
-                              )}
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="text-xs text-muted-foreground">수량</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  className="w-20 h-6 text-xs text-right border rounded-md px-1.5 bg-background"
-                                  value={autoQtys[item.id] ?? qtyPerContainer}
-                                  onChange={e => setAutoQtys(q => ({ ...q, [item.id]: Number(e.target.value) || 0 }))}
-                                />
-                                <span className="text-xs text-muted-foreground">개</span>
                               </div>
-                            </div>
+                              <div className="flex items-center gap-3 mt-0.5">
+                                <span className="text-xs text-muted-foreground">
+                                  인보이스 {imp.invoiceCurrency || 'USD'} {(imp.invoiceValue || 0).toLocaleString()} (₩{fmtNum(invoiceKrw)})
+                                </span>
+                                {totalCosts > 0 && (
+                                  <span className="text-xs text-orange-600">비용 ₩{fmtNum(totalCosts)}</span>
+                                )}
+                                <span className={cn('text-xs ml-auto px-1.5 py-0.5 rounded', imp.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
+                                  {imp.status === 'completed' ? '완료' : imp.status === 'in_progress' ? '진행중' : imp.status}
+                                </span>
+                              </div>
+                            </button>
                           );
                         })}
+                        {filteredImports.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {imports.length === 0 ? '수입통관 데이터가 없습니다. 수입관리에서 먼저 통관 등록을 해주세요.' : '검색 결과 없음'}
+                          </p>
+                        )}
                       </div>
-
-                      {/* 분개 유형 */}
-                      <div className="flex gap-4 pt-1">
-                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                          <input type="radio" checked={autoType === 'import'} onChange={() => setAutoType('import')} />
-                          <span className="font-medium">수입원가분개</span>
-                          <span className="text-muted-foreground">(재고자산↑ / 외상매입금↑)</span>
-                        </label>
-                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                          <input type="radio" checked={autoType === 'sale'} onChange={() => setAutoType('sale')} />
-                          <span className="font-medium">매출분개(복합)</span>
-                          <span className="text-muted-foreground">(외상매출금+원가 / 매출+재고↓)</span>
-                        </label>
+                    ) : (
+                      /* 매출 리스트 */
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {filteredQuotes.map(qt => (
+                          <button key={qt.id} type="button" onClick={() => generateSaleLines(qt)}
+                            className="w-full text-left px-3 py-2 rounded-md border border-transparent hover:bg-green-50 hover:border-green-200 transition-colors">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-semibold text-green-700 shrink-0">{qt.businessId}</span>
+                              <span className="text-xs font-medium truncate flex-1">{qt.companyName}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{qt.quoteDate || ''}</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-xs tabular-nums font-medium">
+                                {qt.currency} {qt.totalAmount.toLocaleString()}
+                              </span>
+                              <span className="text-xs text-muted-foreground">{qt.docType}</span>
+                              <span className={cn('text-xs ml-auto px-1.5 py-0.5 rounded',
+                                qt.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                qt.status === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>
+                                {qt.status === 'confirmed' ? '확정' : qt.status === 'sent' ? '발송' : qt.status === 'draft' ? '임시' : qt.status}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                        {filteredQuotes.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {quotes.length === 0 ? '매출 데이터가 없습니다. 매출·견적 관리에서 등록해주세요.' : '검색 결과 없음'}
+                          </p>
+                        )}
                       </div>
+                    )}
 
-                      <Button type="button" size="sm" onClick={generateLines} className="w-full h-8 text-xs gap-1.5">
-                        <Zap className="w-3.5 h-3.5" /> 분개 자동생성
-                      </Button>
-                    </div>
-                  )}
+                    <p className="text-xs text-muted-foreground/70 text-center pt-1">
+                      클릭하면 해당 거래 내역으로 분개가 자동 생성됩니다
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
