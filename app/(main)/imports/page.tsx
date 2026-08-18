@@ -300,9 +300,13 @@ function ImportModal({
     : 0;
   // 수동으로 직접입력한 freightKrw가 있으면 우선, 없으면 자동계산
   const effectiveFreightKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
-  // 포워더 부대비용 합계 (핸들링차지 등)
-  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: { name: string; amount: number }) => s + (h.amount || 0), 0);
-  // 과세가격 포함용 운임: 운임KRW + 부대비용 (부가세 제외)
+  // 포워더 부대비용 타입
+  type FreightItem = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number };
+  // 부대비용 KRW 합계 (부가세 제외 — 과세가격 산입)
+  const freightHandlingTotal = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.amtKrw || 0), 0);
+  // 부대비용 부가세 합계
+  const freightHandlingVat = (form.freightHandling || []).reduce((s: number, h: FreightItem) => s + (h.vat || 0), 0);
+  // 과세가격 포함용 운임: 운임KRW + 부대비용KRW (부가세 제외)
   const totalFreightForCustoms = effectiveFreightKrw + freightHandlingTotal;
   const exRate = parseFloat(form.exchangeRate || '0');
   const itemsWithCalc = items.map(it => {
@@ -812,98 +816,126 @@ function ImportModal({
                   <div className="flex gap-2 items-end">
                     <div className="flex-1"><label className={labelCls}>인보이스 환율 (원/{form.invoiceCurrency})</label><Input type="number" value={form.exchangeRate} onChange={e => setForm(f => ({ ...f, exchangeRate: e.target.value }))} placeholder="1380" disabled={!canEdit} /></div>
                     <Button type="button" variant="outline" size="sm" onClick={fetchRate} disabled={rateLoading || !canEdit} className="shrink-0">
-                      {rateLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}관세청 환율
+                      {rateLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}관세청 환율 ({form.invoiceCurrency||'USD'})
                     </Button>
                   </div>
                   {rateMsg && <div className={cn('text-xs px-2 py-1 rounded', rateMsg.ok ? 'text-green-700 bg-green-50' : 'text-red-600 bg-red-50')}>{rateMsg.text}</div>}
                 </div>
 
                 {/* 운임 */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">③ 운임 (포워더 지급)</div>
-                  {linkedShipment?.freightCost && (
-                    <div className="text-xs text-blue-600 flex items-center gap-2">
-                      선적 운임: {linkedShipment.freightCurrency||'USD'} {linkedShipment.freightCost.toLocaleString()}
-                      <button type="button" className="underline hover:text-blue-800" onClick={() => setForm(f => ({ ...f, freightUsd: String(linkedShipment.freightCost), freightCurrency: linkedShipment.freightCurrency || 'USD', freightKrw: '' }))}>적용</button>
-                    </div>
-                  )}
-                  {/* 운임 금액 + 통화 + 환율 + KRW */}
-                  <div className="grid grid-cols-4 gap-2">
-                    <div>
-                      <label className={labelCls}>운임 금액</label>
-                      <Input type="number" value={form.freightUsd}
-                        onChange={e => setForm(f => ({ ...f, freightUsd: e.target.value, freightKrw: '' }))}
-                        placeholder="1000" disabled={!canEdit} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>통화</label>
-                      <select value={form.freightCurrency || 'USD'}
-                        onChange={e => setForm(f => ({ ...f, freightCurrency: e.target.value, freightKrw: '' }))}
-                        className={inputCls} disabled={!canEdit}>
-                        {['USD','CNY','EUR','JPY','KRW'].map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={labelCls}>{form.freightCurrency === 'KRW' ? '환율 (불필요)' : `환율 (원/${form.freightCurrency || 'USD'})`}</label>
-                      <Input type="number" value={form.freightExchangeRate}
-                        onChange={e => setForm(f => ({ ...f, freightExchangeRate: e.target.value, freightKrw: '' }))}
-                        placeholder={form.exchangeRate || '1380'}
-                        disabled={!canEdit || form.freightCurrency === 'KRW'} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>운임 KRW</label>
-                      <Input type="number"
-                        value={form.freightKrw || (freightKrwCalc > 0 ? String(freightKrwCalc) : '')}
-                        onChange={e => setForm(f => ({ ...f, freightKrw: e.target.value }))}
-                        placeholder={freightKrwCalc > 0 ? String(freightKrwCalc) : '자동계산'}
-                        disabled={!canEdit}
-                        className={!form.freightKrw && freightKrwCalc > 0 ? 'bg-blue-50 text-blue-800' : ''} />
+
+                  {/* 해상운임 — USD 고정 */}
+                  <div>
+                    <div className="text-[11px] font-medium text-muted-foreground mb-1">해상운임 (Ocean Freight — USD)</div>
+                    {linkedShipment?.freightCost && (
+                      <div className="text-xs text-blue-600 flex items-center gap-2 mb-1">
+                        선적 운임: {linkedShipment.freightCurrency||'USD'} {linkedShipment.freightCost.toLocaleString()}
+                        <button type="button" className="underline hover:text-blue-800" onClick={() => setForm(f => ({ ...f, freightUsd: String(linkedShipment.freightCost), freightKrw: '' }))}>적용</button>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className={labelCls}>운임 (USD)</label>
+                        <Input type="number" value={form.freightUsd}
+                          onChange={e => setForm(f => ({ ...f, freightUsd: e.target.value, freightKrw: '' }))}
+                          placeholder="1000" disabled={!canEdit} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>환율 (원/USD)</label>
+                        <Input type="number" value={form.freightExchangeRate}
+                          onChange={e => setForm(f => ({ ...f, freightExchangeRate: e.target.value, freightKrw: '' }))}
+                          placeholder={form.exchangeRate || '1380'} disabled={!canEdit} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>운임 KRW (자동)</label>
+                        <Input type="number"
+                          value={form.freightKrw || (freightKrwCalc > 0 ? String(freightKrwCalc) : '')}
+                          onChange={e => setForm(f => ({ ...f, freightKrw: e.target.value }))}
+                          placeholder={freightKrwCalc > 0 ? freightKrwCalc.toLocaleString() : '자동계산'}
+                          disabled={!canEdit}
+                          className={!form.freightKrw && freightKrwCalc > 0 ? 'bg-blue-50 text-blue-800' : ''} />
+                      </div>
                     </div>
                   </div>
-                  {/* 부가세 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className={labelCls}>운임 부가세 (원) — 포워더 청구 VAT</label>
-                      <Input type="number" value={form.freightVat}
-                        onChange={e => setForm(f => ({ ...f, freightVat: e.target.value }))}
-                        placeholder="0" disabled={!canEdit} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>보험료 (원)</label>
-                      <Input type="number" value={form.insuranceKrw} onChange={e => setForm(f => ({ ...f, insuranceKrw: e.target.value }))} placeholder="0" disabled={!canEdit} />
-                    </div>
-                  </div>
-                  {/* 포워더 부대비용 (핸들링차지, THC 등) */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className={labelCls}>포워더 부대비용 (핸들링차지·THC·D/O 등)</label>
+
+                  {/* 부대비용 테이블 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-[11px] font-medium text-muted-foreground">부대비용 (H/C·THC·D/O·Wharfage 등)</div>
                       {canEdit && (
-                        <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
-                          onClick={() => setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', amount: 0 }] }))}>
+                        <button type="button" className="text-[10px] text-blue-500 hover:text-blue-700"
+                          onClick={() => {
+                            const defaultExRate = parseFloat(form.freightExchangeRate || form.exchangeRate || '1');
+                            setForm(f => ({ ...f, freightHandling: [...(f.freightHandling || []), { name: '', currency: 'KRW', amtCur: 0, exRate: defaultExRate, amtKrw: 0, vat: 0 }] }));
+                          }}>
                           + 항목추가
                         </button>
                       )}
                     </div>
-                    {(form.freightHandling || []).map((h: { name: string; amount: number }, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input className="h-7 text-xs flex-1" value={h.name} placeholder="항목명 (예: H/C, THC, D/O Charge)"
-                          disabled={!canEdit}
-                          onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).map((x: { name: string; amount: number }, i: number) => i === idx ? { ...x, name: e.target.value } : x) }))} />
-                        <Input type="number" className="h-7 text-xs w-32" value={h.amount || ''} placeholder="0 (원)"
-                          disabled={!canEdit}
-                          onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).map((x: { name: string; amount: number }, i: number) => i === idx ? { ...x, amount: Number(e.target.value) || 0 } : x) }))} />
-                        <span className="text-xs text-muted-foreground shrink-0">원</span>
-                        {canEdit && <button type="button" className="text-muted-foreground hover:text-red-500"
-                          onClick={() => setForm(f => ({ ...f, freightHandling: (f.freightHandling || []).filter((_: unknown, i: number) => i !== idx) }))}>
-                          <X className="w-3.5 h-3.5" /></button>}
-                      </div>
-                    ))}
                     {(form.freightHandling || []).length > 0 && (
-                      <div className="text-xs text-muted-foreground flex justify-between px-1">
-                        <span>부대비용 소계</span>
-                        <span className="font-medium">{freightHandlingTotal.toLocaleString()}원</span>
+                      <div className="rounded border border-border overflow-hidden text-xs">
+                        <div className="grid bg-muted/50 font-medium text-muted-foreground text-[10px]" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
+                          {['항목명','통화','공급가(외화)','환율','공급가(KRW)','부가세(KRW)',''].map(h => <div key={h} className="px-1.5 py-1.5">{h}</div>)}
+                        </div>
+                        {(form.freightHandling || []).map((h: FreightItem, idx: number) => {
+                          const autoKrw = h.currency === 'KRW' ? (h.amtCur || 0) : Math.round((h.amtCur || 0) * (h.exRate || 1));
+                          return (
+                            <div key={idx} className="grid border-t border-border" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
+                              <input className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                                value={h.name} placeholder="항목명" disabled={!canEdit}
+                                onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, name: e.target.value} : x) }))} />
+                              <select className="px-1 text-[10px] bg-transparent border-r border-border focus:outline-none"
+                                value={h.currency||'KRW'} disabled={!canEdit}
+                                onChange={e => {
+                                  const cur = e.target.value;
+                                  const exRate = cur === 'KRW' ? 1 : parseFloat(form.freightExchangeRate || form.exchangeRate || '1');
+                                  setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, currency: cur, exRate, amtKrw: cur==='KRW' ? x.amtCur : Math.round(x.amtCur*exRate)} : x) }));
+                                }}>
+                                <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
+                              </select>
+                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                                value={h.amtCur||''} placeholder="0" disabled={!canEdit}
+                                onChange={e => {
+                                  const v = Number(e.target.value)||0;
+                                  const krw = h.currency==='KRW' ? v : Math.round(v*(h.exRate||1));
+                                  setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtCur: v, amtKrw: krw} : x) }));
+                                }} />
+                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                                value={h.currency==='KRW' ? '' : (h.exRate||'')} placeholder={h.currency==='KRW'?'1':''} disabled={!canEdit||h.currency==='KRW'}
+                                onChange={e => {
+                                  const rate = Number(e.target.value)||1;
+                                  setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, exRate: rate, amtKrw: Math.round(x.amtCur*rate)} : x) }));
+                                }} />
+                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                                value={h.amtKrw||autoKrw||''} placeholder="자동" disabled={!canEdit}
+                                onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtKrw: Number(e.target.value)||0} : x) }))} />
+                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                                value={h.vat||''} placeholder="0" disabled={!canEdit}
+                                onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, vat: Number(e.target.value)||0} : x) }))} />
+                              {canEdit && <button type="button" className="flex items-center justify-center text-muted-foreground hover:text-red-500"
+                                onClick={() => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).filter((_: unknown, i: number) => i!==idx) }))}>
+                                <X className="w-3 h-3" /></button>}
+                            </div>
+                          );
+                        })}
+                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 24px' }}>
+                          <div className="px-1.5 py-1.5 col-span-4">소계</div>
+                          <div className="px-1.5 py-1.5">{freightHandlingTotal.toLocaleString()}원</div>
+                          <div className="px-1.5 py-1.5 text-orange-600">{freightHandlingVat > 0 ? `VAT ${freightHandlingVat.toLocaleString()}` : '-'}</div>
+                          <div />
+                        </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* 보험료 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelCls}>보험료 (원)</label>
+                      <Input type="number" value={form.insuranceKrw} onChange={e => setForm(f => ({ ...f, insuranceKrw: e.target.value }))} placeholder="0" disabled={!canEdit} />
+                    </div>
                   </div>
                 </div>
 
@@ -916,8 +948,8 @@ function ImportModal({
                         ? <div>품목합계: {totalItemCv.toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {totalItemCvKrw.toLocaleString()}원</div>
                         : <div>인보이스: {parseFloat(form.invoiceValue||'0').toLocaleString()} {form.invoiceCurrency} × {exRate.toLocaleString()}원 = {Math.round(invoiceKrw).toLocaleString()}원</div>
                       }
-                      {effectiveFreightKrw > 0 && <div>운임: {effectiveFreightKrw.toLocaleString()}원{freightHandlingTotal > 0 ? ` + 부대비용 ${freightHandlingTotal.toLocaleString()}원` : ''}</div>}
-                      {Number(form.freightVat || 0) > 0 && <div className="text-blue-500">└ 운임 부가세 (공제 별도): {Number(form.freightVat).toLocaleString()}원</div>}
+                      {effectiveFreightKrw > 0 && <div>해상운임: {effectiveFreightKrw.toLocaleString()}원{freightHandlingTotal > 0 ? ` + 부대비용 ${freightHandlingTotal.toLocaleString()}원` : ''}</div>}
+                      {freightHandlingVat > 0 && <div className="text-blue-500">└ 부대비용 VAT (매입세액공제 별도): {freightHandlingVat.toLocaleString()}원</div>}
                       {parseFloat(form.insuranceKrw||'0') > 0 && <div>보험료: {parseFloat(form.insuranceKrw).toLocaleString()}원</div>}
                     </div>
                     <div className="text-blue-900 font-bold text-sm border-t border-blue-200 pt-1">과세가격 합계 = {customsValueCalc.toLocaleString()}원</div>

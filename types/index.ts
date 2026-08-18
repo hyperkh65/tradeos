@@ -340,7 +340,7 @@ export interface Import {
   freightCurrency?: string;
   freightExchangeRate?: number;
   freightKrw?: number;
-  freightHandling?: { name: string; amount: number }[];
+  freightHandling?: { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number }[];
   freightVat?: number;
   insuranceKrw?: number;
   customsValue?: number;
