@@ -719,6 +719,37 @@ function runMigrations(db: Database.Database) {
     )`);
   } catch { /* already exists */ }
 
+  // 수익분석 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS profit_analyses (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      analysis_date TEXT,
+      sale_id TEXT,
+      sale_business_id TEXT,
+      import_id TEXT,
+      import_business_id TEXT,
+      sale_amount REAL DEFAULT 0,
+      sale_currency TEXT DEFAULT 'KRW',
+      exchange_rate REAL DEFAULT 1,
+      product_items_json TEXT DEFAULT '[]',
+      freight_cost REAL DEFAULT 0,
+      inland_freight REAL DEFAULT 0,
+      broker_fee REAL DEFAULT 0,
+      duty REAL DEFAULT 0,
+      vat_import REAL DEFAULT 0,
+      wire_fee REAL DEFAULT 0,
+      extra_costs_json TEXT DEFAULT '[]',
+      memo TEXT,
+      status TEXT DEFAULT 'draft',
+      history_json TEXT DEFAULT '[]',
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
   // 계정과목 기초 데이터 삽입
   const acctCount = (db.prepare('SELECT COUNT(*) as n FROM chart_of_accounts').get() as {n:number}).n;
   if (acctCount === 0) {
