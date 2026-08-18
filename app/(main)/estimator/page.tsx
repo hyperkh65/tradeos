@@ -22,7 +22,7 @@ interface EstimatorItem {
   fobPrice: number;
   boxL: number; boxW: number; boxH: number;
   qtyPerBox: number;
-  weightG?: number;       // 단중(g) — EPR 계산에도 사용
+  weightG?: number;       // 무게(g) — EPR 계산에도 사용
   certs?: ItemCert[];     // 제품별 인증비
   dutyRateOverride?: number;
   sellingPrice?: number;
@@ -73,7 +73,7 @@ function calcItem(item: EstimatorItem, c: EstimatorCase) {
 
   const fobUsd = item.currency === 'CNY' ? item.fobPrice * (fxRmb / fxUsd) : item.fobPrice;
   const cbmPerBox = item.boxL > 0 && item.boxW > 0 && item.boxH > 0
-    ? (item.boxL * item.boxW * item.boxH) / 1_000_000 : 0;
+    ? (item.boxL * item.boxW * item.boxH) / 1_000_000_000 : 0;
 
   let qtyPerContainer = 0;
   if (c.simMode === 'mixed' && item.mixedCbm && item.mixedCbm > 0) {
@@ -254,7 +254,7 @@ const COL_TYPE_OPTIONS = [
   { value: 'currency', label: '통화' }, { value: 'fob', label: 'FOB 가격' },
   { value: 'size', label: '박스(LxWxH)' }, { value: 'sizeL', label: '박스 L' },
   { value: 'sizeW', label: '박스 W' }, { value: 'sizeH', label: '박스 H' },
-  { value: 'qtyPerBox', label: '입수(/박스)' }, { value: 'weightG', label: '단중(g)' },
+  { value: 'qtyPerBox', label: '입수(/박스)' }, { value: 'weightG', label: '무게(g)' },
   { value: 'selling', label: '판매가' }, { value: 'note', label: '비고' },
 ];
 function parseSize(s: string): [number, number, number] | null {
@@ -733,13 +733,6 @@ export default function EstimatorPage() {
                         className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
                       <span className="text-[10px] text-muted-foreground">원</span>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
-                      <input type="number" step="5" value={c.fxRmb || ''}
-                        onChange={e => updateField('fxRmb', parseInt(e.target.value) || 195)}
-                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
-                      <span className="text-[10px] text-muted-foreground">원</span>
-                    </div>
                     <div className="text-[10px] text-muted-foreground/50 mt-0.5">💡 보수적: 높게 · 현재 약 1,380원</div>
                   </div>
                   <div className="border-t pt-1.5">
@@ -751,7 +744,13 @@ export default function EstimatorPage() {
                         className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
                       <span className="text-[10px] text-muted-foreground">원</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">1 USD(비용) = {((c.fxUsd || 1430) / (c.fxRmb || 195)).toFixed(3)} RMB</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground w-16">RMB/KRW</span>
+                      <input type="number" step="1" value={c.fxRmb || ''}
+                        onChange={e => updateField('fxRmb', parseInt(e.target.value) || 195)}
+                        className="h-6 border rounded text-[10px] px-1.5 w-20 text-right" />
+                      <span className="text-[10px] text-muted-foreground">원</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -778,7 +777,7 @@ export default function EstimatorPage() {
                     </div>
                     <div className="text-[10px] text-muted-foreground/50 mt-0.5">
                       💡 LED: ~32 · 형광: ~63 · 모니터: ~25원/kg<br />
-                      단중(g) 제품 행에 입력 → 자동 계산
+                      무게(g) 제품 행에 입력 → 자동 계산
                     </div>
                   </div>
                 </div>
@@ -830,9 +829,9 @@ export default function EstimatorPage() {
                   <th className="border px-2 py-1.5 text-left font-medium min-w-[150px] sticky left-0 bg-muted/70 z-20">제품명</th>
                   <th className="border px-2 py-1.5 font-medium w-14">통화</th>
                   <th className="border px-2 py-1.5 font-medium w-20">FOB가</th>
-                  <th className="border px-2 py-1.5 font-medium w-32">박스 L×W×H(cm)</th>
+                  <th className="border px-2 py-1.5 font-medium w-32">박스 L×W×H(mm)</th>
                   <th className="border px-2 py-1.5 font-medium w-14">입수</th>
-                  <th className="border px-2 py-1.5 font-medium w-16" title="단중(g/pcs) — EPR 계산에 사용">단중(g)</th>
+                  <th className="border px-2 py-1.5 font-medium w-16" title="단중(g/pcs) — EPR 계산에 사용">무게(g)</th>
                   {c.simMode === 'mixed' && <th className="border px-2 py-1.5 font-medium w-16 bg-blue-50">CBM</th>}
                   <th className="border px-2 py-1.5 font-medium w-16">관세율</th>
                   <th className="border px-2 py-1.5 font-medium w-18 bg-orange-50/60" title="클릭하여 인증비 설정">인증비</th>
