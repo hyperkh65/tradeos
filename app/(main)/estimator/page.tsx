@@ -585,7 +585,15 @@ export default function EstimatorPage() {
     setAttachments(prev => prev.filter(a => a.id !== attId));
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    if (!draft) return;
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const parts = [draft.name, dateStr, userName].filter(Boolean);
+    const prev = document.title;
+    document.title = parts.join('_');
+    window.print();
+    setTimeout(() => { document.title = prev; }, 2000);
+  };
 
   const inCls = 'h-7 text-xs px-1.5 w-full';
 
