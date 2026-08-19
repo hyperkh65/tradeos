@@ -405,6 +405,8 @@ export default function ProfitAnalysisPage() {
         setSelected(json.data);
         setEditing(false);
         loadList(searchQ);
+        // Notion 자동저장 (비동기, 실패 무시)
+        fetch(`/api/profit-analysis/${json.data.id}/notion`, { method: 'POST' }).catch(() => {});
       } else {
         alert('저장 실패: ' + (json.error || ''));
       }
@@ -979,19 +981,17 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   const wex = pa.wireExRate || cex;
 
   const [advance, setAdvance] = useState(pa.advancePayment || 0);
-  const [payment, setPayment] = useState(pa.paymentAmount || 0);
+  const [actual, setActual] = useState(pa.actualPayment || 0);
   const [saving, setSaving] = useState(false);
 
   // PA props 갱신 시 state 동기화
   useEffect(() => {
     setAdvance(pa.advancePayment || 0);
-    setPayment(pa.paymentAmount || 0);
-  }, [pa.id, pa.advancePayment, pa.paymentAmount]);
+    setActual(pa.actualPayment || 0);
+  }, [pa.id, pa.advancePayment, pa.actualPayment]);
 
-  // 지급액 미입력 시 제품원가②를 기본값으로 사용
-  const effectivePayment = payment > 0 ? payment : productTotal2;
-  // 실지급액 = 지급액(or 제품원가②) - 선지급비용
-  const actualCalc = effectivePayment - advance;
+  // 5. 지급액 = 제품원가② − 선지급비용 (자동계산)
+  const paymentCalc = productTotal2 - advance;
 
   const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
 
@@ -1004,18 +1004,17 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
     ? `${pa.analysisDate.slice(0, 4)}년 ${parseInt(pa.analysisDate.slice(5, 7))}월 납품분`
     : '';
 
-  async function savePayments(adv: number, pay: number) {
+  async function savePayments(adv: number, act: number) {
     setSaving(true);
     try {
-      const effPay = pay > 0 ? pay : productTotal2;
       await fetch(`/api/profit-analysis/${pa.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...paToForm(pa),
           advancePayment: adv,
-          paymentAmount: pay,
-          actualPayment: effPay - adv,
+          paymentAmount: productTotal2 - adv,
+          actualPayment: act,
           updatedBy: 'admin',
           historyAction: '정산입력',
         }),
@@ -1203,44 +1202,40 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
                 value={advance || ''}
                 placeholder="0"
                 onChange={e => setAdvance(Number(e.target.value) || 0)}
-                onBlur={() => savePayments(advance, payment)}
+                onBlur={() => savePayments(advance, actual)}
               />
             </td>
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">{saving ? '저장중…' : '원'}</td>
           </tr>
 
-          {/* 5. 지급액 — 인라인 편집 (미입력 시 제품원가② 기준) */}
+          {/* 5. 지급액 — 자동계산 (제품원가② − 선지급비용) */}
           <tr>
             <td className="border border-gray-400 px-2 py-1.5 font-semibold">
               5. 지급액
-              {payment === 0 && productTotal2 > 0 && (
-                <span className="ml-1 text-[10px] text-gray-400 font-normal">(제품원가② 기준)</span>
-              )}
+              <span className="ml-1 text-[10px] text-gray-400 font-normal">(제품원가②−선지급)</span>
             </td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">총 청구액</td>
-            <td className="border border-gray-400 px-1 py-1" colSpan={2}>
-              <input
-                type="number"
-                className="w-full h-6 px-2 text-xs text-right bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400"
-                value={payment || ''}
-                placeholder={productTotal2 > 0 ? `미입력 시 ${fmt(productTotal2)} 적용` : '0'}
-                onChange={e => setPayment(Number(e.target.value) || 0)}
-                onBlur={() => savePayments(advance, payment)}
-              />
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">자동계산</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-right font-semibold" colSpan={2}>
+              {productTotal2 > 0 ? fmt(paymentCalc) : <span className="text-gray-400 font-normal text-xs">제품원가 입력 필요</span>}
             </td>
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
           </tr>
 
-          {/* 6. 실지급액 — 자동계산 = effectivePayment - advance */}
+          {/* 6. 실지급액 — 직접 입력 (환율 차이로 실제 송금액 다름) */}
           <tr className="bg-orange-50/60 font-semibold">
             <td className="border border-gray-400 px-2 py-1.5">6. 실지급액</td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">⑤−④</td>
-            <td className="border border-gray-400 px-2 py-1.5 text-right text-orange-700 text-sm" colSpan={2}>
-              {advance > 0 || payment > 0
-                ? `${fmt(actualCalc)}`
-                : <span className="text-gray-400 font-normal text-xs">선지급 또는 지급액 입력 시 계산</span>}
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">실송금액</td>
+            <td className="border border-gray-400 px-1 py-1" colSpan={2}>
+              <input
+                type="number"
+                className="w-full h-6 px-2 text-xs text-right bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400 font-normal"
+                value={actual || ''}
+                placeholder="실제 송금액 입력"
+                onChange={e => setActual(Number(e.target.value) || 0)}
+                onBlur={() => savePayments(advance, actual)}
+              />
             </td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">{saving ? '저장중…' : '원'}</td>
           </tr>
         </tbody>
       </table>
