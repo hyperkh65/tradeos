@@ -430,22 +430,12 @@ function ImportModal({
   }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv, form.freightKrw, freightKrwCalc, form.freightHandling, form.brokerFeeVatRate, form.warehouseFeeVatRate, form.demurrageVatRate, form.detentionFeeVatRate, form.inlandFreightVatRate]);
 
   const syncSettlementItems = () => {
+    // 조정금액 전부 초기화, 조정사유만 유지
     const built = buildSettlementItems();
-    setSettlementItems(prev => {
-      return built.map(b => {
-        const existing = prev.find(p => p.category === b.category);
-        if (!existing) return b;
-        // 계산값이 바뀐 항목은 무조건 리셋, 사용자가 명시적으로 다른 값을 입력했고 계산값도 안바뀐 경우만 유지
-        const calcChanged = b.calculated !== existing.calculated;
-        const vatChanged = (b.vat ?? 0) !== (existing.vat ?? 0);
-        return {
-          ...b,
-          adjusted: calcChanged ? undefined : existing.adjusted,
-          adjustedVat: vatChanged ? undefined : existing.adjustedVat,
-          reason: existing.reason,
-        };
-      });
-    });
+    setSettlementItems(prev => built.map(b => {
+      const existing = prev.find(p => p.category === b.category);
+      return existing?.reason ? { ...b, reason: existing.reason } : b;
+    }));
   };
 
   const fetchRate = async () => {
