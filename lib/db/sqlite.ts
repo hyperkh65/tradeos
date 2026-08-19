@@ -827,6 +827,20 @@ function runMigrations(db: Database.Database) {
     insertMany();
   }
 
+  // 계정과목 누락분 추가 (idempotent)
+  try {
+    const addAcct = db.prepare('INSERT OR IGNORE INTO chart_of_accounts (id,code,name,type,normal_balance,group_name,description) VALUES (?,?,?,?,?,?,?)');
+    const extraAccounts: string[][] = [
+      ['ac101','1351','부가세대급금','asset','debit','유동자산','매입 시 납부한 부가세 (환급 예정)'],
+      ['ac102','1460','상품','asset','debit','유동자산','매입한 판매용 상품 재고'],
+      ['ac103','2510','외상매입금','liability','credit','유동부채','외상으로 구입한 금액 (매입채무)'],
+      ['ac104','5440','지급수수료','expense','debit','수입원가','포워더·관세사 등 각종 수수료'],
+      ['ac105','5450','Demurrage/체화료','expense','debit','수입원가','컨테이너 지체·체화료'],
+      ['ac106','5460','내륙운송비','expense','debit','수입원가','항구→창고 내륙 운송비'],
+    ];
+    db.transaction(() => { extraAccounts.forEach(a => addAcct.run(...a)); })();
+  } catch { /* ignore */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

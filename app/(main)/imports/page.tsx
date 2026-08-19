@@ -1530,7 +1530,7 @@ function ImportModal({
                       if (vatSum > 0) lines.push({ accountCode: '1351', accountName: '부가세대급금', debit: vatSum, credit: 0 });
                       if (expenseSum > 0) lines.push({ accountCode: '5440', accountName: '지급수수료', debit: expenseSum, credit: 0 });
                       if (invoiceKrw > 0) lines.push({ accountCode: '2510', accountName: '외상매입금', debit: 0, credit: invoiceKrw });
-                      if (cashPaid > 0) lines.push({ accountCode: '1020', accountName: '보통예금', debit: 0, credit: cashPaid });
+                      if (cashPaid > 0) lines.push({ accountCode: '1020', accountName: '보통예금', debit: 0, credit: Math.max(0, cashPaid) });
                       try {
                         const res = await fetch('/api/accounting/journals', {
                           method: 'POST',
