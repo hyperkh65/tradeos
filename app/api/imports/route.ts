@@ -32,6 +32,11 @@ export function dbToImport(row: Record<string, unknown>): Import {
     detentionFee: (row.detention_fee as number) || undefined,
     demurrage: (row.demurrage as number) || undefined,
     inlandFreight: (row.inland_freight as number) || undefined,
+    brokerFeeVatRate: row.broker_fee_vat_rate !== null && row.broker_fee_vat_rate !== undefined ? (row.broker_fee_vat_rate as number) : 10,
+    warehouseFeeVatRate: row.warehouse_fee_vat_rate !== null && row.warehouse_fee_vat_rate !== undefined ? (row.warehouse_fee_vat_rate as number) : 10,
+    demurrageVatRate: row.demurrage_vat_rate !== null && row.demurrage_vat_rate !== undefined ? (row.demurrage_vat_rate as number) : 0,
+    detentionFeeVatRate: row.detention_fee_vat_rate !== null && row.detention_fee_vat_rate !== undefined ? (row.detention_fee_vat_rate as number) : 0,
+    inlandFreightVatRate: row.inland_freight_vat_rate !== null && row.inland_freight_vat_rate !== undefined ? (row.inland_freight_vat_rate as number) : 10,
     inlandFreightRegion: (row.inland_freight_region as string) || undefined,
     inlandCarrierId: (row.inland_carrier_id as string) || undefined,
     inlandCarrierName: (row.inland_carrier_name as string) || undefined,
@@ -89,8 +94,10 @@ export async function POST(req: NextRequest) {
        inspection_fee,inspection_refund,warehouse_fee,detention_fee,demurrage,inland_freight,inland_freight_region,inland_carrier_id,inland_carrier_name,custom_costs_json,
        hs_code,duty_rate,duty,vat,broker_fee,items_json,
        fta_applicable,fta_type,co_status,co_no,inspection_type,
-       refund_amount,refund_status,bl_no,documents_json,remark,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+       refund_amount,refund_status,bl_no,documents_json,remark,status,
+       broker_fee_vat_rate,warehouse_fee_vat_rate,demurrage_vat_rate,detention_fee_vat_rate,inland_freight_vat_rate,
+       created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 
       .run(
         id, bizId,
@@ -140,6 +147,11 @@ export async function POST(req: NextRequest) {
         '[]',
         body.remark ?? null,
         body.status || 'in_progress',
+        body.brokerFeeVatRate ?? 10,
+        body.warehouseFeeVatRate ?? 10,
+        body.demurrageVatRate ?? 0,
+        body.detentionFeeVatRate ?? 0,
+        body.inlandFreightVatRate ?? 10,
         ts, ts,
       );
 
@@ -156,6 +168,11 @@ export async function POST(req: NextRequest) {
       brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
       warehouseFee: body.warehouseFee, detentionFee: body.detentionFee,
       demurrage: body.demurrage, inlandFreight: body.inlandFreight,
+      brokerFeeVatRate: body.brokerFeeVatRate ?? 10,
+      warehouseFeeVatRate: body.warehouseFeeVatRate ?? 10,
+      demurrageVatRate: body.demurrageVatRate ?? 0,
+      detentionFeeVatRate: body.detentionFeeVatRate ?? 0,
+      inlandFreightVatRate: body.inlandFreightVatRate ?? 10,
       customCosts: body.customCosts, createdBy: user?.id || 'unknown',
     });
 

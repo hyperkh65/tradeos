@@ -28,7 +28,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       hs_code=?, duty_rate=?, duty=?, vat=?, broker_fee=?, items_json=?,
       fta_applicable=?, fta_type=?, co_status=?, co_no=?,
       inspection_type=?, refund_amount=?, refund_status=?, bl_no=?,
-      settlement_json=?, remark=?, status=?, updated_at=?
+      settlement_json=?, remark=?, status=?,
+      broker_fee_vat_rate=?, warehouse_fee_vat_rate=?, demurrage_vat_rate=?, detention_fee_vat_rate=?, inland_freight_vat_rate=?,
+      updated_at=?
       WHERE id=?`)
       .run(
         body.shipmentBusinessId ?? row.shipment_business_id,
@@ -76,6 +78,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.settlementItems !== undefined ? JSON.stringify(body.settlementItems) : (row.settlement_json ?? '[]'),
         body.remark ?? row.remark,
         body.status ?? row.status,
+        body.brokerFeeVatRate !== undefined ? body.brokerFeeVatRate : (row.broker_fee_vat_rate ?? 10),
+        body.warehouseFeeVatRate !== undefined ? body.warehouseFeeVatRate : (row.warehouse_fee_vat_rate ?? 10),
+        body.demurrageVatRate !== undefined ? body.demurrageVatRate : (row.demurrage_vat_rate ?? 0),
+        body.detentionFeeVatRate !== undefined ? body.detentionFeeVatRate : (row.detention_fee_vat_rate ?? 0),
+        body.inlandFreightVatRate !== undefined ? body.inlandFreightVatRate : (row.inland_freight_vat_rate ?? 10),
         now(), id,
       );
 
@@ -97,6 +104,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         detentionFee: (body.detentionFee ?? updated.detention_fee) as number | undefined,
         demurrage: (body.demurrage ?? updated.demurrage) as number | undefined,
         inlandFreight: (body.inlandFreight ?? updated.inland_freight) as number | undefined,
+        brokerFeeVatRate: body.brokerFeeVatRate !== undefined ? body.brokerFeeVatRate : ((updated.broker_fee_vat_rate as number) ?? 10),
+        warehouseFeeVatRate: body.warehouseFeeVatRate !== undefined ? body.warehouseFeeVatRate : ((updated.warehouse_fee_vat_rate as number) ?? 10),
+        demurrageVatRate: body.demurrageVatRate !== undefined ? body.demurrageVatRate : ((updated.demurrage_vat_rate as number) ?? 0),
+        detentionFeeVatRate: body.detentionFeeVatRate !== undefined ? body.detentionFeeVatRate : ((updated.detention_fee_vat_rate as number) ?? 0),
+        inlandFreightVatRate: body.inlandFreightVatRate !== undefined ? body.inlandFreightVatRate : ((updated.inland_freight_vat_rate as number) ?? 10),
         customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
         createdBy: user?.id || 'unknown',
       });

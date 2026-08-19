@@ -353,6 +353,11 @@ export interface Import {
   detentionFee?: number;   // Detention/DET (지체료)
   demurrage?: number;      // Demurrage/DEM (체화료)
   inlandFreight?: number;
+  brokerFeeVatRate?: number;
+  warehouseFeeVatRate?: number;
+  demurrageVatRate?: number;
+  detentionFeeVatRate?: number;
+  inlandFreightVatRate?: number;
   inlandFreightRegion?: string;
   inlandCarrierId?: string;
   inlandCarrierName?: string;

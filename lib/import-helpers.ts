@@ -11,6 +11,11 @@ interface ImportExpenseFields {
   detentionFee?: number;
   demurrage?: number;
   inlandFreight?: number;
+  brokerFeeVatRate?: number;
+  warehouseFeeVatRate?: number;
+  demurrageVatRate?: number;
+  detentionFeeVatRate?: number;
+  inlandFreightVatRate?: number;
   freightKrw?: number;
   freightHandling?: { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number; includedInCif?: boolean }[];
   customCosts?: { name: string; amount: number; vatRate?: number }[];
@@ -54,10 +59,18 @@ export function syncImportExpenses(
     .reduce((s, h) => s + h.vat, 0);
   const totalFreight = (fields.freightKrw || 0) + handlingSurcharge;
 
-  // 국내비용 VAT (별도 10%): 내륙운송비, 통관비, 창고료
-  const inlandVat    = Math.round((fields.inlandFreight || 0) * 0.1);
-  const brokerVat    = Math.round((fields.brokerFee || 0) * 0.1);
-  const warehouseVat = Math.round((fields.warehouseFee || 0) * 0.1);
+  // 국내비용 VAT (각 항목별 VAT율 적용)
+  const brokerVatRate    = (fields.brokerFeeVatRate ?? 10) / 100;
+  const warehouseVatRate = (fields.warehouseFeeVatRate ?? 10) / 100;
+  const demurrageVatRate = (fields.demurrageVatRate ?? 0) / 100;
+  const detentionVatRate = (fields.detentionFeeVatRate ?? 0) / 100;
+  const inlandVatRate    = (fields.inlandFreightVatRate ?? 10) / 100;
+
+  const brokerVat    = Math.round((fields.brokerFee || 0) * brokerVatRate);
+  const warehouseVat = Math.round((fields.warehouseFee || 0) * warehouseVatRate);
+  const demurrageVat = Math.round((fields.demurrage || 0) * demurrageVatRate);
+  const detentionVat = Math.round((fields.detentionFee || 0) * detentionVatRate);
+  const inlandVat    = Math.round((fields.inlandFreight || 0) * inlandVatRate);
 
   const entries: { cat: string; amt: number | undefined; type?: string }[] = [
     { cat: '해상운임',                amt: totalFreight > 0 ? totalFreight : undefined },
@@ -70,7 +83,9 @@ export function syncImportExpenses(
     { cat: 'Terminal Storage(장치료)', amt: fields.warehouseFee },
     { cat: '창고료 VAT',              amt: warehouseVat > 0 ? warehouseVat : undefined, type: 'vat' },
     { cat: 'Demurrage/DEM(체화료)',   amt: fields.demurrage },
+    { cat: 'Demurrage VAT',           amt: demurrageVat > 0 ? demurrageVat : undefined, type: 'vat' },
     { cat: 'Detention/DET(지체료)',   amt: fields.detentionFee },
+    { cat: 'Detention VAT',           amt: detentionVat > 0 ? detentionVat : undefined, type: 'vat' },
     { cat: '내륙운송비',              amt: fields.inlandFreight },
     { cat: '내륙운송비 VAT',          amt: inlandVat > 0 ? inlandVat : undefined, type: 'vat' },
     ...(fields.customCosts || []).filter(c => c.name && c.amount > 0).flatMap(c => {

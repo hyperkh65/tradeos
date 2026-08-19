@@ -564,6 +564,12 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE profit_analyses ADD COLUMN advance_payment REAL DEFAULT 0`,
     `ALTER TABLE profit_analyses ADD COLUMN payment_amount REAL DEFAULT 0`,
     `ALTER TABLE profit_analyses ADD COLUMN actual_payment REAL DEFAULT 0`,
+    // 비용항목별 VAT율 (0 또는 10)
+    `ALTER TABLE imports ADD COLUMN broker_fee_vat_rate REAL DEFAULT 10`,
+    `ALTER TABLE imports ADD COLUMN warehouse_fee_vat_rate REAL DEFAULT 10`,
+    `ALTER TABLE imports ADD COLUMN demurrage_vat_rate REAL DEFAULT 0`,
+    `ALTER TABLE imports ADD COLUMN detention_fee_vat_rate REAL DEFAULT 0`,
+    `ALTER TABLE imports ADD COLUMN inland_freight_vat_rate REAL DEFAULT 10`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
