@@ -99,6 +99,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       id,
     );
 
+  // PA가 확정(confirmed)이고 연결된 import가 있으면 import 상태를 completed로 업데이트
+  if (body.status === 'confirmed' && body.importBusinessId) {
+    try {
+      db.prepare(`UPDATE imports SET status='completed', updated_at=? WHERE business_id=?`).run(ts, body.importBusinessId);
+    } catch {}
+  }
+
   const row = db.prepare('SELECT * FROM profit_analyses WHERE id=?').get(id) as Record<string, unknown>;
   return NextResponse.json({ data: rowToPA(row) });
 }

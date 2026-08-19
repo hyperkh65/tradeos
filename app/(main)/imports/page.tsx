@@ -600,10 +600,10 @@ function ImportModal({
         </div>
 
         {/* 마감 알림 배너 */}
-        {isClosed && !isAdmin && (
-          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-700 flex items-center gap-1.5">
+        {isClosed && (
+          <div className={cn('px-4 py-2 border-b text-xs flex items-center gap-1.5', isAdmin ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-amber-50 border-amber-200 text-amber-700')}>
             <Lock className="w-3.5 h-3.5 shrink-0" />
-            마감된 통관건입니다. 관리자만 수정할 수 있습니다.
+            {isAdmin ? '마감된 통관건입니다. (관리자 권한으로 수정 가능)' : '마감된 통관건입니다. 관리자만 수정할 수 있습니다.'}
           </div>
         )}
 

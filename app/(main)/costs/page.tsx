@@ -1849,15 +1849,15 @@ export default function CostsPage() {
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState<CostRecord | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const [crRes, fiRes] = await Promise.all([
       fetch('/api/cost-records').then(r => r.json()),
       fetch('/api/foreign-invoices').then(r => r.json()),
     ]);
     if (crRes.data) setRecords(crRes.data);
     if (fiRes.data) setInvoices(fiRes.data);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -1905,7 +1905,7 @@ export default function CostsPage() {
 
   const handleQuickDisposition = async (id: string, disposition: CostRecord['disposition']) => {
     await fetch(`/api/cost-records/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disposition }) });
-    load();
+    load(true);
   };
 
   const handleConfirmPayment = (id: string) => {
@@ -2150,10 +2150,10 @@ export default function CostsPage() {
       </div>
 
       {editModal.open && (
-        <CostModal record={editModal.record || null} onClose={() => setEditModal({ open: false })} onSave={() => { setEditModal({ open: false }); load(); }} />
+        <CostModal record={editModal.record || null} onClose={() => setEditModal({ open: false })} onSave={() => { setEditModal({ open: false }); load(true); }} />
       )}
       {invoiceModal && (
-        <ForeignInvoiceModal records={records} onClose={() => setInvoiceModal(false)} onSave={() => { setInvoiceModal(false); load(); }} />
+        <ForeignInvoiceModal records={records} onClose={() => setInvoiceModal(false)} onSave={() => { setInvoiceModal(false); load(true); }} />
       )}
       {paymentTarget && (
         <PaymentConfirmDialog
@@ -2163,7 +2163,7 @@ export default function CostsPage() {
           initRate={paymentTarget.fxRateAtSettle || paymentTarget.fxRateAtCost || undefined}
           initDate={paymentTarget.settledAt || undefined}
           onClose={() => setPaymentTarget(null)}
-          onSuccess={() => { setPaymentTarget(null); load(); }}
+          onSuccess={() => { setPaymentTarget(null); load(true); }}
         />
       )}
     </div>
