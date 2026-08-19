@@ -889,7 +889,7 @@ export default function ProfitAnalysisPage() {
               {/* ── 읽기 모드 ── */}
               {!editing && selected && (
                 <>
-                  <SettlementTable pa={selected} />
+                  <SettlementTable pa={selected} onUpdated={() => { loadList(searchQ); fetch(`/api/profit-analysis/${selected.id}`).then(r => r.json()).then(j => { if (j.data) setSelected(j.data); }); }} />
 
                   {/* 메모 */}
                   {selected.memo && (
@@ -999,24 +999,53 @@ function ViewSection({ title, children }: { title: string; children: React.React
   );
 }
 
-function SettlementTable({ pa }: { pa: PA }) {
+function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   const form = paToForm(pa);
   const totals = calcTotals(form);
   const { productTotal2, logisticTotal, profit, profitRate } = totals;
   const cex = pa.customsExRate || 1;
   const wex = pa.wireExRate || cex;
 
+  const [advance, setAdvance] = useState(pa.advancePayment || 0);
+  const [payment, setPayment] = useState(pa.paymentAmount || 0);
+  const [saving, setSaving] = useState(false);
+
+  // 실지급액 = 지급액 - 선지급비용 (자동계산)
+  const actualCalc = payment - advance;
+
+  const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
+
   const dateStr = pa.analysisDate
     ? `${new Date(pa.analysisDate).getMonth() + 1}/${new Date(pa.analysisDate).getDate()}`
     : '';
 
-  const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
+  // 납품월 표기: "YYYY년 MM월 납품분"
+  const deliveryLabel = pa.analysisDate
+    ? `${pa.analysisDate.slice(0, 4)}년 ${parseInt(pa.analysisDate.slice(5, 7))}월 납품분`
+    : '';
 
-  const Tr = ({ cols, cls }: { cols: React.ReactNode[]; cls?: string }) => (
-    <tr className={cls}>
-      {cols.map((c, i) => <td key={i}>{c}</td>)}
-    </tr>
-  );
+  async function savePayments(adv: number, pay: number) {
+    setSaving(true);
+    try {
+      await fetch(`/api/profit-analysis/${pa.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...paToForm(pa),
+          advancePayment: adv,
+          paymentAmount: pay,
+          actualPayment: pay - adv,
+          updatedBy: 'admin',
+          historyAction: '정산입력',
+        }),
+      });
+      onUpdated();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const td = 'border border-gray-400 px-2 py-1.5';
 
   return (
     <div className="overflow-x-auto">
@@ -1032,21 +1061,24 @@ function SettlementTable({ pa }: { pa: PA }) {
             <td colSpan={5} className="border border-gray-400 text-center font-medium py-1 bg-gray-50">{pa.title}</td>
           </tr>
           {/* 컬럼 헤더 */}
-          <tr className="bg-gray-100">
+          <tr className="bg-gray-100 font-semibold text-center">
             <td className="border border-gray-400 px-2 py-1" style={{ width: '38%' }}></td>
-            <td className="border border-gray-400 px-2 py-1 text-center" style={{ width: '12%' }}>수량</td>
-            <td className="border border-gray-400 px-2 py-1 text-center font-semibold" style={{ width: '22%' }}>KRW</td>
-            <td className="border border-gray-400 px-2 py-1 text-center font-semibold" style={{ width: '18%' }}>RMB</td>
-            <td className="border border-gray-400 px-2 py-1 text-center" style={{ width: '10%' }}>비고</td>
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '12%' }}>수량</td>
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '22%' }}>KRW</td>
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '18%' }}>RMB</td>
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '10%' }}>비고</td>
           </tr>
 
           {/* 1. 매출금액 */}
           <tr className="font-semibold">
-            <td className="border border-gray-400 px-2 py-1.5">1. 매출금액&nbsp;&nbsp;원</td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-            <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(pa.saleAmount)}</td>
-            <td className="border border-gray-400 px-2 py-1.5"></td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center text-gray-500 text-[10px]">부가세</td>
+            <td className={td}>
+              1. 매출금액&nbsp;&nbsp;원
+              {deliveryLabel && <span className="ml-2 text-[10px] text-gray-500 font-normal">({deliveryLabel})</span>}
+            </td>
+            <td className={cn(td, 'text-center')}></td>
+            <td className={cn(td, 'text-right')}>{fmt(pa.saleAmount)}</td>
+            <td className={td}></td>
+            <td className={cn(td, 'text-center text-gray-500 text-[10px]')}>부가세 별도</td>
           </tr>
 
           {/* 2. 비용 헤더 */}
@@ -1066,30 +1098,43 @@ function SettlementTable({ pa }: { pa: PA }) {
                 <td className="border border-gray-400 px-2 py-1"></td>
                 <td className="border border-gray-400 px-2 py-1"></td>
               </tr>
+              {/* 환율 표시 행 */}
+              {(cex > 1 || wex > 1) && (
+                <tr className="text-[10px] text-amber-700 bg-amber-50/40">
+                  <td colSpan={5} className="border border-gray-400 px-2 py-0.5 pl-8">
+                    적용환율 — ①통관: {fmt(cex)}원/CNY&nbsp;&nbsp;②송금: {wex !== cex ? fmt(wex) : '(①과 동일)'}원/CNY
+                    {pa.importBusinessId && <span className="ml-2 text-orange-500">({pa.importBusinessId})</span>}
+                  </td>
+                </tr>
+              )}
               {pa.productItems.map((p, i) => {
                 const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
-                const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
                 const rmbAmt = p.totalKrwManual ? null : ((p.qty || 0) * (p.unitPriceFx || 0));
                 return (
                   <tr key={i}>
                     <td className="border border-gray-400 px-2 py-1 pl-6">
-                      <span className="text-gray-500 mr-2">{dateStr}</span>{p.name}{p.spec ? ` ${p.spec}` : ''}
+                      <span className="text-gray-400 mr-2 text-[10px]">{dateStr}</span>{p.name}{p.spec ? ` ${p.spec}` : ''}
                     </td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-600">{(p.qty || 0).toLocaleString()}</td>
                     <td className="border border-gray-400 px-2 py-1 text-right">{t1 > 0 ? fmt(t1) : '-'}</td>
                     <td className="border border-gray-400 px-2 py-1 text-right text-gray-600">
-                      {rmbAmt ? `¥ ${rmbAmt.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                      {rmbAmt != null ? `¥ ${rmbAmt.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                     </td>
                     <td className="border border-gray-400 px-2 py-1"></td>
                   </tr>
                 );
               })}
-              {/* 제품원가 소계 */}
-              <tr className="text-[10px] text-gray-500">
-                <td className="border border-gray-400 px-2 py-0.5 pl-6" colSpan={2}>제품원가 소계 (②송금환율 기준)</td>
-                <td className="border border-gray-400 px-2 py-0.5 text-right font-medium text-gray-700">{fmt(productTotal2)}</td>
-                <td className="border border-gray-400 px-2 py-0.5"></td>
-                <td className="border border-gray-400 px-2 py-0.5"></td>
+              {/* 제품원가 소계 — 열 형식 동일, 하이라이트 */}
+              <tr className="bg-yellow-50 font-semibold text-gray-700">
+                <td className="border border-gray-400 px-2 py-1 pl-6">제품원가 소계 (②송금환율 기준)</td>
+                <td className="border border-gray-400 px-2 py-1 text-center"></td>
+                <td className="border border-gray-400 px-2 py-1 text-right">{fmt(productTotal2)}</td>
+                <td className="border border-gray-400 px-2 py-1 text-right text-gray-500">
+                  {pa.productItems.reduce((s, p) => s + (p.totalKrwManual ? 0 : (p.qty || 0) * (p.unitPriceFx || 0)), 0) > 0
+                    ? `¥ ${pa.productItems.reduce((s, p) => s + (p.totalKrwManual ? 0 : (p.qty || 0) * (p.unitPriceFx || 0)), 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : ''}
+                </td>
+                <td className="border border-gray-400 px-2 py-1"></td>
               </tr>
             </>
           )}
@@ -1103,7 +1148,7 @@ function SettlementTable({ pa }: { pa: PA }) {
             <td className="border border-gray-400 px-2 py-1.5"></td>
             <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(logisticOnlyCost)}</td>
             <td className="border border-gray-400 px-2 py-1.5"></td>
-            <td className="border border-gray-400 px-2 py-1.5 text-center text-gray-500 text-[10px]">비용/세미올</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-gray-500 text-[10px]">부가세 제외</td>
           </tr>
 
           {/* 물류비용 상세 */}
@@ -1131,14 +1176,14 @@ function SettlementTable({ pa }: { pa: PA }) {
               <td className="border border-gray-400 px-2 py-1"></td>
             </tr>
           ))}
-          {/* 부가세 (참고) */}
+          {/* 부가세 — 별도/불포함 명시 */}
           {pa.vatImport > 0 && (
-            <tr className="text-gray-500">
-              <td className="border border-gray-400 px-2 py-1 pl-8">부가세</td>
+            <tr className="text-gray-500 italic">
+              <td className="border border-gray-400 px-2 py-1 pl-8">부가세 (별도)</td>
               <td className="border border-gray-400 px-2 py-1"></td>
               <td className="border border-gray-400 px-2 py-1 text-right">{fmt(pa.vatImport)}</td>
               <td className="border border-gray-400 px-2 py-1"></td>
-              <td className="border border-gray-400 px-2 py-1 text-center text-[10px]">불포함</td>
+              <td className="border border-gray-400 px-2 py-1 text-center text-[10px]">별도/불포함</td>
             </tr>
           )}
 
@@ -1153,54 +1198,63 @@ function SettlementTable({ pa }: { pa: PA }) {
               {profit >= 0 ? '' : '-'}{fmt(Math.abs(profit))}
             </td>
             <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2 text-center text-gray-500 text-[10px]">부가세</td>
+            <td className="border border-gray-400 px-2 py-2 text-center text-gray-500 text-[10px]">부가세 별도</td>
           </tr>
           <tr className={profit >= 0 ? 'bg-blue-50/50' : 'bg-red-50/50'}>
-            <td className="border border-gray-400 px-2 py-1 text-right text-gray-600 font-medium">{profitRate.toFixed(2)}</td>
+            <td className="border border-gray-400 px-2 py-1 text-right pr-4 text-gray-600 font-medium">{profitRate.toFixed(2)}</td>
             <td className="border border-gray-400 px-2 py-1 text-gray-600">수익률 %</td>
-            <td className="border border-gray-400 px-2 py-1"></td>
-            <td className="border border-gray-400 px-2 py-1"></td>
-            <td className="border border-gray-400 px-2 py-1"></td>
+            <td className="border border-gray-400 px-2 py-1 text-[10px] text-gray-400" colSpan={3}>
+              매출 {fmt(pa.saleAmount)} − 총비용(제품원가+물류) {fmt(productTotal2 + logisticOnlyCost)}
+            </td>
           </tr>
-
-          {/* 환율 정보 */}
-          {(pa.customsExRate > 0 || pa.wireExRate > 0) && (
-            <tr className="text-[10px] text-gray-400">
-              <td colSpan={5} className="border border-gray-400 px-2 py-1">
-                ①통관환율 {fmt(pa.customsExRate)}원 / ②송금환율 {pa.wireExRate > 0 ? fmt(pa.wireExRate) : '미입력'}원
-                {pa.importBusinessId && <span className="ml-2 text-orange-500">({pa.importBusinessId})</span>}
-              </td>
-            </tr>
-          )}
 
           {/* 빈 행 */}
           <tr><td colSpan={5} className="border border-gray-400 py-1"></td></tr>
 
-          {/* 4. 선지급비용 */}
+          {/* 4. 선지급비용 — 인라인 편집 */}
           <tr>
-            <td className="border border-gray-400 px-2 py-2 font-semibold">4. 선지급비용</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2 text-right">{pa.advancePayment > 0 ? fmt(pa.advancePayment) : ''}</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-1.5 font-semibold">4. 선지급비용</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">보증금 등</td>
+            <td className="border border-gray-400 px-1 py-1" colSpan={2}>
+              <input
+                type="number"
+                className="w-full h-6 px-2 text-xs text-right bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                value={advance || ''}
+                placeholder="0"
+                onChange={e => setAdvance(Number(e.target.value) || 0)}
+                onBlur={() => savePayments(advance, payment)}
+              />
+            </td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">{saving ? '저장중…' : '원'}</td>
           </tr>
 
-          {/* 5. 지급액 */}
+          {/* 5. 지급액 — 인라인 편집 */}
           <tr>
-            <td className="border border-gray-400 px-2 py-2 font-semibold">5. 지급액</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2 text-right">{pa.paymentAmount > 0 ? fmt(pa.paymentAmount) : ''}</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-1.5 font-semibold">5. 지급액</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">총 청구액</td>
+            <td className="border border-gray-400 px-1 py-1" colSpan={2}>
+              <input
+                type="number"
+                className="w-full h-6 px-2 text-xs text-right bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                value={payment || ''}
+                placeholder={`제품원가 기준: ${fmt(productTotal2)}`}
+                onChange={e => setPayment(Number(e.target.value) || 0)}
+                onBlur={() => savePayments(advance, payment)}
+              />
+            </td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
           </tr>
 
-          {/* 6. 실지급액 */}
-          <tr>
-            <td className="border border-gray-400 px-2 py-2 font-semibold">6. 실지급액</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2 text-right">{pa.actualPayment > 0 ? fmt(pa.actualPayment) : ''}</td>
-            <td className="border border-gray-400 px-2 py-2"></td>
-            <td className="border border-gray-400 px-2 py-2"></td>
+          {/* 6. 실지급액 — 자동계산 */}
+          <tr className="bg-orange-50/60 font-semibold">
+            <td className="border border-gray-400 px-2 py-1.5">6. 실지급액</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">⑤−④</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-right" colSpan={2}>
+              <span className={cn(actualCalc > 0 ? 'text-orange-700' : 'text-gray-400')}>
+                {actualCalc !== 0 ? fmt(actualCalc) : '—'}
+              </span>
+            </td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
           </tr>
         </tbody>
       </table>
