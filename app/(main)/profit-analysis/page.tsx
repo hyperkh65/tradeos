@@ -466,7 +466,7 @@ export default function ProfitAnalysisPage() {
       ['2. 비용'],
       [],
       ['[제품원가]'],
-      ['品名/DESCRIPTION', '型号/SPEC.', '수량/Qty', 'Unit Price', `①원가(환율${cex})`, `②원가(환율${wex})`],
+      ['품명 (DESCRIPTION)', '규격 (SPEC.)', '수량/Qty', 'Unit Price', `①원가(환율${cex})`, `②원가(환율${wex})`],
       ...pa.productItems.map(p => {
         const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
         const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
@@ -719,65 +719,6 @@ export default function ProfitAnalysisPage() {
                     )}
                   </div>
 
-                  {/* 제품원가 */}
-                  <div className="rounded-lg border border-border p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold">② 제품원가</span>
-                      {form.customsExRate > 0 && (
-                        <span className="text-[10px] text-muted-foreground">①환율{fmt(form.customsExRate)} / ②환율{form.wireExRate > 0 ? fmt(form.wireExRate) : '미입력'}</span>
-                      )}
-                      <button className="ml-auto text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" onClick={addProductItem}>
-                        <Plus className="w-3 h-3" />행 추가
-                      </button>
-                    </div>
-
-                    {form.productItems.length > 0 ? (
-                      <div className="rounded border border-border overflow-x-auto text-xs">
-                        <div className="grid bg-muted/50 font-medium text-muted-foreground min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
-                          {['品名(품명)', '型号(규격)', '수량', '단가(CNY)', `①원가(×${cex})`, `②원가(×${wex || '?'})`, ''].map(h => (
-                            <div key={h} className="px-2 py-1.5">{h}</div>
-                          ))}
-                        </div>
-                        {form.productItems.map((p, idx) => {
-                          const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
-                          const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
-                          return (
-                            <div key={p.id} className="grid border-t border-border min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
-                              <input className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.name} onChange={e => updateProduct(idx, 'name', e.target.value)} placeholder="품명" />
-                              <input className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.spec || ''} onChange={e => updateProduct(idx, 'spec', e.target.value)} placeholder="규격/모델" />
-                              <input type="number" className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.qty || ''} onChange={e => updateProduct(idx, 'qty', Number(e.target.value))} placeholder="0" />
-                              <input type="number" className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.unitPriceFx || ''} onChange={e => { updateProduct(idx, 'unitPriceFx', Number(e.target.value)); updateProduct(idx, 'totalKrwManual', undefined); }} placeholder="0.00" />
-                              <div className="px-2 py-1 text-xs text-muted-foreground border-r border-border">{t1 > 0 ? fmt(t1) : '-'}</div>
-                              <div
-                                className={cn('px-2 py-1 text-xs border-r border-border font-medium', t2 > 0 ? 'text-blue-700' : 'text-muted-foreground')}
-                                title="클릭하여 직접입력"
-                                onClick={() => {
-                                  const v = prompt('②원가 직접입력 (KRW, 비워두면 자동계산)', p.totalKrwManual?.toString() || '');
-                                  if (v === null) return;
-                                  updateProduct(idx, 'totalKrwManual', v ? Number(v) : undefined);
-                                }}
-                              >
-                                {t2 > 0 ? fmt(t2) : '-'}
-                                {p.totalKrwManual ? <span className="ml-1 text-[10px] text-orange-500">직접</span> : null}
-                              </div>
-                              <button className="flex items-center justify-center text-muted-foreground hover:text-red-500" onClick={() => removeProduct(idx)}><X className="w-3 h-3" /></button>
-                            </div>
-                          );
-                        })}
-                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
-                          <div className="px-2 py-1.5 col-span-4">소계</div>
-                          <div className="px-2 py-1.5 text-muted-foreground">{fmt(totals.productTotal1)}원</div>
-                          <div className="px-2 py-1.5 text-blue-700">{fmt(totals.productTotal2)}원</div>
-                          <div />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
-                        수입통관 연결 시 제품내역이 자동 입력됩니다. 행 추가로 직접 입력도 가능합니다.
-                      </div>
-                    )}
-                  </div>
-
                   {/* 비용 */}
                   <div className="rounded-lg border border-border p-3 space-y-2">
                     <div className="text-xs font-semibold">③ 물류·통관 비용</div>
@@ -824,6 +765,65 @@ export default function ProfitAnalysisPage() {
                     <button type="button" className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" onClick={addExtraCost}>
                       <Plus className="w-3 h-3" />기타비용 추가
                     </button>
+                  </div>
+
+                  {/* 제품원가 */}
+                  <div className="rounded-lg border border-border p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold">② 제품원가</span>
+                      {form.customsExRate > 0 && (
+                        <span className="text-[10px] text-muted-foreground">①환율{fmt(form.customsExRate)} / ②환율{form.wireExRate > 0 ? fmt(form.wireExRate) : '미입력'}</span>
+                      )}
+                      <button className="ml-auto text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" onClick={addProductItem}>
+                        <Plus className="w-3 h-3" />행 추가
+                      </button>
+                    </div>
+
+                    {form.productItems.length > 0 ? (
+                      <div className="rounded border border-border overflow-x-auto text-xs">
+                        <div className="grid bg-muted/50 font-medium text-muted-foreground min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
+                          {['품명', '규격', '수량', '단가(CNY)', `①원가(×${cex})`, `②원가(×${wex || '?'})`, ''].map(h => (
+                            <div key={h} className="px-2 py-1.5">{h}</div>
+                          ))}
+                        </div>
+                        {form.productItems.map((p, idx) => {
+                          const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
+                          const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
+                          return (
+                            <div key={p.id} className="grid border-t border-border min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
+                              <input className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.name} onChange={e => updateProduct(idx, 'name', e.target.value)} placeholder="품명" />
+                              <input className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.spec || ''} onChange={e => updateProduct(idx, 'spec', e.target.value)} placeholder="규격/모델" />
+                              <input type="number" className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.qty || ''} onChange={e => updateProduct(idx, 'qty', Number(e.target.value))} placeholder="0" />
+                              <input type="number" className="px-2 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50" value={p.unitPriceFx || ''} onChange={e => { updateProduct(idx, 'unitPriceFx', Number(e.target.value)); updateProduct(idx, 'totalKrwManual', undefined); }} placeholder="0.00" />
+                              <div className="px-2 py-1 text-xs text-muted-foreground border-r border-border">{t1 > 0 ? fmt(t1) : '-'}</div>
+                              <div
+                                className={cn('px-2 py-1 text-xs border-r border-border font-medium', t2 > 0 ? 'text-blue-700' : 'text-muted-foreground')}
+                                title="클릭하여 직접입력"
+                                onClick={() => {
+                                  const v = prompt('②원가 직접입력 (KRW, 비워두면 자동계산)', p.totalKrwManual?.toString() || '');
+                                  if (v === null) return;
+                                  updateProduct(idx, 'totalKrwManual', v ? Number(v) : undefined);
+                                }}
+                              >
+                                {t2 > 0 ? fmt(t2) : '-'}
+                                {p.totalKrwManual ? <span className="ml-1 text-[10px] text-orange-500">직접</span> : null}
+                              </div>
+                              <button className="flex items-center justify-center text-muted-foreground hover:text-red-500" onClick={() => removeProduct(idx)}><X className="w-3 h-3" /></button>
+                            </div>
+                          );
+                        })}
+                        <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
+                          <div className="px-2 py-1.5 col-span-4">소계</div>
+                          <div className="px-2 py-1.5 text-muted-foreground">{fmt(totals.productTotal1)}원</div>
+                          <div className="px-2 py-1.5 text-blue-700">{fmt(totals.productTotal2)}원</div>
+                          <div />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
+                        수입통관 연결 시 제품내역이 자동 입력됩니다. 행 추가로 직접 입력도 가능합니다.
+                      </div>
+                    )}
                   </div>
 
                   {/* 상태/메모 */}
@@ -880,15 +880,18 @@ export default function ProfitAnalysisPage() {
                     </div>
                   )}
 
-                  {/* 제품원가 */}
+                  {/* 수익 레포트 */}
+                  <ReportBox form={paToForm(selected)} totals={calcTotals(paToForm(selected))} />
+
+                  {/* 제품원가 상세 */}
                   {selected.productItems.length > 0 && (() => {
                     const scex = selected.customsExRate || 1;
                     const swex = selected.wireExRate || scex;
                     return (
-                      <ViewSection title="② 제품원가">
+                      <ViewSection title="② 제품원가 상세">
                         <div className="rounded border border-border overflow-x-auto text-xs">
                           <div className="grid bg-muted/50 font-medium text-muted-foreground min-w-[560px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr' }}>
-                            {['品名(품명)', '型号(규격)', '수량', '단가(CNY)', `①원가`, `②원가`].map(h => <div key={h} className="px-2 py-1.5">{h}</div>)}
+                            {['품명', '규격', '수량', '단가(CNY)', `①원가`, `②원가`].map(h => <div key={h} className="px-2 py-1.5">{h}</div>)}
                           </div>
                           {selected.productItems.map((p, i) => {
                             const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * scex);
@@ -918,9 +921,6 @@ export default function ProfitAnalysisPage() {
                       </ViewSection>
                     );
                   })()}
-
-                  {/* 수익 레포트 */}
-                  <ReportBox form={paToForm(selected)} totals={calcTotals(paToForm(selected))} />
 
                   {/* 메모 */}
                   {selected.memo && (
