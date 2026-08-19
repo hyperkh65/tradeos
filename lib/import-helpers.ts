@@ -11,6 +11,8 @@ interface ImportExpenseFields {
   detentionFee?: number;
   demurrage?: number;
   inlandFreight?: number;
+  freightKrw?: number;
+  freightHandling?: { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number; includedInCif?: boolean }[];
   customCosts?: { name: string; amount: number }[];
   createdBy?: string;
   // 추가 컨텍스트
@@ -29,6 +31,8 @@ const COST_TYPE_MAP: Record<string, string> = {
   'Demurrage/DEM(체화료)':   'demurrage',
   'Detention/DET(지체료)':   'detention',
   '내륙운송비':              'inland_freight',
+  '해상운임':                'ocean_freight',
+  '부대비용(포워더)':        'ocean_freight',
 };
 
 export function syncImportExpenses(
@@ -37,7 +41,14 @@ export function syncImportExpenses(
   importBusinessId: string,
   fields: ImportExpenseFields,
 ) {
+  // 부대비용 중 CIF 비포함(국내) 항목의 합계
+  const handlingSurcharge = (fields.freightHandling || [])
+    .filter(h => !h.includedInCif && h.amtKrw > 0)
+    .reduce((s, h) => s + h.amtKrw, 0);
+
   const entries: { cat: string; amt: number | undefined }[] = [
+    { cat: '해상운임',                amt: fields.freightKrw },
+    ...(handlingSurcharge > 0 ? [{ cat: '부대비용(포워더)', amt: handlingSurcharge }] : []),
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
     { cat: '통관비',                  amt: fields.brokerFee },

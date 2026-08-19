@@ -150,6 +150,8 @@ export async function POST(req: NextRequest) {
 
     // 비용 자동 연동
     syncImportExpenses(db, id, bizId, {
+      freightKrw: body.freightKrw,
+      freightHandling: body.freightHandling,
       duty: body.duty, vat: body.vat,
       brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
       warehouseFee: body.warehouseFee, detentionFee: body.detentionFee,
