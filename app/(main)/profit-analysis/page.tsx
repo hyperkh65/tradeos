@@ -52,6 +52,8 @@ interface PA {
   exchangeRate: number;
   customsExRate: number;
   wireExRate: number;
+  supplierName: string;
+  customerName: string;
   productItems: ProductItem[];
   freightCost: number;
   inlandFreight: number;
@@ -60,6 +62,9 @@ interface PA {
   vatImport: number;
   wireFee: number;
   extraCosts: ExtraCost[];
+  advancePayment: number;
+  paymentAmount: number;
+  actualPayment: number;
   memo?: string;
   status: string;
   history: HistoryEntry[];
@@ -116,6 +121,8 @@ const emptyForm = (): FormState => ({
   exchangeRate: 1,
   customsExRate: 0,
   wireExRate: 0,
+  supplierName: '',
+  customerName: '',
   productItems: [],
   freightCost: 0,
   inlandFreight: 0,
@@ -124,6 +131,9 @@ const emptyForm = (): FormState => ({
   vatImport: 0,
   wireFee: 0,
   extraCosts: [],
+  advancePayment: 0,
+  paymentAmount: 0,
+  actualPayment: 0,
   status: 'draft',
 });
 
@@ -176,12 +186,13 @@ function paToForm(pa: PA): FormState {
     exchangeRate: pa.exchangeRate,
     customsExRate: pa.customsExRate || 0,
     wireExRate: pa.wireExRate || 0,
+    supplierName: pa.supplierName || '',
+    customerName: pa.customerName || '',
     productItems: (pa.productItems || []).map(p => ({
       id: p.id || newPid(),
       name: p.name || '',
       spec: p.spec || '',
       qty: p.qty || 0,
-      // legacy field mapping
       currency: p.currency || 'CNY',
       unitPriceFx: p.unitPriceFx || (p as unknown as { unitPriceCny?: number }).unitPriceCny || 0,
       totalKrwManual: p.totalKrwManual,
@@ -193,6 +204,9 @@ function paToForm(pa: PA): FormState {
     vatImport: pa.vatImport,
     wireFee: pa.wireFee,
     extraCosts: pa.extraCosts,
+    advancePayment: pa.advancePayment || 0,
+    paymentAmount: pa.paymentAmount || 0,
+    actualPayment: pa.actualPayment || 0,
     memo: pa.memo,
     status: pa.status,
   };
@@ -279,6 +293,7 @@ export default function ProfitAnalysisPage() {
       saleBusinessId: s.businessId,
       saleAmount: s.netAmount || 0,
       saleCurrency: s.currency || 'KRW',
+      customerName: s.customer || f.customerName,
       title: f.title || `${s.customer} 수익분석`,
     }));
     setShowLinkPanel(false);
@@ -455,47 +470,42 @@ export default function ProfitAnalysisPage() {
     const wb = XLSX.utils.book_new();
     type Row = (string | number | null)[];
     const rows: Row[] = [
-      ['수익분석 정산서'],
-      [pa.title, '', '', '', '', pa.analysisDate || ''],
+      [`${pa.customerName ? pa.customerName + ' / ' : ''}수익분석 예상 ${pa.analysisDate || ''} 납품`],
+      [pa.title],
       [],
-      ['①보증금(통관) 환율', cex, '', '②잔금(송금) 환율', wex],
-      [],
-      ['1. 매출금액'],
-      ['', pa.saleBusinessId || '', '', pa.saleAmount, 'KRW'],
-      [],
+      ['', '', 'KRW', 'RMB', '비고'],
+      ['1. 매출금액   원', '', pa.saleAmount, '', '부가세'],
       ['2. 비용'],
-      [],
-      ['[제품원가]'],
-      ['품명 (DESCRIPTION)', '규격 (SPEC.)', '수량/Qty', 'Unit Price', `①원가(환율${cex})`, `②원가(환율${wex})`],
+      [`2-1) 제품공가${pa.supplierName ? ' ' + pa.supplierName : ''}`, '수량'],
+      ['품명 (DESCRIPTION)', '규격', '수량', `①원가(×${cex})`, `②원가(×${wex})`, 'RMB'],
       ...pa.productItems.map(p => {
         const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
-        const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
-        return [p.name, p.spec || '', p.qty, p.unitPriceFx, t1, t2] as Row;
+        const rmbAmt = (p.qty || 0) * (p.unitPriceFx || 0);
+        return [p.name, p.spec || '', p.qty, t1, '', `¥${rmbAmt.toFixed(2)}`] as Row;
       }),
-      ['제품원가 소계', '', '', '', productTotal1, productTotal2],
+      [`제품원가 소계 (②송금환율 기준)`, '', '', fmt(productTotal2), '', ''],
       [],
-      ['[물류·통관 비용]'],
-      ['항목', '', '', '', '금액(KRW)'],
-      ['포워더 운임 (해상+부대비용 포함)', '', '', '', pa.freightCost],
-      ...(pa.inlandFreight > 0 ? [['내륙운송료', '', '', '', pa.inlandFreight] as Row] : []),
-      ...(pa.brokerFee > 0 ? [['통관수수료', '', '', '', pa.brokerFee] as Row] : []),
-      ...(pa.duty > 0 ? [['관세', '', '', '', pa.duty] as Row] : []),
-      ...(pa.wireFee > 0 ? [['해외송금수수료', '', '', '', pa.wireFee] as Row] : []),
-      ...(pa.extraCosts || []).filter(c => c.amount > 0).map(c => [c.name, '', '', '', c.amount] as Row),
-      ['물류·통관 소계', '', '', '', logisticOnlyCost],
+      ['2) 비용 합계', '', logisticOnlyCost, '', '비용/세미올'],
+      ['   포워더운임', '', pa.freightCost],
+      ...(pa.inlandFreight > 0 ? [['   내륙운송료', '', pa.inlandFreight] as Row] : []),
+      ...(pa.brokerFee > 0 ? [['   통관수수료', '', pa.brokerFee] as Row] : []),
+      ...(pa.duty > 0 ? [['   관세', '', pa.duty] as Row] : []),
+      ...(pa.wireFee > 0 ? [['   해외송금수수료', '', pa.wireFee] as Row] : []),
+      ...(pa.extraCosts || []).filter(c => c.amount > 0).map(c => [`   ${c.name}`, '', c.amount] as Row),
+      ...(pa.vatImport > 0 ? [['   부가세', '', pa.vatImport, '', '불포함'] as Row] : []),
       [],
-      ['3. 수익  [A] - ([B-1]+[B-2]+...)'],
-      ['매출금액 [A]', '', '', '', pa.saleAmount],
-      ['제품원가② [B-1]', '', '', '', productTotal2],
-      ['물류·통관 합계 [B-2~]', '', '', '', logisticOnlyCost],
-      ['총 비용 [B]', '', '', '', totalCost],
-      ['수익 [A]-[B]', '', '', '', profit],
-      ['수익률', '', '', '', `${profitRate.toFixed(2)}%`],
+      ['3. 수익', '', profit, '', '부가세'],
+      ['', `${profitRate.toFixed(2)} 수익률 %`],
       [],
-      ['* 참고: 수입부가세', '', '', '', pa.vatImport, '(매입세액공제 환급대상 — 비용 미포함)'],
+      [`①통관환율 ${fmt(cex)}원  ②송금환율 ${fmt(wex)}원`],
+      [],
+      ['4. 선지급비용', '', pa.advancePayment > 0 ? pa.advancePayment : ''],
+      ['5. 지급액', '', pa.paymentAmount > 0 ? pa.paymentAmount : ''],
+      ['6. 실지급액', '', pa.actualPayment > 0 ? pa.actualPayment : ''],
     ];
 
     void logisticTotal; // used via logisticOnlyCost
+    void productTotal1;
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 18 }];
@@ -675,6 +685,18 @@ export default function ProfitAnalysisPage() {
                     )}
                   </div>
 
+                  {/* 공급사/매출처 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">공급사명 (중국 공급업체)</label>
+                      <Input className="mt-1 h-7 text-xs" value={form.supplierName || ''} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="예: PUYU" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">매출업체명 (고객사)</label>
+                      <Input className="mt-1 h-7 text-xs" value={form.customerName || ''} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} placeholder="예: 동양이앤티" />
+                    </div>
+                  </div>
+
                   {/* 매출금액 */}
                   <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-2">
                     <div className="text-xs font-semibold text-blue-700">① 매출금액</div>
@@ -842,6 +864,23 @@ export default function ProfitAnalysisPage() {
                     </div>
                   </div>
 
+                  {/* 선지급/지급 */}
+                  <div className="rounded-lg border border-border p-3 space-y-1.5">
+                    <div className="text-xs font-semibold">정산</div>
+                    {[
+                      { label: '선지급비용', key: 'advancePayment' as const },
+                      { label: '지급액', key: 'paymentAmount' as const },
+                      { label: '실지급액', key: 'actualPayment' as const },
+                    ].map(({ label, key }) => (
+                      <div key={key} className="flex items-center gap-2 text-xs">
+                        <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
+                        <Input type="number" className="h-7 text-xs flex-1" value={(form[key] as number) || ''} placeholder="0"
+                          onChange={e => setForm(f => ({ ...f, [key]: Number(e.target.value) || 0 }))} />
+                        <span className="text-muted-foreground shrink-0 w-4">원</span>
+                      </div>
+                    ))}
+                  </div>
+
                   {/* 수익 미리보기 */}
                   <ReportBox form={form} totals={totals} />
                 </>
@@ -850,77 +889,7 @@ export default function ProfitAnalysisPage() {
               {/* ── 읽기 모드 ── */}
               {!editing && selected && (
                 <>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="space-y-1">
-                      <div className="text-muted-foreground">분석일</div>
-                      <div className="font-medium">{selected.analysisDate || '-'}</div>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-muted-foreground">연결</div>
-                      <div className="flex gap-2">
-                        {selected.saleBusinessId && <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-[10px]">{selected.saleBusinessId}</span>}
-                        {selected.importBusinessId && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-[10px]">{selected.importBusinessId}</span>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 환율 */}
-                  {(selected.customsExRate > 0 || selected.wireExRate > 0) && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50/30 px-3 py-2">
-                      <div className="flex gap-6 text-xs">
-                        <div>
-                          <span className="text-muted-foreground">①통관환율</span>
-                          <span className="ml-2 font-semibold">{fmt(selected.customsExRate)}원</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">②실제송금환율</span>
-                          <span className="ml-2 font-semibold">{selected.wireExRate > 0 ? fmt(selected.wireExRate) : '미입력'}원</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 수익 레포트 */}
-                  <ReportBox form={paToForm(selected)} totals={calcTotals(paToForm(selected))} />
-
-                  {/* 제품원가 상세 */}
-                  {selected.productItems.length > 0 && (() => {
-                    const scex = selected.customsExRate || 1;
-                    const swex = selected.wireExRate || scex;
-                    return (
-                      <ViewSection title="② 제품원가 상세">
-                        <div className="rounded border border-border overflow-x-auto text-xs">
-                          <div className="grid bg-muted/50 font-medium text-muted-foreground min-w-[560px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr' }}>
-                            {['품명', '규격', '수량', '단가(CNY)', `①원가`, `②원가`].map(h => <div key={h} className="px-2 py-1.5">{h}</div>)}
-                          </div>
-                          {selected.productItems.map((p, i) => {
-                            const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * scex);
-                            const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * swex);
-                            return (
-                              <div key={i} className="grid border-t border-border min-w-[560px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr' }}>
-                                <div className="px-2 py-1.5">{p.name}</div>
-                                <div className="px-2 py-1.5 text-muted-foreground">{p.spec || '-'}</div>
-                                <div className="px-2 py-1.5 text-muted-foreground">{(p.qty || 0).toLocaleString()}</div>
-                                <div className="px-2 py-1.5 text-muted-foreground">{p.unitPriceFx}</div>
-                                <div className="px-2 py-1.5 text-muted-foreground">{fmt(t1)}원</div>
-                                <div className="px-2 py-1.5 font-medium text-blue-700">{fmt(t2)}원</div>
-                              </div>
-                            );
-                          })}
-                          {(() => {
-                            const st = calcTotals(paToForm(selected));
-                            return (
-                              <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs min-w-[560px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr' }}>
-                                <div className="px-2 py-1.5 col-span-4">소계</div>
-                                <div className="px-2 py-1.5 text-muted-foreground">{fmt(st.productTotal1)}원</div>
-                                <div className="px-2 py-1.5 text-blue-700">{fmt(st.productTotal2)}원</div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </ViewSection>
-                    );
-                  })()}
+                  <SettlementTable pa={selected} />
 
                   {/* 메모 */}
                   {selected.memo && (
@@ -1026,6 +995,215 @@ function ViewSection({ title, children }: { title: string; children: React.React
     <div className="rounded-lg border border-border p-3 space-y-2">
       <div className="text-xs font-semibold">{title}</div>
       {children}
+    </div>
+  );
+}
+
+function SettlementTable({ pa }: { pa: PA }) {
+  const form = paToForm(pa);
+  const totals = calcTotals(form);
+  const { productTotal2, logisticTotal, profit, profitRate } = totals;
+  const cex = pa.customsExRate || 1;
+  const wex = pa.wireExRate || cex;
+
+  const dateStr = pa.analysisDate
+    ? `${new Date(pa.analysisDate).getMonth() + 1}/${new Date(pa.analysisDate).getDate()}`
+    : '';
+
+  const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
+
+  const Tr = ({ cols, cls }: { cols: React.ReactNode[]; cls?: string }) => (
+    <tr className={cls}>
+      {cols.map((c, i) => <td key={i}>{c}</td>)}
+    </tr>
+  );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse border border-gray-400 print:text-[11px]" style={{ minWidth: 560 }}>
+        <tbody>
+          {/* 헤더 */}
+          <tr>
+            <td colSpan={5} className="border border-gray-400 text-center font-bold py-1.5 text-sm bg-gray-50">
+              {pa.customerName ? `${pa.customerName} / ` : ''}수익분석 예상 {pa.analysisDate?.replace(/-/g, '년 ').replace(/-/, '월 ')}{pa.analysisDate ? '일 납품' : ''}
+            </td>
+          </tr>
+          <tr>
+            <td colSpan={5} className="border border-gray-400 text-center font-medium py-1 bg-gray-50">{pa.title}</td>
+          </tr>
+          {/* 컬럼 헤더 */}
+          <tr className="bg-gray-100">
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '38%' }}></td>
+            <td className="border border-gray-400 px-2 py-1 text-center" style={{ width: '12%' }}>수량</td>
+            <td className="border border-gray-400 px-2 py-1 text-center font-semibold" style={{ width: '22%' }}>KRW</td>
+            <td className="border border-gray-400 px-2 py-1 text-center font-semibold" style={{ width: '18%' }}>RMB</td>
+            <td className="border border-gray-400 px-2 py-1 text-center" style={{ width: '10%' }}>비고</td>
+          </tr>
+
+          {/* 1. 매출금액 */}
+          <tr className="font-semibold">
+            <td className="border border-gray-400 px-2 py-1.5">1. 매출금액&nbsp;&nbsp;원</td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+            <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(pa.saleAmount)}</td>
+            <td className="border border-gray-400 px-2 py-1.5"></td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-gray-500 text-[10px]">부가세</td>
+          </tr>
+
+          {/* 2. 비용 헤더 */}
+          <tr className="bg-gray-50">
+            <td colSpan={5} className="border border-gray-400 px-2 py-1 font-semibold">2. 비용</td>
+          </tr>
+
+          {/* 2-1) 제품공가 */}
+          {pa.productItems.length > 0 && (
+            <>
+              <tr className="bg-gray-50/50">
+                <td className="border border-gray-400 px-2 py-1 pl-4 font-medium">
+                  2-1) 제품공가{pa.supplierName ? ` ${pa.supplierName}` : ''}
+                </td>
+                <td className="border border-gray-400 px-2 py-1 text-center text-gray-500">수량</td>
+                <td className="border border-gray-400 px-2 py-1"></td>
+                <td className="border border-gray-400 px-2 py-1"></td>
+                <td className="border border-gray-400 px-2 py-1"></td>
+              </tr>
+              {pa.productItems.map((p, i) => {
+                const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
+                const t2 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * wex);
+                const rmbAmt = p.totalKrwManual ? null : ((p.qty || 0) * (p.unitPriceFx || 0));
+                return (
+                  <tr key={i}>
+                    <td className="border border-gray-400 px-2 py-1 pl-6">
+                      <span className="text-gray-500 mr-2">{dateStr}</span>{p.name}{p.spec ? ` ${p.spec}` : ''}
+                    </td>
+                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-600">{(p.qty || 0).toLocaleString()}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-right">{t1 > 0 ? fmt(t1) : '-'}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-right text-gray-600">
+                      {rmbAmt ? `¥ ${rmbAmt.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    </td>
+                    <td className="border border-gray-400 px-2 py-1"></td>
+                  </tr>
+                );
+              })}
+              {/* 제품원가 소계 */}
+              <tr className="text-[10px] text-gray-500">
+                <td className="border border-gray-400 px-2 py-0.5 pl-6" colSpan={2}>제품원가 소계 (②송금환율 기준)</td>
+                <td className="border border-gray-400 px-2 py-0.5 text-right font-medium text-gray-700">{fmt(productTotal2)}</td>
+                <td className="border border-gray-400 px-2 py-0.5"></td>
+                <td className="border border-gray-400 px-2 py-0.5"></td>
+              </tr>
+            </>
+          )}
+
+          {/* 빈 행 */}
+          <tr><td colSpan={5} className="border border-gray-400 py-1"></td></tr>
+
+          {/* 2) 비용 합계 행 */}
+          <tr className="font-semibold bg-gray-50/50">
+            <td className="border border-gray-400 px-2 py-1.5 pl-4">2) 비용 합계</td>
+            <td className="border border-gray-400 px-2 py-1.5"></td>
+            <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(logisticOnlyCost)}</td>
+            <td className="border border-gray-400 px-2 py-1.5"></td>
+            <td className="border border-gray-400 px-2 py-1.5 text-center text-gray-500 text-[10px]">비용/세미올</td>
+          </tr>
+
+          {/* 물류비용 상세 */}
+          {[
+            { label: '포워더운임', val: pa.freightCost },
+            { label: '내륙운송료', val: pa.inlandFreight },
+            { label: '통관수수료', val: pa.brokerFee },
+            { label: '관세', val: pa.duty },
+            { label: '해외송금수수료', val: pa.wireFee },
+          ].map(({ label, val }) => (
+            <tr key={label}>
+              <td className="border border-gray-400 px-2 py-1 pl-8 text-gray-700">{label}</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1 text-right">{val > 0 ? fmt(val) : ''}</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+            </tr>
+          ))}
+          {(pa.extraCosts || []).filter(c => c.amount > 0).map((c, i) => (
+            <tr key={i}>
+              <td className="border border-gray-400 px-2 py-1 pl-8 text-gray-700">{c.name}</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1 text-right">{fmt(c.amount)}</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+            </tr>
+          ))}
+          {/* 부가세 (참고) */}
+          {pa.vatImport > 0 && (
+            <tr className="text-gray-500">
+              <td className="border border-gray-400 px-2 py-1 pl-8">부가세</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1 text-right">{fmt(pa.vatImport)}</td>
+              <td className="border border-gray-400 px-2 py-1"></td>
+              <td className="border border-gray-400 px-2 py-1 text-center text-[10px]">불포함</td>
+            </tr>
+          )}
+
+          {/* 빈 행 */}
+          <tr><td colSpan={5} className="border border-gray-400 py-1"></td></tr>
+
+          {/* 3. 수익 */}
+          <tr className={cn('font-bold', profit >= 0 ? 'bg-blue-50' : 'bg-red-50')}>
+            <td className="border border-gray-400 px-2 py-2">3. 수익</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className={cn('border border-gray-400 px-2 py-2 text-right text-base', profit >= 0 ? 'text-blue-700' : 'text-red-700')}>
+              {profit >= 0 ? '' : '-'}{fmt(Math.abs(profit))}
+            </td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2 text-center text-gray-500 text-[10px]">부가세</td>
+          </tr>
+          <tr className={profit >= 0 ? 'bg-blue-50/50' : 'bg-red-50/50'}>
+            <td className="border border-gray-400 px-2 py-1 text-right text-gray-600 font-medium">{profitRate.toFixed(2)}</td>
+            <td className="border border-gray-400 px-2 py-1 text-gray-600">수익률 %</td>
+            <td className="border border-gray-400 px-2 py-1"></td>
+            <td className="border border-gray-400 px-2 py-1"></td>
+            <td className="border border-gray-400 px-2 py-1"></td>
+          </tr>
+
+          {/* 환율 정보 */}
+          {(pa.customsExRate > 0 || pa.wireExRate > 0) && (
+            <tr className="text-[10px] text-gray-400">
+              <td colSpan={5} className="border border-gray-400 px-2 py-1">
+                ①통관환율 {fmt(pa.customsExRate)}원 / ②송금환율 {pa.wireExRate > 0 ? fmt(pa.wireExRate) : '미입력'}원
+                {pa.importBusinessId && <span className="ml-2 text-orange-500">({pa.importBusinessId})</span>}
+              </td>
+            </tr>
+          )}
+
+          {/* 빈 행 */}
+          <tr><td colSpan={5} className="border border-gray-400 py-1"></td></tr>
+
+          {/* 4. 선지급비용 */}
+          <tr>
+            <td className="border border-gray-400 px-2 py-2 font-semibold">4. 선지급비용</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2 text-right">{pa.advancePayment > 0 ? fmt(pa.advancePayment) : ''}</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+          </tr>
+
+          {/* 5. 지급액 */}
+          <tr>
+            <td className="border border-gray-400 px-2 py-2 font-semibold">5. 지급액</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2 text-right">{pa.paymentAmount > 0 ? fmt(pa.paymentAmount) : ''}</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+          </tr>
+
+          {/* 6. 실지급액 */}
+          <tr>
+            <td className="border border-gray-400 px-2 py-2 font-semibold">6. 실지급액</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2 text-right">{pa.actualPayment > 0 ? fmt(pa.actualPayment) : ''}</td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+            <td className="border border-gray-400 px-2 py-2"></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
