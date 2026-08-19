@@ -34,19 +34,40 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const db = getDb();
-  const id = newId();
   const ts = now();
-  const entryNo = nextEntryNo(db);
 
   const lines = (body.lines || []) as Array<{account_code:string;account_name:string;debit:number;credit:number;currency?:string;fx_rate?:number;memo?:string}>;
   const debitTotal = lines.reduce((s,l) => s + (Number(l.debit)||0), 0);
   const creditTotal = lines.reduce((s,l) => s + (Number(l.credit)||0), 0);
 
+  // related_ref가 있으면 기존 전표 삭제 후 재생성 (중복 방지)
+  let existingId: string | null = null;
+  let entryNo: string;
+  if (body.related_ref) {
+    const existing = db.prepare('SELECT id, entry_no FROM journal_entries WHERE related_ref=?').get(body.related_ref) as { id: string; entry_no: string } | undefined;
+    if (existing) {
+      existingId = existing.id;
+      entryNo = existing.entry_no; // 전표번호 유지
+    } else {
+      entryNo = nextEntryNo(db);
+    }
+  } else {
+    entryNo = nextEntryNo(db);
+  }
+
+  const id = existingId || newId();
+
   db.transaction(() => {
-    db.prepare(`INSERT INTO journal_entries (id,entry_no,entry_date,entry_type,description,status,created_by,related_ref,debit_total,credit_total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, entryNo, body.entry_date, body.entry_type, body.description,
-           body.status || 'posted', body.created_by || null, body.related_ref || null,
-           debitTotal, creditTotal, ts, ts);
+    if (existingId) {
+      db.prepare('DELETE FROM journal_lines WHERE entry_id=?').run(existingId);
+      db.prepare(`UPDATE journal_entries SET entry_date=?,entry_type=?,description=?,status=?,debit_total=?,credit_total=?,updated_at=? WHERE id=?`)
+        .run(body.entry_date, body.entry_type, body.description, body.status || 'posted', debitTotal, creditTotal, ts, existingId);
+    } else {
+      db.prepare(`INSERT INTO journal_entries (id,entry_no,entry_date,entry_type,description,status,created_by,related_ref,debit_total,credit_total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, entryNo, body.entry_date, body.entry_type, body.description,
+             body.status || 'posted', body.created_by || null, body.related_ref || null,
+             debitTotal, creditTotal, ts, ts);
+    }
     lines.forEach((l, i) => {
       db.prepare(`INSERT INTO journal_lines (id,entry_id,line_no,account_code,account_name,debit,credit,currency,fx_rate,memo,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .run(newId(), id, i+1, l.account_code, l.account_name, Number(l.debit)||0, Number(l.credit)||0,
@@ -56,5 +77,6 @@ export async function POST(req: NextRequest) {
 
   const entry = db.prepare('SELECT * FROM journal_entries WHERE id=?').get(id) as Record<string, unknown>;
   const entryLines = db.prepare('SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_no').all(id);
-  return NextResponse.json({ data: { ...entry, lines: entryLines } }, { status: 201 });
+  const isUpdated = !!existingId;
+  return NextResponse.json({ data: { ...entry, lines: entryLines }, updated: isUpdated }, { status: isUpdated ? 200 : 201 });
 }

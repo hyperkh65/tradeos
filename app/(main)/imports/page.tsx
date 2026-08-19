@@ -1550,7 +1550,8 @@ function ImportModal({
                           }),
                         });
                         if (res.ok) {
-                          alert('전표가 자동생성되었습니다. 회계 전표 메뉴에서 확인하세요.');
+                          const d = await res.json();
+                          alert(d.updated ? '기존 전표가 업데이트되었습니다.' : '전표가 자동생성되었습니다. 회계 전표 메뉴에서 확인하세요.');
                         } else {
                           alert('전표 생성 실패: ' + (await res.text()));
                         }
