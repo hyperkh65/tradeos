@@ -435,13 +435,13 @@ function ImportModal({
       return built.map(b => {
         const existing = prev.find(p => p.category === b.category);
         if (!existing) return b;
-        // 사용자가 계산값과 다르게 직접 입력한 경우만 유지, 그 외는 새 계산값으로 리셋
-        const keepAdjusted = existing.adjusted !== undefined && existing.adjusted !== existing.calculated;
-        const keepAdjustedVat = existing.adjustedVat !== undefined && existing.adjustedVat !== (existing.vat ?? 0);
+        // 계산값이 바뀐 항목은 무조건 리셋, 사용자가 명시적으로 다른 값을 입력했고 계산값도 안바뀐 경우만 유지
+        const calcChanged = b.calculated !== existing.calculated;
+        const vatChanged = (b.vat ?? 0) !== (existing.vat ?? 0);
         return {
           ...b,
-          adjusted: keepAdjusted ? existing.adjusted : undefined,
-          adjustedVat: keepAdjustedVat ? existing.adjustedVat : undefined,
+          adjusted: calcChanged ? undefined : existing.adjusted,
+          adjustedVat: vatChanged ? undefined : existing.adjustedVat,
           reason: existing.reason,
         };
       });
