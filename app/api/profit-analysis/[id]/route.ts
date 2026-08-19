@@ -99,10 +99,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       id,
     );
 
-  // PA가 확정(confirmed)이고 연결된 import가 있으면 import 상태를 completed로 업데이트
-  if (body.status === 'confirmed' && body.importBusinessId) {
+  // 연결된 import가 있으면 상태를 completed로 업데이트
+  if (body.importBusinessId) {
     try {
-      db.prepare(`UPDATE imports SET status='completed', updated_at=? WHERE business_id=?`).run(ts, body.importBusinessId);
+      db.prepare(`UPDATE imports SET status='completed', updated_at=? WHERE business_id=? AND status != 'completed'`).run(ts, body.importBusinessId);
     } catch {}
   }
 
