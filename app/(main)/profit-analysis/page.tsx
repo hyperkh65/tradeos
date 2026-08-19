@@ -474,9 +474,7 @@ export default function ProfitAnalysisPage() {
     try {
       const res = await fetch(`/api/profit-analysis/${pa.id}/notion`, { method: 'POST' });
       const json = await res.json();
-      if (res.ok && json.notionUrl) {
-        window.open(json.notionUrl, '_blank');
-      } else {
+      if (!res.ok) {
         alert(`Notion 저장 실패: ${json.error || '알 수 없는 오류'}`);
       }
     } finally {

@@ -205,30 +205,45 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     },
   ];
 
+  const properties = {
+    '이름': { title: [{ text: { content: pageTitle } }] },
+    ...(pa.analysisDate ? { '날짜': { date: { start: pa.analysisDate } } } : {}),
+    ...(pa.customerName ? { '매출업체': { rich_text: [{ text: { content: pa.customerName } }] } } : {}),
+    ...(pa.supplierName ? { '공급사': { rich_text: [{ text: { content: pa.supplierName } }] } } : {}),
+    '매출금액': { number: pa.saleAmount },
+    '수익': { number: profit },
+    '수익률': { number: Math.round(profitRate * 100) / 100 },
+    '상태': { select: { name: pa.status === 'confirmed' ? '확정' : '작성중' } },
+  };
+
   try {
-    const page = await notion.pages.create({
-      parent: { database_id: DB.profitAnalysis },
-      properties: {
-        '이름': {
-          title: [{ text: { content: pageTitle } }],
-        },
-        ...(pa.analysisDate ? { '날짜': { date: { start: pa.analysisDate } } } : {}),
-        ...(pa.customerName ? { '매출업체': { rich_text: [{ text: { content: pa.customerName } }] } } : {}),
-        ...(pa.supplierName ? { '공급사': { rich_text: [{ text: { content: pa.supplierName } }] } } : {}),
-        '매출금액': { number: pa.saleAmount },
-        '수익': { number: profit },
-        '수익률': { number: Math.round(profitRate * 100) / 100 },
-        '상태': { select: { name: pa.status === 'confirmed' ? '확정' : '작성중' } },
-      },
-      children: blocks,
+    // 기존 페이지 찾기 (business_id 기준)
+    const existing = await notion.databases.query({
+      database_id: DB.profitAnalysis,
+      filter: { property: '이름', title: { starts_with: `[${pa.businessId}]` } },
+      page_size: 1,
     });
 
-    // notion_id DB에 저장
-    try {
-      db.prepare(`UPDATE profit_analyses SET memo = COALESCE(memo,'') WHERE id = ?`).run(id);
-    } catch {}
+    let pageId: string;
+    if (existing.results.length > 0) {
+      // 기존 페이지 업데이트
+      pageId = existing.results[0].id;
+      await notion.pages.update({ page_id: pageId, properties });
+      // 기존 내용 삭제 후 새 블록 추가
+      const children = await notion.blocks.children.list({ block_id: pageId });
+      await Promise.all(children.results.map(b => notion.blocks.delete({ block_id: b.id })));
+      await notion.blocks.children.append({ block_id: pageId, children: blocks });
+    } else {
+      // 새 페이지 생성
+      const page = await notion.pages.create({
+        parent: { database_id: DB.profitAnalysis },
+        properties,
+        children: blocks,
+      });
+      pageId = page.id;
+    }
 
-    return NextResponse.json({ ok: true, notionUrl: (page as { url?: string }).url, pageId: page.id });
+    return NextResponse.json({ ok: true, pageId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Notion 저장 실패: ${msg}` }, { status: 500 });
