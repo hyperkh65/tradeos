@@ -299,10 +299,14 @@ export default function ProfitAnalysisPage() {
       totalKrwManual: undefined,
     }));
 
-    // customCosts → extraCosts
-    const extraCosts: ExtraCost[] = (imp.customCosts || [])
-      .filter(c => c.name && c.amount > 0)
-      .map(c => ({ id: newPid(), name: c.name, amount: c.amount }));
+    // 통관 기타비용 전체 → extraCosts
+    const extraCosts: ExtraCost[] = [
+      ...(imp.demurrage    && imp.demurrage    > 0 ? [{ id: newPid(), name: 'Demurrage/DEM(체화료)',      amount: imp.demurrage    }] : []),
+      ...(imp.detentionFee && imp.detentionFee > 0 ? [{ id: newPid(), name: 'Detention/DET(지체료)',      amount: imp.detentionFee }] : []),
+      ...(imp.warehouseFee && imp.warehouseFee > 0 ? [{ id: newPid(), name: 'Terminal Storage(장치료)',   amount: imp.warehouseFee }] : []),
+      ...(imp.inspectionFee && imp.inspectionFee > 0 ? [{ id: newPid(), name: '세관검사비',              amount: imp.inspectionFee }] : []),
+      ...(imp.customCosts || []).filter(c => c.name && c.amount > 0).map(c => ({ id: newPid(), name: c.name, amount: c.amount })),
+    ];
 
     setForm(f => ({
       ...f,
@@ -817,7 +821,7 @@ export default function ProfitAnalysisPage() {
                         ))}
                       </div>
                     )}
-                    <button className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" onClick={addExtraCost}>
+                    <button type="button" className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" onClick={addExtraCost}>
                       <Plus className="w-3 h-3" />기타비용 추가
                     </button>
                   </div>
