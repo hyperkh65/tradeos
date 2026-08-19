@@ -1519,12 +1519,17 @@ function ImportModal({
                   <Button type="button" variant="outline" className="w-full border-indigo-400 text-indigo-700 hover:bg-indigo-50"
                     onClick={async () => {
                       const adjVal = (si: SettlementItem) => si.adjusted !== undefined ? si.adjusted : si.calculated;
+                      const adjVat = (si: SettlementItem) => si.adjustedVat !== undefined ? si.adjustedVat : (si.vat ?? 0);
                       const inventorySum = settlementItems.filter(s => s.costType === 'inventory').reduce((a, s) => a + adjVal(s), 0);
-                      const vatSum = settlementItems.filter(s => s.costType === 'vat').reduce((a, s) => a + adjVal(s), 0);
+                      // 부가세대급금 = costType:'vat' 항목 + 모든 항목의 vat 필드 (포워더 매입VAT 등)
+                      const vatFromType = settlementItems.filter(s => s.costType === 'vat').reduce((a, s) => a + adjVal(s), 0);
+                      const vatFromVatField = settlementItems.reduce((a, s) => a + adjVat(s), 0);
+                      const vatSum = vatFromType + vatFromVatField;
                       const expenseSum = settlementItems.filter(s => s.costType === 'expense').reduce((a, s) => a + adjVal(s), 0);
                       const totalAdj = settlementItems.reduce((a, s) => a + adjVal(s), 0);
                       const invoiceKrw = Math.round((Number(form.invoiceValue) || 0) * (Number(form.exchangeRate) || 1));
-                      const cashPaid = totalAdj - invoiceKrw;
+                      // 보통예금 = 공급가 합계 + VAT 합계 - 인보이스(외상매입금)
+                      const cashPaid = totalAdj + vatFromVatField - invoiceKrw;
                       const lines: { accountCode: string; accountName: string; debit: number; credit: number; note?: string }[] = [];
                       if (inventorySum > 0) lines.push({ accountCode: '1460', accountName: '상품', debit: inventorySum, credit: 0 });
                       if (vatSum > 0) lines.push({ accountCode: '1351', accountName: '부가세대급금', debit: vatSum, credit: 0 });

@@ -33,6 +33,7 @@ const COST_TYPE_MAP: Record<string, string> = {
   '내륙운송비':              'inland_freight',
   '해상운임':                'ocean_freight',
   '부대비용(포워더)':        'ocean_freight',
+  '포워더 매입VAT':          'vat',
 };
 
 export function syncImportExpenses(
@@ -41,14 +42,18 @@ export function syncImportExpenses(
   importBusinessId: string,
   fields: ImportExpenseFields,
 ) {
-  // 해상운임 + 부대비용(포워더) 합산
+  // 해상운임 + 부대비용 공급가 합산 / VAT 별도 분리
   const handlingSurcharge = (fields.freightHandling || [])
     .filter(h => h.amtKrw > 0)
     .reduce((s, h) => s + h.amtKrw, 0);
+  const handlingVat = (fields.freightHandling || [])
+    .filter(h => (h.vat || 0) > 0)
+    .reduce((s, h) => s + h.vat, 0);
   const totalFreight = (fields.freightKrw || 0) + handlingSurcharge;
 
   const entries: { cat: string; amt: number | undefined }[] = [
     { cat: '해상운임',                amt: totalFreight > 0 ? totalFreight : undefined },
+    { cat: '포워더 매입VAT',          amt: handlingVat > 0 ? handlingVat : undefined },
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
     { cat: '통관비',                  amt: fields.brokerFee },
