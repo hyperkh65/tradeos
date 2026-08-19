@@ -292,6 +292,7 @@ export type ImportDocType = 'clearance_cert' | 'tax_bill' | 'co' | 'inspection' 
 export interface ImportCustomCost {
   name: string;
   amount: number;
+  vatRate?: number;
 }
 
 export interface SettlementItem {

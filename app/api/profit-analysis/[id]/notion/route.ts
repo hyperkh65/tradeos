@@ -133,15 +133,41 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     // 2-2. 물류비용
     {
       type: 'heading_3',
-      heading_3: { rich_text: [{ type: 'text', text: { content: '2-2. 물류·통관 비용 (부가세 제외)' } }] },
+      heading_3: { rich_text: [{ type: 'text', text: { content: '2-2. 물류·통관 비용 (부가세 제외 공급가)' } }] },
     },
     ...[
       { label: '포워더운임', val: pa.freightCost },
-      { label: '내륙운송료', val: pa.inlandFreight },
-      { label: '통관수수료', val: pa.brokerFee },
+      { label: '내륙운송료', val: pa.inlandFreight, vatRate: 0.1 },
+      { label: '통관수수료', val: pa.brokerFee, vatRate: 0.1 },
       { label: '관세', val: pa.duty },
       { label: '해외송금수수료', val: pa.wireFee },
       ...(pa.extraCosts || []).filter(c => c.amount > 0).map(c => ({ label: c.name, val: c.amount })),
+    ].filter(c => c.val > 0).map(({ label, val, vatRate }) => {
+      const vatAmt = vatRate ? Math.round(val * vatRate) : 0;
+      const suffix = vatAmt > 0 ? `  +VAT ${fmt(vatAmt)}원 (10%)` : '';
+      return {
+        type: 'bulleted_list_item' as const,
+        bulleted_list_item: { rich_text: [{ type: 'text' as const, text: { content: `${label}: ${fmt(val)} 원${suffix}` } }] },
+      };
+    }),
+    {
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [
+          { type: 'text', text: { content: `공급가 합계: ` } },
+          { type: 'text', text: { content: `${fmt(logisticTotal)} 원` }, annotations: { bold: true } },
+        ],
+      },
+    },
+    // 2-3. 공제대상 부가세 내역
+    {
+      type: 'heading_3',
+      heading_3: { rich_text: [{ type: 'text', text: { content: '2-3. 공제대상 부가세 (매입세액공제)' } }] },
+    },
+    ...[
+      { label: '수입부가세', val: pa.vatImport },
+      { label: '내륙운송 VAT (10%)', val: Math.round(pa.inlandFreight * 0.1) },
+      { label: '통관수수료 VAT (10%)', val: Math.round(pa.brokerFee * 0.1) },
     ].filter(c => c.val > 0).map(({ label, val }) => ({
       type: 'bulleted_list_item' as const,
       bulleted_list_item: { rich_text: [{ type: 'text' as const, text: { content: `${label}: ${fmt(val)} 원` } }] },
@@ -150,9 +176,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       type: 'paragraph',
       paragraph: {
         rich_text: [
-          { type: 'text', text: { content: `비용합계: ` } },
-          { type: 'text', text: { content: `${fmt(logisticTotal)} 원` }, annotations: { bold: true } },
-          { type: 'text', text: { content: pa.vatImport > 0 ? `  |  부가세(별도/불포함): ${fmt(pa.vatImport)}원` : '' }, annotations: { color: 'gray', italic: true } },
+          { type: 'text', text: { content: `부가세 합계: ` } },
+          { type: 'text', text: { content: `${fmt(pa.vatImport + Math.round(pa.inlandFreight * 0.1) + Math.round(pa.brokerFee * 0.1))} 원` }, annotations: { bold: true, color: 'purple' } },
+          { type: 'text', text: { content: '  (매입세액공제 환급 대상)' }, annotations: { color: 'gray', italic: true } },
         ],
       },
     },

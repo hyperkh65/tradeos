@@ -149,9 +149,9 @@ function ImportModal({
   // 기타비용 3개
   const initCustomCosts = item?.customCosts || [];
   const [customCosts, setCustomCosts] = useState([
-    { name: initCustomCosts[0]?.name || '', amount: initCustomCosts[0]?.amount?.toString() || '' },
-    { name: initCustomCosts[1]?.name || '', amount: initCustomCosts[1]?.amount?.toString() || '' },
-    { name: initCustomCosts[2]?.name || '', amount: initCustomCosts[2]?.amount?.toString() || '' },
+    { name: initCustomCosts[0]?.name || '', amount: initCustomCosts[0]?.amount?.toString() || '', vatRate: initCustomCosts[0]?.vatRate ?? 10 },
+    { name: initCustomCosts[1]?.name || '', amount: initCustomCosts[1]?.amount?.toString() || '', vatRate: initCustomCosts[1]?.vatRate ?? 10 },
+    { name: initCustomCosts[2]?.name || '', amount: initCustomCosts[2]?.amount?.toString() || '', vatRate: initCustomCosts[2]?.vatRate ?? 10 },
   ]);
 
   // 정산서 state
@@ -392,7 +392,17 @@ function ImportModal({
     if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal, costType: 'inventory' });
     customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
       base.push({ category: c.name, calculated: parseFloat(c.amount), costType: 'inventory' });
+      const vatRate = c.vatRate ?? 10;
+      const vatAmt = vatRate > 0 ? Math.round(parseFloat(c.amount) * vatRate / 100) : 0;
+      if (vatAmt > 0) base.push({ category: `${c.name} VAT`, calculated: vatAmt, costType: 'vat' });
     });
+    // 국내비용 별도 VAT
+    const brokerVat    = Math.round(brokerFeeVal * 0.1);
+    const warehouseVat = Math.round(warehouseFeeVal * 0.1);
+    const inlandVat    = Math.round(inlandFreightVal * 0.1);
+    if (brokerVat > 0)    base.push({ category: '통관비 VAT', calculated: brokerVat, costType: 'vat' });
+    if (warehouseVat > 0) base.push({ category: '창고료 VAT', calculated: warehouseVat, costType: 'vat' });
+    if (inlandVat > 0)    base.push({ category: `내륙운송비 VAT${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandVat, costType: 'vat' });
     // 해상운임 (포워더)
     const frtKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
     if (frtKrw > 0) base.push({ category: '해상운임(포워더)', calculated: frtKrw, costType: 'inventory' });
@@ -496,7 +506,7 @@ function ImportModal({
           customsValue: it.customsValue, customsValueKrw: it.customsValueKrw,
           dutyRate: it.dutyRate, duty: it.duty, vat: it.vat,
         })),
-        customCosts: customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).map(c => ({ name: c.name, amount: parseFloat(c.amount) })),
+        customCosts: customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).map(c => ({ name: c.name, amount: parseFloat(c.amount), vatRate: c.vatRate ?? 10 })),
         settlementItems,
       };
       const safeErr = async (res: Response, label: string) => {
@@ -1244,15 +1254,17 @@ function ImportModal({
 
                 {/* 기타비용 */}
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">기타비용 <span className="font-normal normal-case">(부가세 비해당)</span></div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">기타비용 <span className="font-normal normal-case">(국내비용: VAT 10% 별도 / DEM·DET: VAT 없음)</span></div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>통관비 / 관세사 수수료 (원)</label>
                       <Input type="number" value={form.brokerFee} onChange={e => setForm(f => ({ ...f, brokerFee: e.target.value }))} placeholder="150000" disabled={!canEdit} />
+                      {brokerFeeVal > 0 && <div className="text-[11px] text-blue-600 mt-0.5">VAT +{Math.round(brokerFeeVal * 0.1).toLocaleString()}원</div>}
                     </div>
                     <div>
                       <label className={labelCls}>Terminal Storage / 장치료 (원)</label>
                       <Input type="number" value={form.warehouseFee} onChange={e => setForm(f => ({ ...f, warehouseFee: e.target.value }))} placeholder="0" disabled={!canEdit} />
+                      {warehouseFeeVal > 0 && <div className="text-[11px] text-blue-600 mt-0.5">VAT +{Math.round(warehouseFeeVal * 0.1).toLocaleString()}원</div>}
                     </div>
                     <div>
                       <label className={labelCls}>Demurrage / DEM / 체화료 (원)</label>
@@ -1302,6 +1314,7 @@ function ImportModal({
                     <div>
                       <label className={labelCls}>운송비 (원)</label>
                       <Input type="number" value={form.inlandFreight} onChange={e => setForm(f => ({ ...f, inlandFreight: e.target.value }))} placeholder="300000" disabled={!canEdit} />
+                      {inlandFreightVal > 0 && <div className="text-[11px] text-blue-600 mt-0.5">VAT +{Math.round(inlandFreightVal * 0.1).toLocaleString()}원</div>}
                     </div>
                   </div>
                   {inlandFreightRegion && <div className="text-xs text-muted-foreground">도착지: <strong>{inlandFreightRegion}</strong></div>}
@@ -1311,9 +1324,16 @@ function ImportModal({
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground font-medium">기타 추가비용</div>
                   {customCosts.map((c, idx) => (
-                    <div key={idx} className="grid grid-cols-3 gap-2 items-end">
-                      <div className="col-span-2"><label className={cn(labelCls, idx > 0 ? 'sr-only' : '')}>비용 항목명</label><Input value={c.name} onChange={e => setCustomCosts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))} placeholder={`기타비용 ${idx + 1}`} disabled={!canEdit} /></div>
-                      <div><label className={cn(labelCls, idx > 0 ? 'sr-only' : '')}>금액 (원)</label><Input type="number" value={c.amount} onChange={e => setCustomCosts(prev => prev.map((p, i) => i === idx ? { ...p, amount: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                    <div key={idx} className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+                      <div><label className={cn(labelCls, idx > 0 ? 'sr-only' : '')}>비용 항목명</label><Input value={c.name} onChange={e => setCustomCosts(prev => prev.map((p, i) => i === idx ? { ...p, name: e.target.value } : p))} placeholder={`기타비용 ${idx + 1}`} disabled={!canEdit} /></div>
+                      <div className="w-28"><label className={cn(labelCls, idx > 0 ? 'sr-only' : '')}>금액 (원)</label><Input type="number" value={c.amount} onChange={e => setCustomCosts(prev => prev.map((p, i) => i === idx ? { ...p, amount: e.target.value } : p))} placeholder="0" disabled={!canEdit} /></div>
+                      <div className="w-24">
+                        <label className={cn(labelCls, idx > 0 ? 'sr-only' : '')}>부가세</label>
+                        <select value={c.vatRate ?? 10} onChange={e => setCustomCosts(prev => prev.map((p, i) => i === idx ? { ...p, vatRate: Number(e.target.value) } : p))} className={inputCls} disabled={!canEdit}>
+                          <option value={10}>VAT 10%</option>
+                          <option value={0}>VAT 없음</option>
+                        </select>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1324,12 +1344,16 @@ function ImportModal({
                     {dutyFinal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">관세</span><span>{dutyFinal.toLocaleString()}원</span></div>}
                     {vatFinal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">수입부가세</span><span>{vatFinal.toLocaleString()}원</span></div>}
                     {inspectionFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">세관검사비</span><span>{inspectionFeeVal.toLocaleString()}원</span></div>}
-                    {brokerFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">통관비</span><span>{brokerFeeVal.toLocaleString()}원</span></div>}
-                    {warehouseFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Terminal Storage</span><span>{warehouseFeeVal.toLocaleString()}원</span></div>}
+                    {brokerFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">통관비</span><span>{brokerFeeVal.toLocaleString()}원 <span className="text-blue-500">+VAT {Math.round(brokerFeeVal*0.1).toLocaleString()}원</span></span></div>}
+                    {warehouseFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Terminal Storage</span><span>{warehouseFeeVal.toLocaleString()}원 <span className="text-blue-500">+VAT {Math.round(warehouseFeeVal*0.1).toLocaleString()}원</span></span></div>}
                     {demurrageVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Demurrage/DEM</span><span>{demurrageVal.toLocaleString()}원</span></div>}
                     {detentionFeeVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Detention/DET</span><span>{detentionFeeVal.toLocaleString()}원</span></div>}
-                    {inlandFreightVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">내륙운송비{inlandFreightRegion ? ` (${inlandFreightRegion})` : ''}</span><span>{inlandFreightVal.toLocaleString()}원</span></div>}
-                    {customCosts.filter(c => c.name && parseFloat(c.amount||'0') > 0).map((c, i) => <div key={i} className="flex justify-between"><span className="text-muted-foreground">{c.name}</span><span>{parseFloat(c.amount).toLocaleString()}원</span></div>)}
+                    {inlandFreightVal > 0 && <div className="flex justify-between"><span className="text-muted-foreground">내륙운송비{inlandFreightRegion ? ` (${inlandFreightRegion})` : ''}</span><span>{inlandFreightVal.toLocaleString()}원 <span className="text-blue-500">+VAT {Math.round(inlandFreightVal*0.1).toLocaleString()}원</span></span></div>}
+                    {customCosts.filter(c => c.name && parseFloat(c.amount||'0') > 0).map((c, i) => {
+                      const vatRate = c.vatRate ?? 10;
+                      const vatAmt = vatRate > 0 ? Math.round(parseFloat(c.amount) * vatRate / 100) : 0;
+                      return <div key={i} className="flex justify-between"><span className="text-muted-foreground">{c.name}</span><span>{parseFloat(c.amount).toLocaleString()}원{vatAmt > 0 ? <span className="text-blue-500"> +VAT {vatAmt.toLocaleString()}원</span> : null}</span></div>;
+                    })}
                     <div className="flex justify-between items-center border-t border-border pt-1.5 mt-1"><span className="font-semibold">총 납부액</span><span className="text-lg font-bold text-red-600">{totalTax.toLocaleString()}원</span></div>
                     {refundFinal > 0 && <div className="flex justify-between text-green-700"><span>FTA 환급</span><span className="font-bold">-{refundFinal.toLocaleString()}원</span></div>}
                     {inspectionRefundVal !== undefined && inspectionRefundVal > 0 && <div className="flex justify-between text-green-700"><span>검사비 환급</span><span className="font-bold">-{inspectionRefundVal.toLocaleString()}원</span></div>}

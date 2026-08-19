@@ -13,7 +13,7 @@ interface ImportExpenseFields {
   inlandFreight?: number;
   freightKrw?: number;
   freightHandling?: { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number; includedInCif?: boolean }[];
-  customCosts?: { name: string; amount: number }[];
+  customCosts?: { name: string; amount: number; vatRate?: number }[];
   createdBy?: string;
   // 추가 컨텍스트
   shipmentId?: string;
@@ -34,6 +34,9 @@ const COST_TYPE_MAP: Record<string, string> = {
   '해상운임':                'ocean_freight',
   '부대비용(포워더)':        'ocean_freight',
   '포워더 매입VAT':          'vat',
+  '내륙운송비 VAT':          'vat',
+  '통관비 VAT':              'vat',
+  '창고료 VAT':              'vat',
 };
 
 export function syncImportExpenses(
@@ -51,18 +54,33 @@ export function syncImportExpenses(
     .reduce((s, h) => s + h.vat, 0);
   const totalFreight = (fields.freightKrw || 0) + handlingSurcharge;
 
-  const entries: { cat: string; amt: number | undefined }[] = [
+  // 국내비용 VAT (별도 10%): 내륙운송비, 통관비, 창고료
+  const inlandVat    = Math.round((fields.inlandFreight || 0) * 0.1);
+  const brokerVat    = Math.round((fields.brokerFee || 0) * 0.1);
+  const warehouseVat = Math.round((fields.warehouseFee || 0) * 0.1);
+
+  const entries: { cat: string; amt: number | undefined; type?: string }[] = [
     { cat: '해상운임',                amt: totalFreight > 0 ? totalFreight : undefined },
     { cat: '포워더 매입VAT',          amt: handlingVat > 0 ? handlingVat : undefined },
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
     { cat: '통관비',                  amt: fields.brokerFee },
+    { cat: '통관비 VAT',              amt: brokerVat > 0 ? brokerVat : undefined, type: 'vat' },
     { cat: '세관검사비',              amt: fields.inspectionFee },
     { cat: 'Terminal Storage(장치료)', amt: fields.warehouseFee },
+    { cat: '창고료 VAT',              amt: warehouseVat > 0 ? warehouseVat : undefined, type: 'vat' },
     { cat: 'Demurrage/DEM(체화료)',   amt: fields.demurrage },
     { cat: 'Detention/DET(지체료)',   amt: fields.detentionFee },
     { cat: '내륙운송비',              amt: fields.inlandFreight },
-    ...(fields.customCosts || []).filter(c => c.name && c.amount > 0).map(c => ({ cat: c.name, amt: c.amount })),
+    { cat: '내륙운송비 VAT',          amt: inlandVat > 0 ? inlandVat : undefined, type: 'vat' },
+    ...(fields.customCosts || []).filter(c => c.name && c.amount > 0).flatMap(c => {
+      const vatRate = c.vatRate ?? 10;
+      const vatAmt  = vatRate > 0 ? Math.round(c.amount * vatRate / 100) : 0;
+      return [
+        { cat: c.name, amt: c.amount },
+        ...(vatAmt > 0 ? [{ cat: `${c.name} VAT`, amt: vatAmt, type: 'vat' }] : []),
+      ];
+    }),
   ];
 
   const ts = now();
@@ -73,7 +91,7 @@ export function syncImportExpenses(
     db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
     db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(importId);
 
-    for (const { cat, amt } of entries) {
+    for (const { cat, amt, type } of entries) {
       if (!amt || amt <= 0) continue;
 
       const expId = newId();
@@ -85,7 +103,7 @@ export function syncImportExpenses(
 
       const crId = newId();
       const crBizId = nextBizId('CST');
-      const costType = COST_TYPE_MAP[cat] || 'other';
+      const costType = type || COST_TYPE_MAP[cat] || 'other';
       db.prepare(`INSERT OR REPLACE INTO cost_records
         (id,business_id,cost_type,description,
          import_id,import_business_id,shipment_id,shipment_business_id,
