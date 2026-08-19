@@ -384,6 +384,7 @@ export interface Import {
   documents?: ImportDocument[];
   remark?: string;
   status: 'in_progress' | 'declared' | 'released' | 'completed';
+  supplierName?: string;
   createdAt: string;
   updatedAt?: string;
 }

@@ -7,12 +7,10 @@ import {
   Plus, Search, X, Loader2, Pencil, Trash2,
   ChevronDown, ChevronRight, History, TrendingUp,
   Link2, CheckCircle2, AlertCircle, Save, FileSpreadsheet,
-  Copy, Printer,
+  Copy, Printer, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback } from 'react';
-import * as XLSX from 'xlsx';
-
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ProductItem {
@@ -105,6 +103,7 @@ interface ImportRecord {
   detentionFee?: number;
   demurrage?: number;
   inspectionFee?: number;
+  supplierName?: string;
 }
 
 // ─── Default form ─────────────────────────────────────────────────────────────
@@ -231,6 +230,7 @@ export default function ProfitAnalysisPage() {
   const [linkImports, setLinkImports] = useState<ImportRecord[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkQ, setLinkQ] = useState('');
+  const [notionSaving, setNotionSaving] = useState(false);
 
   // ── Load list ───────────────────────────────────────────────────────────────
 
@@ -333,6 +333,7 @@ export default function ProfitAnalysisPage() {
       brokerFee: imp.brokerFee || 0,
       duty: imp.duty || 0,
       vatImport: imp.vat || 0,
+      supplierName: imp.supplierName || f.supplierName,
       extraCosts: extraCosts.length > 0 ? extraCosts : f.extraCosts,
       productItems: productItems.length > 0 ? productItems : f.productItems,
     }));
@@ -458,59 +459,27 @@ export default function ProfitAnalysisPage() {
     window.print();
   }
 
-  // ── Excel export ─────────────────────────────────────────────────────────────
+  // ── Excel export (서버 API → ExcelJS 표 형식) ────────────────────────────────
 
   function exportExcel(pa: PA) {
-    const formState = paToForm(pa);
-    const { productTotal1, productTotal2, logisticTotal, totalCost, profit, profitRate } = calcTotals(formState);
-    const cex = formState.customsExRate || 1;
-    const wex = formState.wireExRate || formState.customsExRate || 1;
-    const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + c.amount, 0);
+    window.location.href = `/api/profit-analysis/${pa.id}/excel`;
+  }
 
-    const wb = XLSX.utils.book_new();
-    type Row = (string | number | null)[];
-    const rows: Row[] = [
-      [`${pa.customerName ? pa.customerName + ' / ' : ''}수익분석 예상 ${pa.analysisDate || ''} 납품`],
-      [pa.title],
-      [],
-      ['', '', 'KRW', 'RMB', '비고'],
-      ['1. 매출금액   원', '', pa.saleAmount, '', '부가세'],
-      ['2. 비용'],
-      [`2-1) 제품공가${pa.supplierName ? ' ' + pa.supplierName : ''}`, '수량'],
-      ['품명 (DESCRIPTION)', '규격', '수량', `①원가(×${cex})`, `②원가(×${wex})`, 'RMB'],
-      ...pa.productItems.map(p => {
-        const t1 = p.totalKrwManual ?? Math.round((p.qty || 0) * (p.unitPriceFx || 0) * cex);
-        const rmbAmt = (p.qty || 0) * (p.unitPriceFx || 0);
-        return [p.name, p.spec || '', p.qty, t1, '', `¥${rmbAmt.toFixed(2)}`] as Row;
-      }),
-      [`제품원가 소계 (②송금환율 기준)`, '', '', fmt(productTotal2), '', ''],
-      [],
-      ['2) 비용 합계', '', logisticOnlyCost, '', '비용/세미올'],
-      ['   포워더운임', '', pa.freightCost],
-      ...(pa.inlandFreight > 0 ? [['   내륙운송료', '', pa.inlandFreight] as Row] : []),
-      ...(pa.brokerFee > 0 ? [['   통관수수료', '', pa.brokerFee] as Row] : []),
-      ...(pa.duty > 0 ? [['   관세', '', pa.duty] as Row] : []),
-      ...(pa.wireFee > 0 ? [['   해외송금수수료', '', pa.wireFee] as Row] : []),
-      ...(pa.extraCosts || []).filter(c => c.amount > 0).map(c => [`   ${c.name}`, '', c.amount] as Row),
-      ...(pa.vatImport > 0 ? [['   부가세', '', pa.vatImport, '', '불포함'] as Row] : []),
-      [],
-      ['3. 수익', '', profit, '', '부가세'],
-      ['', `${profitRate.toFixed(2)} 수익률 %`],
-      [],
-      [`①통관환율 ${fmt(cex)}원  ②송금환율 ${fmt(wex)}원`],
-      [],
-      ['4. 선지급비용', '', pa.advancePayment > 0 ? pa.advancePayment : ''],
-      ['5. 지급액', '', pa.paymentAmount > 0 ? pa.paymentAmount : ''],
-      ['6. 실지급액', '', pa.actualPayment > 0 ? pa.actualPayment : ''],
-    ];
+  // ── Notion 저장 ──────────────────────────────────────────────────────────────
 
-    void logisticTotal; // used via logisticOnlyCost
-    void productTotal1;
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 18 }];
-    XLSX.utils.book_append_sheet(wb, ws, '정산서');
-    XLSX.writeFile(wb, `정산서_${pa.businessId}_${pa.title}.xlsx`);
+  async function handleNotion(pa: PA) {
+    setNotionSaving(true);
+    try {
+      const res = await fetch(`/api/profit-analysis/${pa.id}/notion`, { method: 'POST' });
+      const json = await res.json();
+      if (res.ok && json.notionUrl) {
+        window.open(json.notionUrl, '_blank');
+      } else {
+        alert(`Notion 저장 실패: ${json.error || '알 수 없는 오류'}`);
+      }
+    } finally {
+      setNotionSaving(false);
+    }
   }
 
   // ── Computed ─────────────────────────────────────────────────────────────────
@@ -604,6 +573,9 @@ export default function ProfitAnalysisPage() {
                   <div className="ml-auto flex items-center gap-1.5">
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => exportExcel(selected)}>
                       <FileSpreadsheet className="w-3.5 h-3.5" />엑셀
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => handleNotion(selected)} disabled={notionSaving}>
+                      <Upload className="w-3.5 h-3.5" />{notionSaving ? '저장중…' : 'Notion'}
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handlePrint}>
                       <Printer className="w-3.5 h-3.5" />인쇄
@@ -1010,8 +982,16 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   const [payment, setPayment] = useState(pa.paymentAmount || 0);
   const [saving, setSaving] = useState(false);
 
-  // 실지급액 = 지급액 - 선지급비용 (자동계산)
-  const actualCalc = payment - advance;
+  // PA props 갱신 시 state 동기화
+  useEffect(() => {
+    setAdvance(pa.advancePayment || 0);
+    setPayment(pa.paymentAmount || 0);
+  }, [pa.id, pa.advancePayment, pa.paymentAmount]);
+
+  // 지급액 미입력 시 제품원가②를 기본값으로 사용
+  const effectivePayment = payment > 0 ? payment : productTotal2;
+  // 실지급액 = 지급액(or 제품원가②) - 선지급비용
+  const actualCalc = effectivePayment - advance;
 
   const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
 
@@ -1027,6 +1007,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   async function savePayments(adv: number, pay: number) {
     setSaving(true);
     try {
+      const effPay = pay > 0 ? pay : productTotal2;
       await fetch(`/api/profit-analysis/${pa.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1034,7 +1015,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
           ...paToForm(pa),
           advancePayment: adv,
           paymentAmount: pay,
-          actualPayment: pay - adv,
+          actualPayment: effPay - adv,
           updatedBy: 'admin',
           historyAction: '정산입력',
         }),
@@ -1228,16 +1209,21 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">{saving ? '저장중…' : '원'}</td>
           </tr>
 
-          {/* 5. 지급액 — 인라인 편집 */}
+          {/* 5. 지급액 — 인라인 편집 (미입력 시 제품원가② 기준) */}
           <tr>
-            <td className="border border-gray-400 px-2 py-1.5 font-semibold">5. 지급액</td>
+            <td className="border border-gray-400 px-2 py-1.5 font-semibold">
+              5. 지급액
+              {payment === 0 && productTotal2 > 0 && (
+                <span className="ml-1 text-[10px] text-gray-400 font-normal">(제품원가② 기준)</span>
+              )}
+            </td>
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">총 청구액</td>
             <td className="border border-gray-400 px-1 py-1" colSpan={2}>
               <input
                 type="number"
                 className="w-full h-6 px-2 text-xs text-right bg-yellow-50 border border-yellow-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-400"
                 value={payment || ''}
-                placeholder={`제품원가 기준: ${fmt(productTotal2)}`}
+                placeholder={productTotal2 > 0 ? `미입력 시 ${fmt(productTotal2)} 적용` : '0'}
                 onChange={e => setPayment(Number(e.target.value) || 0)}
                 onBlur={() => savePayments(advance, payment)}
               />
@@ -1245,14 +1231,14 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
           </tr>
 
-          {/* 6. 실지급액 — 자동계산 */}
+          {/* 6. 실지급액 — 자동계산 = effectivePayment - advance */}
           <tr className="bg-orange-50/60 font-semibold">
             <td className="border border-gray-400 px-2 py-1.5">6. 실지급액</td>
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">⑤−④</td>
-            <td className="border border-gray-400 px-2 py-1.5 text-right" colSpan={2}>
-              <span className={cn(actualCalc > 0 ? 'text-orange-700' : 'text-gray-400')}>
-                {actualCalc !== 0 ? fmt(actualCalc) : '—'}
-              </span>
+            <td className="border border-gray-400 px-2 py-1.5 text-right text-orange-700 text-sm" colSpan={2}>
+              {advance > 0 || payment > 0
+                ? `${fmt(actualCalc)}`
+                : <span className="text-gray-400 font-normal text-xs">선지급 또는 지급액 입력 시 계산</span>}
             </td>
             <td className="border border-gray-400 px-2 py-1.5 text-center text-[10px] text-gray-400">원</td>
           </tr>

@@ -556,6 +556,8 @@ function runMigrations(db: Database.Database) {
     // 수익분석: 두 환율 컬럼 추가
     `ALTER TABLE profit_analyses ADD COLUMN customs_ex_rate REAL DEFAULT 0`,
     `ALTER TABLE profit_analyses ADD COLUMN wire_ex_rate REAL DEFAULT 0`,
+    // imports: 공급사명
+    `ALTER TABLE imports ADD COLUMN supplier_name TEXT DEFAULT ''`,
     // 수익분석: 공급사/매출처/정산 필드
     `ALTER TABLE profit_analyses ADD COLUMN supplier_name TEXT DEFAULT ''`,
     `ALTER TABLE profit_analyses ADD COLUMN customer_name TEXT DEFAULT ''`,

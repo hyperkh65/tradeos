@@ -59,6 +59,7 @@ export function dbToImport(row: Record<string, unknown>): Import {
     documents: (() => { try { return JSON.parse((row.documents_json as string) || '[]'); } catch { return []; } })(),
     remark: (row.remark as string) || undefined,
     status: (row.status as Import['status']) || 'in_progress',
+    supplierName: (row.supplier_name as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: (row.updated_at as string) || undefined,
   };

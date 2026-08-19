@@ -36,6 +36,7 @@ export const DB = {
   inventory:      process.env.NOTION_DB_INVENTORY ?? '',
   costs:          process.env.NOTION_DB_COSTS ?? '',
   estimatorCases: process.env.NOTION_DB_ESTIMATOR ?? '',
+  profitAnalysis: process.env.NOTION_DB_PROFIT_ANALYSIS ?? '',
 } as const;
 
 export function isDemoMode(): boolean {
