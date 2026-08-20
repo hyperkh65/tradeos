@@ -1113,7 +1113,7 @@ function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                   </div>
                 </>
               )}
-              {error && <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{error}</p>}
+              {error && <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2 whitespace-pre-line">{error}</p>}
             </div>
           )}
         </div>

@@ -57,9 +57,17 @@ export async function POST(req: NextRequest) {
     await client.logout();
   } catch (e) {
     const msg = (e as Error).message;
+    const isAuthErr = msg.includes('Command failed') || msg.includes('Authentication failed')
+      || msg.includes('Invalid credentials') || msg.includes('인증이 필요');
+    const domain = email.split('@')[1]?.toLowerCase() ?? '';
+    const isDaum = domain === 'daum.net' || domain === 'hanmail.net';
     let hint = '';
-    if (msg.includes('Command failed') || msg.includes('Authentication failed') || msg.includes('Invalid credentials')) {
-      hint = ' — 비밀번호를 확인하거나, 메일 설정에서 IMAP을 허용했는지 확인하세요.';
+    if (isAuthErr) {
+      if (isDaum) {
+        hint = '\n\n다음/한메일 IMAP 인증 실패 해결 방법:\n① mail.daum.net → 설정 → POP3/IMAP → IMAP 사용 ON\n② 카카오 2단계 인증 사용 중이면 앱 비밀번호 발급 후 입력 (일반 비밀번호 X)';
+      } else {
+        hint = '\n비밀번호를 확인하거나, 메일 설정에서 IMAP을 허용했는지 확인하세요.';
+      }
     }
     return NextResponse.json({ error: `연결 실패: ${msg}${hint}` }, { status: 400 });
   }
