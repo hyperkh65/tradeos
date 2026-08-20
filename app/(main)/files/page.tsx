@@ -7,9 +7,9 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, Upload, FolderPlus, Grid3X3, List, Download, Link2, Copy,
-  Trash2, Folder, FolderOpen, ChevronRight, FileText, FileSpreadsheet,
+  Trash2, Folder, FolderOpen, FileText, FileSpreadsheet,
   File, X, Edit2, Check, AlertCircle, Loader2, Sparkles, ExternalLink,
-  FolderX, MoreVertical
+  MoreVertical, Table2
 } from 'lucide-react';
 
 interface FileFolder {
@@ -66,6 +66,15 @@ export default function FilesPage() {
   // 공유 링크 toast
   const [toast, setToast] = useState('');
   const [extracting, setExtracting] = useState<string | null>(null);
+
+  // 열 매핑 모달
+  const [mappingFile, setMappingFile] = useState<FileItem | null>(null);
+  const [previewData, setPreviewData] = useState<{ colHeaders: string[]; preview: (string | number | null)[][] } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [nameCol, setNameCol] = useState<number | null>(null);
+  const [specCol, setSpecCol] = useState<number | null>(null);
+  const [priceCol, setPriceCol] = useState<number | null>(null);
+  const [startRow, setStartRow] = useState(1); // 1-based, 1 = 두번째 행부터
 
   // 폴더 이름 편집
   const [editFolderId, setEditFolderId] = useState<string | null>(null);
@@ -224,16 +233,55 @@ export default function FilesPage() {
     await loadFiles();
   };
 
-  // 견적서 AI 추출
-  const extractQuote = async (fileId: string) => {
-    setExtracting(fileId);
-    const r = await fetch(`/api/file-items/${fileId}/extract`, { method: 'POST' });
-    const j = await r.json();
-    if (j.error) setToast(`추출 실패: ${j.error}`);
-    else { setToast('추출 완료!'); await loadQuotes(); setTab('quotes'); }
-    setTimeout(() => setToast(''), 3000);
-    setExtracting(null);
+  // 열 매핑 모달 열기
+  const openMapping = async (file: FileItem) => {
+    setMappingFile(file);
+    setNameCol(null); setSpecCol(null); setPriceCol(null); setStartRow(1);
+    setPreviewData(null);
     setMenuFile(null);
+    setPreviewLoading(true);
+    const r = await fetch(`/api/file-items/${file.id}/preview`);
+    const j = await r.json();
+    setPreviewLoading(false);
+    if (j.error) { setToast(j.error); setTimeout(() => setToast(''), 3000); setMappingFile(null); return; }
+    setPreviewData(j);
+  };
+
+  // 열 클릭 → 제품명 → 사양 → 가격 → 해제 순환
+  const cycleCol = (colIdx: number) => {
+    if (nameCol === colIdx) { setNameCol(null); return; }
+    if (specCol === colIdx) { setSpecCol(null); return; }
+    if (priceCol === colIdx) { setPriceCol(null); return; }
+    if (nameCol === null) { setNameCol(colIdx); return; }
+    if (specCol === null) { setSpecCol(colIdx); return; }
+    if (priceCol === null) { setPriceCol(colIdx); return; }
+  };
+
+  const colRole = (colIdx: number) => {
+    if (nameCol === colIdx) return 'name';
+    if (specCol === colIdx) return 'spec';
+    if (priceCol === colIdx) return 'price';
+    return null;
+  };
+
+  // 추출 실행
+  const runExtract = async () => {
+    if (!mappingFile || nameCol === null) return;
+    setExtracting(mappingFile.id);
+    const r = await fetch(`/api/file-items/${mappingFile.id}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nameCol, specCol: specCol ?? null, priceCol: priceCol ?? null, startRow }),
+    });
+    const j = await r.json();
+    setExtracting(null);
+    if (j.error) { setToast(`추출 실패: ${j.error}`); setTimeout(() => setToast(''), 3000); return; }
+    setToast(`추출 완료 — ${j.count}개 항목`);
+    setTimeout(() => setToast(''), 3000);
+    setMappingFile(null);
+    await loadQuotes();
+    setTab('quotes');
+
   };
 
   const filteredFiles = files.filter(f =>
@@ -439,9 +487,9 @@ export default function FilesPage() {
                               <button className="p-1.5 rounded hover:bg-muted" onClick={() => copyFile(file)} title="복사">
                                 <Copy className="w-3.5 h-3.5 text-muted-foreground" />
                               </button>
-                              {isQuotesFolder && (
-                                <button className="p-1.5 rounded hover:bg-amber-50" onClick={() => extractQuote(file.id)} disabled={extracting === file.id} title="AI 추출">
-                                  {extracting === file.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" /> : <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                              {isQuotesFolder && file.file_name?.match(/\.(xlsx?|csv)$/i) && (
+                                <button className="p-1.5 rounded hover:bg-amber-50" onClick={() => openMapping(file)} title="열 매핑 추출">
+                                  <Table2 className="w-3.5 h-3.5 text-amber-600" />
                                 </button>
                               )}
                               <button className="p-1.5 rounded hover:bg-red-50" onClick={() => deleteFile(file)} title="삭제">
@@ -549,11 +597,10 @@ export default function FilesPage() {
             <button className="flex items-center gap-2 px-3 py-2 hover:bg-muted w-full text-left" onClick={() => copyFile(menuFile)}>
               <Copy className="w-3.5 h-3.5" /> 복사하기
             </button>
-            {(menuFile.file_type?.includes('pdf') || menuFile.file_name?.match(/\.(pdf|xlsx?|csv)$/i)) && (
+            {menuFile.file_name?.match(/\.(xlsx?|csv)$/i) && (
               <button className="flex items-center gap-2 px-3 py-2 hover:bg-amber-50 w-full text-left text-amber-700"
-                onClick={() => extractQuote(menuFile.id)} disabled={extracting === menuFile.id}>
-                {extracting === menuFile.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                AI 견적 추출
+                onClick={() => openMapping(menuFile)}>
+                <Table2 className="w-3.5 h-3.5" /> 열 매핑으로 추출
               </button>
             )}
             <div className="border-t border-border my-1" />
@@ -588,6 +635,111 @@ export default function FilesPage() {
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-sm px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 max-w-sm text-center">
           <Check className="w-4 h-4 shrink-0" /> <span className="truncate">{toast}</span>
+        </div>
+      )}
+
+      {/* 열 매핑 모달 */}
+      {mappingFile && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-popover rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div>
+                <h3 className="font-semibold text-base">열 매핑 — {mappingFile.file_name}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">열 헤더를 클릭해서 역할 지정 → 제품명 → 사양 → 가격 → 해제</p>
+              </div>
+              <button onClick={() => setMappingFile(null)}><X className="w-5 h-5 text-muted-foreground" /></button>
+            </div>
+
+            {/* 시작 행 설정 */}
+            <div className="flex items-center gap-4 px-5 py-3 border-b border-border bg-muted/30 shrink-0">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">데이터 시작 행:</span>
+                <input type="number" min={1} value={startRow + 1}
+                  onChange={e => setStartRow(Math.max(0, Number(e.target.value) - 1))}
+                  className="w-16 h-7 text-sm border border-border rounded px-2 text-center bg-background" />
+                <span className="text-xs text-muted-foreground">(헤더가 1행이면 2행부터 시작)</span>
+              </div>
+              <div className="flex items-center gap-2 ml-auto text-xs">
+                {nameCol !== null && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">제품명: {previewData?.colHeaders[nameCol]}</span>}
+                {specCol !== null && <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">사양: {previewData?.colHeaders[specCol]}</span>}
+                {priceCol !== null && <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">가격: {previewData?.colHeaders[priceCol]}</span>}
+              </div>
+            </div>
+
+            {/* 테이블 영역 */}
+            <div className="flex-1 overflow-auto p-4">
+              {previewLoading && (
+                <div className="flex items-center justify-center h-40 text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> 파일 읽는 중...
+                </div>
+              )}
+              {!previewLoading && previewData && (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-right pr-2 text-muted-foreground font-normal w-8 border-b border-border pb-1">#</th>
+                      {previewData.colHeaders.map((h, ci) => {
+                        const role = colRole(ci);
+                        return (
+                          <th key={ci}
+                            onClick={() => cycleCol(ci)}
+                            className={cn(
+                              'border border-border px-2 py-1.5 text-center cursor-pointer select-none font-medium whitespace-nowrap transition-colors',
+                              role === 'name' ? 'bg-blue-500 text-white' :
+                              role === 'spec' ? 'bg-purple-500 text-white' :
+                              role === 'price' ? 'bg-green-500 text-white' :
+                              'bg-muted hover:bg-muted-foreground/20 text-muted-foreground'
+                            )}>
+                            {h}
+                            {role === 'name' && <span className="block text-[9px] font-normal opacity-80">제품명</span>}
+                            {role === 'spec' && <span className="block text-[9px] font-normal opacity-80">사양</span>}
+                            {role === 'price' && <span className="block text-[9px] font-normal opacity-80">가격</span>}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewData.preview.map((row, ri) => (
+                      <tr key={ri} className={cn(ri < startRow ? 'opacity-30 bg-muted/40' : 'hover:bg-muted/30')}>
+                        <td className="text-right pr-2 text-muted-foreground tabular-nums">{ri + 1}</td>
+                        {row.map((cell, ci) => {
+                          const role = colRole(ci);
+                          return (
+                            <td key={ci}
+                              onClick={() => cycleCol(ci)}
+                              className={cn(
+                                'border border-border px-2 py-1 max-w-40 truncate cursor-pointer',
+                                role === 'name' ? 'bg-blue-50 text-blue-900' :
+                                role === 'spec' ? 'bg-purple-50 text-purple-900' :
+                                role === 'price' ? 'bg-green-50 text-green-900' : ''
+                              )}>
+                              {cell ?? ''}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* 푸터 */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0 bg-muted/30">
+              <p className="text-xs text-muted-foreground">
+                {nameCol === null ? '⬆ 열 헤더를 클릭하여 제품명 열을 먼저 선택하세요' : `${[nameCol !== null && '제품명', specCol !== null && '사양', priceCol !== null && '가격'].filter(Boolean).join(' · ')} 선택됨`}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setMappingFile(null)}>취소</Button>
+                <Button size="sm" onClick={runExtract}
+                  disabled={nameCol === null || extracting === mappingFile.id}>
+                  {extracting === mappingFile.id ? <><Loader2 className="w-4 h-4 animate-spin mr-1.5" />추출 중...</> : '추출하기'}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
