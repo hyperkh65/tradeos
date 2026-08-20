@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: ['gw.ynk2014.com', 'localhost:3103'],
+      bodySizeLimit: '200mb',
     },
   },
 };

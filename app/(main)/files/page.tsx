@@ -169,7 +169,7 @@ export default function FilesPage() {
   const [tab, setTab] = useState<'files' | 'quotes'>('files');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(''); // "파일명|숫자" 형식
   const [isAdmin, setIsAdmin] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const folderCreatingRef = useRef(false);
@@ -242,21 +242,44 @@ export default function FilesPage() {
     });
   };
 
-  // 업로드
+  // XHR 업로드 (진행률 표시)
+  const uploadOneFile = (file: File, folderId: string | null): Promise<boolean> =>
+    new Promise(resolve => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (folderId) fd.append('folderId', folderId);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/file-items');
+
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(`${file.name}|${pct}`);
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(true);
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            setToast(`업로드 실패: ${err.error || xhr.status}`);
+          } catch { setToast(`업로드 실패 (${xhr.status})`); }
+          setTimeout(() => setToast(''), 4000);
+          resolve(false);
+        }
+      };
+      xhr.onerror = () => { setToast('네트워크 오류'); setTimeout(() => setToast(''), 3000); resolve(false); };
+      xhr.send(fd);
+    });
+
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setUploading(true);
     for (const file of Array.from(fileList)) {
-      setUploadProgress(`업로드 중: ${file.name}`);
-      const fd = new FormData();
-      fd.append('file', file);
-      if (selectedFolder) fd.append('folderId', selectedFolder);
-      const r = await fetch('/api/file-items', { method: 'POST', body: fd });
-      if (!r.ok) {
-        const err = await r.json();
-        setToast(`업로드 실패: ${err.error}`);
-        setTimeout(() => setToast(''), 3000);
-      }
+      setUploadProgress(`${file.name}|0`);
+      await uploadOneFile(file, selectedFolder);
     }
     setUploading(false);
     setUploadProgress('');
@@ -482,11 +505,21 @@ export default function FilesPage() {
             </Button>
           </div>
 
-          {uploadProgress && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm text-blue-700">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadProgress}
-            </div>
-          )}
+          {uploadProgress && (() => {
+            const [fname, pctStr] = uploadProgress.split('|');
+            const pct = Number(pctStr) || 0;
+            return (
+              <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+                <div className="flex items-center justify-between text-xs text-blue-700 mb-1">
+                  <span className="flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" />업로드 중: {fname}</span>
+                  <span className="font-mono font-medium">{pct}%</span>
+                </div>
+                <div className="w-full bg-blue-100 rounded-full h-1.5">
+                  <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-200" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 파일 목록 */}
           {(!isQuotesFolder || tab === 'files') && (
