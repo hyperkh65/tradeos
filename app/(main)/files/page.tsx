@@ -50,7 +50,9 @@ export default function FilesPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderCreatingRef = useRef(false);
 
   // 폴더 생성 모달
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -68,6 +70,12 @@ export default function FilesPage() {
   // 폴더 이름 편집
   const [editFolderId, setEditFolderId] = useState<string | null>(null);
   const [editFolderName, setEditFolderName] = useState('');
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(j => {
+      if (j.user?.role === 'admin') setIsAdmin(true);
+    }).catch(() => {});
+  }, []);
 
   const loadFolders = useCallback(async () => {
     const r = await fetch('/api/file-folders');
@@ -129,18 +137,33 @@ export default function FilesPage() {
     handleUpload(e.dataTransfer.files);
   };
 
-  // 폴더 생성
+  // 폴더 생성 (ref로 이중 호출 방지)
   const createFolder = async () => {
-    if (!newFolderName.trim()) return;
+    if (!newFolderName.trim() || folderCreatingRef.current) return;
+    folderCreatingRef.current = true;
     setFolderSaving(true);
-    await fetch('/api/file-folders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newFolderName.trim() }),
-    });
-    setNewFolderName('');
-    setShowNewFolder(false);
-    setFolderSaving(false);
+    try {
+      await fetch('/api/file-folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newFolderName.trim() }),
+      });
+      setNewFolderName('');
+      setShowNewFolder(false);
+      await loadFolders();
+    } finally {
+      folderCreatingRef.current = false;
+      setFolderSaving(false);
+    }
+  };
+
+  // 폴더 삭제 (관리자만)
+  const deleteFolder = async (folder: FileFolder) => {
+    if (!confirm(`"${folder.name}" 폴더를 삭제하시겠습니까?\n(폴더 안에 파일이 없어야 합니다)`)) return;
+    const r = await fetch(`/api/file-folders/${folder.id}`, { method: 'DELETE' });
+    const j = await r.json();
+    if (!r.ok) { setToast(j.error || '삭제 실패'); setTimeout(() => setToast(''), 3000); return; }
+    if (selectedFolder === folder.id) setSelectedFolder(null);
     await loadFolders();
   };
 
@@ -272,11 +295,20 @@ export default function FilesPage() {
                   </button>
                 )}
                 {editFolderId !== folder.id && (
-                  <button
-                    className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted-foreground/20"
-                    onClick={() => { setEditFolderId(folder.id); setEditFolderName(folder.name); }}>
-                    <Edit2 className="w-3 h-3 text-muted-foreground" />
-                  </button>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex gap-0.5">
+                    <button
+                      className="p-0.5 rounded hover:bg-muted-foreground/20"
+                      onClick={e => { e.stopPropagation(); setEditFolderId(folder.id); setEditFolderName(folder.name); }}>
+                      <Edit2 className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="p-0.5 rounded hover:bg-red-100"
+                        onClick={e => { e.stopPropagation(); deleteFolder(folder); }}>
+                        <Trash2 className="w-3 h-3 text-red-400" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
