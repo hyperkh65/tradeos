@@ -742,6 +742,65 @@ function runMigrations(db: Database.Database) {
     )`);
   } catch { /* already exists */ }
 
+  // 파일 관리 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS file_folders (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      parent_id TEXT DEFAULT NULL,
+      is_system INTEGER DEFAULT 0,
+      description TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS file_items (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      folder_id TEXT DEFAULT NULL,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER DEFAULT 0,
+      file_type TEXT,
+      category TEXT,
+      share_token TEXT UNIQUE,
+      share_expires_at TEXT,
+      uploaded_by TEXT,
+      uploaded_by_id TEXT,
+      notion_synced INTEGER DEFAULT 0,
+      notion_page_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS quote_extractions (
+      id TEXT PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      supplier_name TEXT,
+      quote_date TEXT,
+      items_json TEXT DEFAULT '[]',
+      raw_text TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 견적서 폴더 자동생성
+  try {
+    const existing = db.prepare("SELECT id FROM file_folders WHERE name='견적서' AND is_system=1").get();
+    if (!existing) {
+      const ts = new Date().toISOString();
+      db.prepare("INSERT INTO file_folders (id,name,is_system,description,created_by,created_at,updated_at) VALUES (?,?,1,?,?,?,?)")
+        .run('folder_system_quotes', '견적서', '공급업체 견적서 (자동 추출)', 'system', ts, ts);
+    }
+  } catch { /* ignore */ }
+
   // 수익분석 테이블
   try {
     db.exec(`CREATE TABLE IF NOT EXISTS profit_analyses (
