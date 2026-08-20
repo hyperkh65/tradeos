@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/notion/mapper';
 import type { PurchaseOrder } from '@/types';
+import { createCalendarEvent } from '@/lib/calendar-events';
 
 function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string; revisionsJson?: string } {
   return {
@@ -145,6 +146,18 @@ export async function POST(req: NextRequest) {
 
     // Save to SQLite
     poToDb(db, po, id, ts, notionId);
+
+    // ETD 있으면 캘린더 이벤트 자동 생성
+    if (body.etd) {
+      createCalendarEvent({
+        title: `발주 ETD: ${body.supplierName}`,
+        date: body.etd,
+        category: 'po',
+        relatedId: id,
+        userId: user?.id || 'unknown',
+        userName: user?.name || '알 수 없음',
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ data: po }, { status: 201 });
   } catch (e) {

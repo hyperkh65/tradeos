@@ -908,6 +908,90 @@ function runMigrations(db: Database.Database) {
     db.transaction(() => { extraAccounts.forEach(a => addAcct.run(...a)); })();
   } catch { /* ignore */ }
 
+  // 알림 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      link TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 휴가 정책 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS leave_policies (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL,
+      user_name TEXT NOT NULL,
+      annual_days INTEGER DEFAULT 15,
+      year INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 휴가 신청 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS leave_requests (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      leave_type TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      days REAL NOT NULL,
+      reason TEXT,
+      status TEXT DEFAULT 'pending',
+      approver_id TEXT,
+      approver_name TEXT,
+      approved_at TEXT,
+      reject_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 업무 댓글 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS task_comments (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 업무 모듈 연결 테이블
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS task_links (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      module TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      record_label TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // tasks 테이블 확장 (assignee)
+  try { db.exec(`ALTER TABLE tasks ADD COLUMN assignee_id TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE tasks ADD COLUMN assignee_name TEXT`); } catch { /* already exists */ }
+
+  // calendar_events 테이블 확장 (카테고리/관련ID/작성자명)
+  try { db.exec(`ALTER TABLE calendar_events ADD COLUMN category TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE calendar_events ADD COLUMN related_id TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE calendar_events ADD COLUMN created_by_name TEXT`); } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

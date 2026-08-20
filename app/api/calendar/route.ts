@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
+    // 팀 전체 이벤트 반환 (created_by_name 포함)
     const events = db.prepare('SELECT * FROM calendar_events ORDER BY date ASC').all();
     return NextResponse.json(events);
   } catch {

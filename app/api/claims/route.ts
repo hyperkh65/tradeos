@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
+import { createCalendarEvent } from '@/lib/calendar-events';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,16 @@ export async function POST(req: NextRequest) {
       .run(id, bizId, body.customerId ?? null, body.customerName ?? null, body.supplierId ?? null, body.supplierName ?? null, body.productId ?? null, body.productName ?? null, body.poId ?? null, body.poBusinessId ?? null, body.saleId ?? null, body.saleBusinessId ?? null, body.shipmentId ?? null, body.issueType, body.description, body.claimAmount ?? null, body.currency ?? null, body.compensationType ?? null, body.compensationAmount ?? null, body.status || '접수', JSON.stringify(body.imageFiles || []), JSON.stringify(body.reportFiles || []), user?.id || 'unknown', ts, ts);
 
     const saved = dbToClaim(db.prepare('SELECT * FROM claims WHERE id=?').get(id) as Record<string, unknown>);
+
+    // 클레임 캘린더 이벤트 자동 생성
+    createCalendarEvent({
+      title: `클레임: ${body.description?.slice(0, 30) ?? bizId}`,
+      date: ts.slice(0, 10),
+      category: 'claim',
+      relatedId: id,
+      userId: user?.id || 'unknown',
+      userName: user?.name || '알 수 없음',
+    }).catch(() => {});
 
     // Async Notion sync
     syncToNotion(saved).then(notionId => {

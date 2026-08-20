@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { SidebarContext } from '@/lib/sidebar-context';
 import { AppSidebar } from './sidebar';
 import { cn } from '@/lib/utils';
+import { NotificationToast } from '@/components/notifications/NotificationToast';
 
 export function MainShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -53,6 +54,7 @@ export function MainShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <NotificationToast />
     </SidebarContext.Provider>
   );
 }

@@ -16,6 +16,9 @@ interface CalendarEvent {
   all_day: number;
   description?: string;
   created_by: string;
+  created_by_name?: string;
+  category?: string;
+  related_id?: string;
   created_at: string;
 }
 
@@ -39,11 +42,19 @@ const typeLabel: Record<string, string> = {
   event: '일정',
 };
 
+// 이벤트 색상: 본인(파랑), 자동생성(보라), 팀원(연두)
+function getEventColor(ev: CalendarEvent, myId?: string): string {
+  if (ev.category) return 'bg-purple-500'; // 자동생성
+  if (ev.created_by === myId) return 'bg-blue-500'; // 본인
+  return 'bg-green-500'; // 팀원
+}
+
 export default function CalendarPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [myId, setMyId] = useState<string | undefined>();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [form, setForm] = useState({ title: '', type: 'personal', date: '', description: '' });
@@ -51,6 +62,13 @@ export default function CalendarPage() {
   const load = useCallback(async () => {
     const data = await fetch('/api/calendar').then(r => r.json());
     setEvents(Array.isArray(data) ? data : []);
+  }, []);
+
+  // 현재 유저 ID 가져오기 (세션 API 또는 헤더 기반)
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(j => {
+      if (j?.user?.id) setMyId(j.user.id);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -94,6 +112,8 @@ export default function CalendarPage() {
   const monthEvents = events
     .filter(e => e.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`))
     .sort((a, b) => a.date.localeCompare(b.date));
+
+  const todayEvents = events.filter(e => e.date === todayStr);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -143,98 +163,148 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">{monthName}</h2>
-          <div className="flex gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={prev}><ChevronLeft className="w-4 h-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>오늘</Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={next}><ChevronRight className="w-4 h-4" /></Button>
-            <Button size="sm" className="h-8 px-3 text-xs gap-1" onClick={() => openCreate()}><Plus className="w-3.5 h-3.5" />추가</Button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3 mb-4">
-          {Object.entries(typeLabel).map(([k, v]) => (
-            <div key={k} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={cn('w-2 h-2 rounded-full', typeColor[k] ?? 'bg-gray-400')} />
-              {v}
+      <div className="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col lg:flex-row gap-4">
+        {/* 메인 캘린더 */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold">{monthName}</h2>
+            <div className="flex gap-1">
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={prev}><ChevronLeft className="w-4 h-4" /></Button>
+              <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>오늘</Button>
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={next}><ChevronRight className="w-4 h-4" /></Button>
+              <Button size="sm" className="h-8 px-3 text-xs gap-1" onClick={() => openCreate()}><Plus className="w-3.5 h-3.5" />추가</Button>
             </div>
-          ))}
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col border border-border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-border bg-muted/30">
-            {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
-              <div key={d} className={cn('py-2 text-center text-xs font-semibold', i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-muted-foreground')}>{d}</div>
-            ))}
           </div>
-          <div className="flex-1 grid grid-cols-7 auto-rows-fr min-h-0">
-            {cells.map((day, i) => {
-              const dayEvents = eventsOn(day);
-              const dateStr = pad(day);
-              const isToday = dateStr === todayStr;
-              const col = i % 7;
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    'border-b border-r border-border p-1 min-h-[70px] md:min-h-[90px] overflow-hidden cursor-pointer hover:bg-muted/20 transition-colors',
-                    'last:border-r-0 [&:nth-child(7n)]:border-r-0',
-                    !day && 'bg-muted/20 cursor-default',
-                    col === 0 && day && 'bg-red-50/30',
-                    col === 6 && day && 'bg-blue-50/30',
+
+          {/* 범례 */}
+          <div className="flex flex-wrap gap-3 mb-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />내 일정
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-green-500" />팀원 일정
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-purple-500" />자동생성
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 flex flex-col border border-border rounded-xl overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-border bg-muted/30">
+              {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
+                <div key={d} className={cn('py-2 text-center text-xs font-semibold', i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-muted-foreground')}>{d}</div>
+              ))}
+            </div>
+            <div className="flex-1 grid grid-cols-7 auto-rows-fr min-h-0">
+              {cells.map((day, i) => {
+                const dayEvents = eventsOn(day);
+                const dateStr = pad(day);
+                const isToday = dateStr === todayStr;
+                const col = i % 7;
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      'border-b border-r border-border p-1 min-h-[70px] md:min-h-[90px] overflow-hidden cursor-pointer hover:bg-muted/20 transition-colors',
+                      'last:border-r-0 [&:nth-child(7n)]:border-r-0',
+                      !day && 'bg-muted/20 cursor-default',
+                      col === 0 && day && 'bg-red-50/30',
+                      col === 6 && day && 'bg-blue-50/30',
+                    )}
+                    onClick={() => day && openCreate(dateStr)}
+                  >
+                    {day && (
+                      <>
+                        <div className={cn(
+                          'w-6 h-6 flex items-center justify-center text-xs font-medium rounded-full mb-1',
+                          isToday ? 'bg-primary text-primary-foreground' : col === 0 ? 'text-red-500' : col === 6 ? 'text-blue-500' : 'text-foreground'
+                        )}>{day}</div>
+                        <div className="space-y-0.5">
+                          {dayEvents.slice(0, 2).map(ev => (
+                            <div
+                              key={ev.id}
+                              className={cn('text-[10px] text-white px-1 py-0.5 rounded truncate leading-tight', getEventColor(ev, myId))}
+                              onClick={e => { e.stopPropagation(); }}
+                              title={ev.created_by_name ? `${ev.title} (${ev.created_by_name})` : ev.title}
+                            >
+                              {ev.title}
+                            </div>
+                          ))}
+                          {dayEvents.length > 2 && (
+                            <div className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - 2}건</div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold mb-2">이번 달 일정</h3>
+            <div className="space-y-1.5">
+              {monthEvents.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">이번 달 일정이 없습니다.</p>
+              )}
+              {monthEvents.map(ev => (
+                <div key={ev.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors group">
+                  <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', getEventColor(ev, myId))} />
+                  <span className="text-xs text-muted-foreground w-14 shrink-0">{ev.date.slice(5).replace('-', '/')}</span>
+                  <span className="text-sm font-medium flex-1">{ev.title}</span>
+                  {ev.created_by_name && (
+                    <span className="text-xs text-muted-foreground shrink-0">{ev.created_by_name}</span>
                   )}
-                  onClick={() => day && openCreate(dateStr)}
-                >
-                  {day && (
-                    <>
-                      <div className={cn(
-                        'w-6 h-6 flex items-center justify-center text-xs font-medium rounded-full mb-1',
-                        isToday ? 'bg-primary text-primary-foreground' : col === 0 ? 'text-red-500' : col === 6 ? 'text-blue-500' : 'text-foreground'
-                      )}>{day}</div>
-                      <div className="space-y-0.5">
-                        {dayEvents.slice(0, 2).map(ev => (
-                          <div
-                            key={ev.id}
-                            className={cn('text-[10px] text-white px-1 py-0.5 rounded truncate leading-tight', typeColor[ev.type] ?? 'bg-gray-500')}
-                            onClick={e => { e.stopPropagation(); }}
-                          >
-                            {ev.title}
-                          </div>
-                        ))}
-                        {dayEvents.length > 2 && (
-                          <div className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - 2}건</div>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  <span className="text-xs text-muted-foreground shrink-0">{typeLabel[ev.type] ?? ev.type}</span>
+                  <button
+                    onClick={() => handleDelete(ev.id)}
+                    className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold mb-2">이번 달 일정</h3>
-          <div className="space-y-1.5">
-            {monthEvents.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">이번 달 일정이 없습니다.</p>
-            )}
-            {monthEvents.map(ev => (
-              <div key={ev.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors group">
-                <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', typeColor[ev.type] ?? 'bg-gray-400')} />
-                <span className="text-xs text-muted-foreground w-14 shrink-0">{ev.date.slice(5).replace('-', '/')}</span>
-                <span className="text-sm font-medium flex-1">{ev.title}</span>
-                <span className="text-xs text-muted-foreground shrink-0">{typeLabel[ev.type] ?? ev.type}</span>
-                <button
-                  onClick={() => handleDelete(ev.id)}
-                  className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+        {/* 오늘의 일정 패널 */}
+        <div className="lg:w-64 shrink-0">
+          <div className="border border-border rounded-xl overflow-hidden">
+            <div className="bg-primary px-3 py-2.5">
+              <h3 className="text-sm font-semibold text-primary-foreground">
+                오늘의 일정
+              </h3>
+              <p className="text-[11px] text-primary-foreground/70 mt-0.5">
+                {today.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
+              </p>
+            </div>
+            <div className="divide-y divide-border">
+              {todayEvents.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  오늘 일정이 없습니다
+                </div>
+              ) : (
+                todayEvents.map(ev => (
+                  <div key={ev.id} className="px-3 py-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className={cn('w-2 h-2 rounded-full mt-1 shrink-0', getEventColor(ev, myId))} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug truncate">{ev.title}</p>
+                        {ev.created_by_name && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{ev.created_by_name}</p>
+                        )}
+                        {ev.description && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{ev.description}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{typeLabel[ev.type] ?? ev.type}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

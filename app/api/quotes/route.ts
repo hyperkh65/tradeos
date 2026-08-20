@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionQuotes, createNotionQuote } from '@/lib/notion/mapper';
 import type { Quote } from '@/types';
+import { createCalendarEvent } from '@/lib/calendar-events';
 
 export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, unknown> {
   const items = JSON.parse((row.items_json as string) || '[]').map((it: any) => ({
@@ -125,6 +126,18 @@ export async function POST(req: NextRequest) {
       quoteDate, totalAmount, body.imagesJson ?? null, JSON.stringify([historyEntry]),
       body.docType ?? 'QUOTE', body.specialNotes ?? null, body.generalInfo ?? null,
     );
+
+    // validity 있으면 캘린더 이벤트 자동 생성
+    if (body.validity) {
+      createCalendarEvent({
+        title: `견적 만료: ${body.companyName}`,
+        date: body.validity,
+        category: 'quote',
+        relatedId: id,
+        userId: user?.id || 'unknown',
+        userName: user?.name || '알 수 없음',
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ data: { ...dbToQuote({ ...q as any, id, business_id: bizId, created_at: ts, quote_date: quoteDate, total_amount: totalAmount, history_json: JSON.stringify([historyEntry]) }) } }, { status: 201 });
   } catch (e) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
+import { getSessionUser } from '@/lib/auth/session';
+import { createCalendarEvent } from '@/lib/calendar-events';
 
 function dbToSale(row: Record<string, unknown>) {
   return {
@@ -109,6 +111,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getSessionUser();
   const body = await req.json();
   const db = getDb();
   const id = newId();
@@ -153,6 +156,19 @@ export async function POST(req: NextRequest) {
 
   db.prepare(`INSERT INTO sales (id,business_id,sale_date,customer,sale_type,salesperson,po_no,items_json,net_amount,vat,total_amount,currency,created_at,exchange_rate,misc,supplier_id,supplier_name,po_id,po_business_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, bizId, body.saleDate || ts.slice(0, 10), body.customer, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, totalAmount, body.currency || 'KRW', ts, rate, body.misc ?? null, body.supplierId ?? null, body.supplierName ?? null, body.poId ?? null, body.poBusinessId ?? null);
+
+  // 마감일이 있으면 캘린더 이벤트 자동 생성
+  if (body.dueDate || body.saleDate) {
+    const eventDate = body.dueDate || body.saleDate;
+    createCalendarEvent({
+      title: `매출 마감: ${body.customer}`,
+      date: eventDate,
+      category: 'sale',
+      relatedId: id,
+      userId: user?.id || 'unknown',
+      userName: user?.name || '알 수 없음',
+    }).catch(() => {});
+  }
 
   return NextResponse.json({ data: { id, businessId: bizId, saleDate: body.saleDate, customer: body.customer, saleType: body.saleType, items, netAmount, vat, totalAmount, currency: body.currency || 'KRW', createdAt: ts } }, { status: 201 });
 }
