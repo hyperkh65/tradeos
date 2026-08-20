@@ -776,7 +776,10 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
       .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
       .box-content { font-size: 13px; line-height: 1.6; color: #333; }
     `;
+    const safeName = (po.supplierName || '').replace(/[/\\:*?"<>|]/g, '');
+    const printTitle = `${po.businessId}_${safeName}_${po.orderDate || new Date().toISOString().slice(0, 10)}`;
     sessionStorage.setItem('doc_print_html', `<style>${css}</style>${area.outerHTML}`);
+    sessionStorage.setItem('doc_print_title', printTitle);
     window.open('/print', '_blank');
   };
 

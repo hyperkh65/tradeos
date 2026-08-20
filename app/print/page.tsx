@@ -6,9 +6,11 @@ export default function PrintPage() {
 
   useEffect(() => {
     const raw = sessionStorage.getItem('doc_print_html');
+    const title = sessionStorage.getItem('doc_print_title');
     if (raw) {
       setHtml(raw);
       sessionStorage.removeItem('doc_print_html');
+      if (title) { document.title = title; sessionStorage.removeItem('doc_print_title'); }
       setTimeout(() => window.print(), 1000);
     }
   }, []);
