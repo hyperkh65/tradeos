@@ -389,29 +389,23 @@ function ImportModal({
     }
     if (dutyFinal > 0) base.push({ category: '관세', calculated: dutyFinal, costType: 'inventory' });
     if (vatFinal > 0) base.push({ category: '수입부가세', calculated: vatFinal, costType: 'vat' });
-    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal, costType: 'inventory' });
-    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', calculated: inspectionFeeVal, costType: 'expense' });
-    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', calculated: warehouseFeeVal, costType: 'expense' });
-    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', calculated: demurrageVal, costType: 'expense' });
-    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', calculated: detentionFeeVal, costType: 'expense' });
-    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal, costType: 'inventory' });
-    customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
-      base.push({ category: c.name, calculated: parseFloat(c.amount), costType: 'inventory' });
-      const vatRate = c.vatRate ?? 10;
-      const vatAmt = vatRate > 0 ? Math.round(parseFloat(c.amount) * vatRate / 100) : 0;
-      if (vatAmt > 0) base.push({ category: `${c.name} VAT`, calculated: vatAmt, costType: 'vat' });
-    });
-    // 국내비용 VAT (각 항목별 vatRate 적용)
+    // 국내비용 — VAT를 부모 항목의 vat 필드에 포함 (주황색 컬럼 표시)
     const brokerVat    = Math.round(brokerFeeVal * (form.brokerFeeVatRate ?? 10) / 100);
     const warehouseVat = Math.round(warehouseFeeVal * (form.warehouseFeeVatRate ?? 10) / 100);
     const demurrageVat = Math.round(demurrageVal * (form.demurrageVatRate ?? 0) / 100);
     const detentionVat = Math.round(detentionFeeVal * (form.detentionFeeVatRate ?? 0) / 100);
     const inlandVat    = Math.round(inlandFreightVal * (form.inlandFreightVatRate ?? 10) / 100);
-    if (brokerVat > 0)    base.push({ category: '통관비 VAT', calculated: brokerVat, costType: 'vat' });
-    if (warehouseVat > 0) base.push({ category: '창고료 VAT', calculated: warehouseVat, costType: 'vat' });
-    if (demurrageVat > 0) base.push({ category: 'Demurrage VAT', calculated: demurrageVat, costType: 'vat' });
-    if (detentionVat > 0) base.push({ category: 'Detention VAT', calculated: detentionVat, costType: 'vat' });
-    if (inlandVat > 0)    base.push({ category: `내륙운송비 VAT${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandVat, costType: 'vat' });
+    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal, vat: brokerVat || undefined, costType: 'inventory' });
+    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', calculated: inspectionFeeVal, costType: 'expense' });
+    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', calculated: warehouseFeeVal, vat: warehouseVat || undefined, costType: 'expense' });
+    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', calculated: demurrageVal, vat: demurrageVat || undefined, costType: 'expense' });
+    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', calculated: detentionFeeVal, vat: detentionVat || undefined, costType: 'expense' });
+    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal, vat: inlandVat || undefined, costType: 'inventory' });
+    customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
+      const vatRate = c.vatRate ?? 10;
+      const vatAmt = vatRate > 0 ? Math.round(parseFloat(c.amount) * vatRate / 100) : 0;
+      base.push({ category: c.name, calculated: parseFloat(c.amount), vat: vatAmt || undefined, costType: 'inventory' });
+    });
     // 해상운임 (포워더)
     const frtKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
     if (frtKrw > 0) base.push({ category: '해상운임(포워더)', calculated: frtKrw, costType: 'inventory' });
