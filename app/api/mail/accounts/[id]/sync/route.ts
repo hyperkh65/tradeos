@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let count = 0;
 
     // limit=0 이면 전체, 기본 300
-    const limitParam = Number(new URL(req.url).searchParams.get('limit') || '300');
+    const limitParam = Number(new URL(req.url).searchParams.get('limit') ?? '0');
     const fetchAll = limitParam === 0;
 
     if (total > 0) {

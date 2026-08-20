@@ -160,7 +160,7 @@ export default function MailPage() {
       setExtMails(list);
       if (list.length === 0) {
         setSyncing(true);
-        await fetch(`/api/mail/accounts/${acc.id}/sync`, { method: 'POST' }).catch(() => {});
+        await fetch(`/api/mail/accounts/${acc.id}/sync?limit=0`, { method: 'POST' }).catch(() => {});
         const msgs2 = await fetch(`/api/mail/accounts/${acc.id}/messages?folder=inbox`).then(r => r.json()).catch(() => []);
         setExtMails(Array.isArray(msgs2) ? msgs2 : []);
         setSyncing(false);
