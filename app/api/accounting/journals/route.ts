@@ -60,12 +60,12 @@ export async function POST(req: NextRequest) {
   db.transaction(() => {
     if (existingId) {
       db.prepare('DELETE FROM journal_lines WHERE entry_id=?').run(existingId);
-      db.prepare(`UPDATE journal_entries SET entry_date=?,entry_type=?,description=?,status=?,debit_total=?,credit_total=?,updated_at=? WHERE id=?`)
-        .run(body.entry_date, body.entry_type, body.description, body.status || 'posted', debitTotal, creditTotal, ts, existingId);
+      db.prepare(`UPDATE journal_entries SET entry_date=?,entry_type=?,description=?,status=?,debit_total=?,credit_total=?,doc_no=?,updated_at=? WHERE id=?`)
+        .run(body.entry_date, body.entry_type, body.description, body.status || 'posted', debitTotal, creditTotal, body.doc_no || null, ts, existingId);
     } else {
-      db.prepare(`INSERT INTO journal_entries (id,entry_no,entry_date,entry_type,description,status,created_by,related_ref,debit_total,credit_total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      db.prepare(`INSERT INTO journal_entries (id,entry_no,entry_date,entry_type,description,status,created_by,related_ref,doc_no,debit_total,credit_total,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(id, entryNo, body.entry_date, body.entry_type, body.description,
-             body.status || 'posted', body.created_by || null, body.related_ref || null,
+             body.status || 'posted', body.created_by || null, body.related_ref || null, body.doc_no || null,
              debitTotal, creditTotal, ts, ts);
     }
     lines.forEach((l, i) => {

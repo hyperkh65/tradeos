@@ -21,7 +21,7 @@ interface JournalLine {
 
 interface JournalEntry {
   id: string; entry_no: string; entry_date: string; entry_type: string;
-  description: string; status: string; related_ref?: string;
+  description: string; status: string; related_ref?: string; doc_no?: string;
   debit_total: number; credit_total: number; created_at: string;
   lines: JournalLine[];
 }
@@ -323,6 +323,7 @@ function JournalEntryModal({
     entry_date: entry?.entry_date || today,
     description: entry?.description || '',
     related_ref: entry?.related_ref || '',
+    doc_no: entry?.doc_no || '',
     status: entry?.status || 'posted',
   });
 
@@ -464,7 +465,8 @@ function JournalEntryModal({
     setForm(f => ({
       ...f, entry_type: 'import_cost',
       description: f.description || `수입통관 ${imp.declarationNo || imp.businessId}`,
-      related_ref: f.related_ref || imp.declarationNo || imp.businessId,
+      related_ref: f.related_ref || imp.id,
+      doc_no: f.doc_no || imp.declarationNo || imp.businessId,
     }));
     setShowLinkPanel(false);
   };
@@ -485,7 +487,8 @@ function JournalEntryModal({
     setForm(f => ({
       ...f, entry_type: 'revenue',
       description: f.description || `${qt.companyName} 매출발생 (${qt.businessId})`,
-      related_ref: f.related_ref || qt.businessId,
+      related_ref: f.related_ref || qt.id || qt.businessId,
+      doc_no: f.doc_no || qt.businessId,
     }));
     setShowLinkPanel(false);
   };
@@ -725,7 +728,7 @@ function JournalEntryModal({
                   통관번호 / 매출번호
                   <span className="ml-1 text-muted-foreground/60 font-normal">— 인보이스, 수입신고번호 등</span>
                 </label>
-                <Input value={form.related_ref} onChange={e => setForm(f => ({ ...f, related_ref: e.target.value }))}
+                <Input value={form.doc_no} onChange={e => setForm(f => ({ ...f, doc_no: e.target.value }))}
                   placeholder="INV-2026-001 / 수입신고번호..." className="h-9 text-sm" />
               </div>
             </div>
@@ -913,7 +916,7 @@ function JournalTab({
   const filtered = useMemo(() => entries.filter(e => {
     const ms = statusFilter === 'all' || e.status === statusFilter;
     const mt = typeFilter === 'all' || e.entry_type === typeFilter;
-    const mq = !search || e.description.includes(search) || e.entry_no.includes(search) || (e.related_ref || '').includes(search);
+    const mq = !search || e.description.includes(search) || e.entry_no.includes(search) || (e.related_ref || '').includes(search) || (e.doc_no || '').includes(search);
     return ms && mt && mq;
   }), [entries, statusFilter, typeFilter, search]);
 
@@ -1022,7 +1025,7 @@ function JournalTab({
                 </td>
                 <td className="px-3 py-2.5">
                   <p className="text-sm truncate max-w-56">{e.description}</p>
-                  {e.related_ref && <p className="text-xs text-muted-foreground">{e.related_ref}</p>}
+                  {(e.doc_no || e.related_ref) && <p className="text-xs text-muted-foreground">{e.doc_no || e.related_ref}</p>}
                 </td>
                 <td className="px-3 py-2.5 text-right text-xs tabular-nums text-blue-700">{fmtNum(e.debit_total)}</td>
                 <td className="px-3 py-2.5 text-right text-xs tabular-nums text-red-600">{fmtNum(e.credit_total)}</td>

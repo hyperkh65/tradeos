@@ -570,6 +570,8 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN demurrage_vat_rate REAL DEFAULT 0`,
     `ALTER TABLE imports ADD COLUMN detention_fee_vat_rate REAL DEFAULT 0`,
     `ALTER TABLE imports ADD COLUMN inland_freight_vat_rate REAL DEFAULT 10`,
+    // 전표: 통관번호/매출번호 표시용 (related_ref는 내부 dedup 키)
+    `ALTER TABLE journal_entries ADD COLUMN doc_no TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
