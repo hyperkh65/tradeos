@@ -758,10 +758,26 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
   const emptyRows = Math.max(0, 8 - items.length);
 
   const handlePrint = () => {
-    const orig = document.title;
-    document.title = po.businessId;
-    window.print();
-    window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+    const area = document.getElementById('po-print-area');
+    if (!area) return;
+    const css = `
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 0; background: white; font-family: "Noto Sans KR", Arial, sans-serif; color: #171717; }
+      @page { size: A4 portrait; margin: 0; }
+      .po-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+      .po-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+      .po-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+      .po-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+      .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+      .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+      .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+      .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+      .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+      .box-content { font-size: 13px; line-height: 1.6; color: #333; }
+    `;
+    sessionStorage.setItem('doc_print_html', `<style>${css}</style>${area.outerHTML}`);
+    window.open('/print', '_blank');
   };
 
   return (
@@ -778,25 +794,6 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
         #po-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
         #po-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
         #po-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
-        @media print {
-          body * { visibility: hidden !important; }
-          #po-print-area, #po-print-area * { visibility: visible !important; }
-          #po-print-area {
-            position: static !important;
-            width: 210mm !important;
-            min-height: 297mm !important;
-            height: auto !important;
-            overflow: visible !important;
-            margin: 0 !important;
-            padding: 10mm !important;
-            background: white !important;
-            box-sizing: border-box !important;
-          }
-          .fixed { position: static !important; top: auto !important; right: auto !important; bottom: auto !important; left: auto !important; }
-          .overflow-y-auto, .overflow-hidden { overflow: visible !important; height: auto !important; }
-          .no-print { display: none !important; }
-          @page { size: A4 portrait; margin: 0; }
-        }
       `}</style>
 
       <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
