@@ -758,38 +758,50 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
   const emptyRows = Math.max(0, 8 - items.length);
 
   const handlePrint = () => {
-    const orig = document.title;
-    document.title = po.businessId;
-    window.print();
-    window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+    const area = document.getElementById('po-print-area');
+    if (!area) return;
+    const w = window.open('', '_blank');
+    if (!w) { alert('팝업이 차단되었습니다. 팝업을 허용해주세요.'); return; }
+    const css = `
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: "Noto Sans KR", Arial, sans-serif; background: white; }
+      @page { size: A4 portrait; margin: 0; }
+      .po-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+      .po-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+      .po-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+      .po-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+      .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+      .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+      .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+      .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+      .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+      .box-content { font-size: 13px; line-height: 1.6; color: #333; }
+    `;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${po.businessId}</title><style>${css}</style></head><body>${area.innerHTML}</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 1000);
   };
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
-        @media print {
-          body * { visibility: hidden !important; }
-          #po-print-area, #po-print-area * { visibility: visible !important; }
-          #po-print-area { position: static !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; background: white !important; box-sizing: border-box !important; overflow: visible !important; }
-          .no-print { display: none !important; }
-          @page { size: A4 portrait; margin: 0; }
-        }
-        #po-print-area .po-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-        #po-print-area .po-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
-        #po-print-area .po-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
-        #po-print-area .po-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
-        #po-print-area .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
-        #po-print-area .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
-        #po-print-area .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
-        #po-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        #po-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        #po-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
+        .po-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        .po-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        .po-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+        .po-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+        .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+        .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+        .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+        .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .box-content { font-size: 13px; line-height: 1.6; color: #333; }
       `}</style>
 
       <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
-          <div className="flex items-center justify-between p-4 border-b no-print">
+          <div className="flex items-center justify-between p-4 border-b">
             <span className="font-semibold text-sm text-gray-800">발주서 미리보기</span>
             <div className="flex gap-2">
               <Button size="sm" onClick={handlePrint}><Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF 저장</Button>
