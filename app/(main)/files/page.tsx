@@ -242,37 +242,55 @@ export default function FilesPage() {
     });
   };
 
-  // XHR 업로드 (진행률 표시)
-  const uploadOneFile = (file: File, folderId: string | null): Promise<boolean> =>
-    new Promise(resolve => {
+  // 청크 업로드 (2MB씩 분할 → nginx 프록시 body limit 우회)
+  const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+
+  const uploadOneFile = async (file: File, folderId: string | null): Promise<boolean> => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
+    const uploadId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const chunk = file.slice(start, start + CHUNK_SIZE);
+      const pct = Math.round(((i) / totalChunks) * 90); // 90%까지는 청크, 나머지 10%는 완료
+      setUploadProgress(`${file.name}|${pct}`);
+
       const fd = new FormData();
-      fd.append('file', file);
-      if (folderId) fd.append('folderId', folderId);
+      fd.append('chunk', chunk);
+      fd.append('uploadId', uploadId);
+      fd.append('chunkIndex', String(i));
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/file-items');
+      const r = await fetch('/api/file-items/chunk', { method: 'POST', body: fd });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        setToast(`업로드 실패 (청크 ${i}): ${err.error || r.status}`);
+        setTimeout(() => setToast(''), 4000);
+        return false;
+      }
+    }
 
-      xhr.upload.onprogress = e => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          setUploadProgress(`${file.name}|${pct}`);
-        }
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(true);
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText);
-            setToast(`업로드 실패: ${err.error || xhr.status}`);
-          } catch { setToast(`업로드 실패 (${xhr.status})`); }
-          setTimeout(() => setToast(''), 4000);
-          resolve(false);
-        }
-      };
-      xhr.onerror = () => { setToast('네트워크 오류'); setTimeout(() => setToast(''), 3000); resolve(false); };
-      xhr.send(fd);
+    setUploadProgress(`${file.name}|95`);
+
+    // 청크 합치기
+    const r = await fetch('/api/file-items/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uploadId, fileName: file.name, folderId,
+        fileType: file.type, totalChunks, fileSize: file.size,
+      }),
     });
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      setToast(`업로드 실패: ${err.error || r.status}`);
+      setTimeout(() => setToast(''), 4000);
+      return false;
+    }
+
+    setUploadProgress(`${file.name}|100`);
+    return true;
+  };
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
