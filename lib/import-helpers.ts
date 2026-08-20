@@ -71,9 +71,11 @@ export function syncImportExpenses(
 
   // 비용원장은 입출금 추적용 → VAT를 공급가에 합산해서 한 행으로 표시
   // 회계전표의 부가세 분리는 정산서(settlement items) 기반으로 처리
+  // 해상운임 + 부대비용(공급가+VAT) 모두 합산 — 포워더에게 한 번에 지급
+  const totalFreightAll = totalFreight + handlingVat;
+
   const entries: { cat: string; amt: number | undefined }[] = [
-    { cat: '해상운임',                amt: totalFreight > 0 ? totalFreight : undefined },
-    { cat: '포워더 매입VAT',          amt: handlingVat > 0 ? handlingVat : undefined },
+    { cat: '해상운임',                amt: totalFreightAll > 0 ? totalFreightAll : undefined },
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
     { cat: '통관비',                  amt: (fields.brokerFee || 0) + brokerVat || undefined },
