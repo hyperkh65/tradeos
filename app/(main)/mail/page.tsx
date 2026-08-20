@@ -393,7 +393,13 @@ export default function MailPage() {
     setShowCompose(false);
     setCompose(defaultCompose);
     setSendError('');
-    if (source === 'internal' && folder === 'sent') loadInternal();
+    if (source === 'internal') {
+      if (folder === 'sent') loadInternal();
+    } else {
+      // 보낸편지함으로 전환하고 새로고침
+      setExtFolder('sent');
+      await loadExtMessages(source, 'sent');
+    }
   };
 
   // ── Render ──

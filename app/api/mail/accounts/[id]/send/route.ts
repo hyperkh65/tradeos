@@ -130,8 +130,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }));
 
     const fromAddr = account.from_email ? String(account.from_email) : String(account.email);
-    const result = await sendWithFallback(account, password, {
-      from: `"${user.name}" <${fromAddr}>`,
+    const authAddr = String(account.email);
+    const mailOpts = {
       to,
       ...(cc && cc !== 'undefined' ? { cc } : {}),
       ...(bcc && bcc !== 'undefined' ? { bcc } : {}),
@@ -139,7 +139,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       html: body || '',
       text: (body || '').replace(/<[^>]+>/g, ''),
       attachments,
-    });
+    };
+
+    let result: { port: number };
+    let usedFrom = fromAddr;
+    try {
+      result = await sendWithFallback(account, password, { from: `"${user.name}" <${fromAddr}>`, ...mailOpts });
+    } catch (e1) {
+      // from_email이 SMTP에서 거부된 경우 auth 이메일로 재시도
+      if (fromAddr !== authAddr) {
+        result = await sendWithFallback(account, password, { from: `"${user.name}" <${authAddr}>`, ...mailOpts });
+        usedFrom = authAddr;
+      } else {
+        throw e1;
+      }
+    }
 
     // Save to sent folder in DB
     try {
@@ -149,12 +163,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         INSERT OR IGNORE INTO mail_ext_messages
           (id, account_id, uid, from_name, from_email, to_json, subject, body_text, date, is_read, is_starred, folder, synced_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'sent', ?)
-      `).run(sentId, id, `local_${sentId}`, user.name, fromAddr,
+      `).run(sentId, id, `local_${sentId}`, user.name, usedFrom,
         JSON.stringify(recipients.map(r => r.trim()).filter(Boolean)),
         subject, body || '', new Date().toISOString(), now());
     } catch { /* non-critical */ }
 
-    return NextResponse.json({ ok: true, port: result.port });
+    return NextResponse.json({ ok: true, port: result.port, from: usedFrom });
   } catch (e) {
     const err = e as Error & { code?: string; response?: string };
     const detail = err.response ?? err.code ?? '';
