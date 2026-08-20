@@ -244,13 +244,13 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">우선순위</label>
-                  <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as typeof f.priority }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                     <option value="urgent">긴급</option><option value="high">높음</option><option value="medium">보통</option><option value="low">낮음</option>
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
-                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as typeof f.status }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                     {statuses.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>

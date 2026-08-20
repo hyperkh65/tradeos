@@ -111,6 +111,7 @@ export default function MailPage() {
   const [selectedExt, setSelectedExt] = useState<ExtMail | null>(null);
   const [extBody, setExtBody] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [extFolder, setExtFolder] = useState<ExtFolder>('inbox');
 
   // Contacts (즐겨찾기)
@@ -185,9 +186,24 @@ export default function MailPage() {
 
   const syncAccount = async (accountId: string, folder: ExtFolder = 'inbox') => {
     setSyncing(true);
-    await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}`, { method: 'POST' }).catch(() => {});
-    await loadExtMessages(accountId, folder);
-    setSyncing(false);
+    setSyncMsg(null);
+    try {
+      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) {
+        setSyncMsg({ type: 'error', text: json.error || `동기화 실패 (${res.status})` });
+        setTimeout(() => setSyncMsg(null), 8000);
+      } else {
+        setSyncMsg({ type: 'success', text: `${json.count ?? 0}개 메일 동기화 완료` });
+        setTimeout(() => setSyncMsg(null), 3000);
+        await loadExtMessages(accountId, folder);
+      }
+    } catch (e) {
+      setSyncMsg({ type: 'error', text: `연결 실패: ${(e as Error).message}` });
+      setTimeout(() => setSyncMsg(null), 8000);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const changeExtFolder = async (f: ExtFolder) => {
@@ -517,10 +533,17 @@ export default function MailPage() {
           <Pencil className="w-3.5 h-3.5" />새 메일
         </Button>
         {source !== 'internal' && (
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
-            <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
-            {syncing ? '동기화 중' : '동기화'}
-          </Button>
+          <>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
+              <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
+              {syncing ? '동기화 중' : '동기화'}
+            </Button>
+            {syncMsg && (
+              <span className={cn('text-xs px-2 py-0.5 rounded', syncMsg.type === 'error' ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50')}>
+                {syncMsg.text}
+              </span>
+            )}
+          </>
         )}
         {source !== 'internal' && scheduledMails.length > 0 && (
           <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => setShowScheduled(true)}>
