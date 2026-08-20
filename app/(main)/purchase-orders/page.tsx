@@ -771,7 +771,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
         @media print {
           body * { visibility: hidden !important; }
           #po-print-area, #po-print-area * { visibility: visible !important; }
-          #po-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; z-index: 9999 !important; background: white !important; box-sizing: border-box !important; }
+          #po-print-area { position: static !important; width: 210mm !important; min-height: 297mm !important; margin: 0 !important; padding: 10mm !important; background: white !important; box-sizing: border-box !important; overflow: visible !important; }
           .no-print { display: none !important; }
           @page { size: A4 portrait; margin: 0; }
         }
