@@ -688,32 +688,31 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
   return (
     <>
       <style>{`
-        .quote-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-        .quote-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
-        .quote-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
-        .quote-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
-        .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
-        .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
-        .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
-        .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        .box-content { font-size: 13px; line-height: 1.6; color: #333; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
+        #quote-print-area .quote-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+        #quote-print-area .quote-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
+        #quote-print-area .quote-table td { border-bottom: 1px solid #e5e5e5; padding: 10px 4px; font-size: 11px; color: #333; vertical-align: middle; }
+        #quote-print-area .quote-table tbody tr:last-child td { border-bottom: 1px solid #171717; }
+        #quote-print-area .box-container { display: flex; gap: 30px; margin-bottom: 30px; }
+        #quote-print-area .box { flex: 1; border: 1px solid #e5e5e5; padding: 20px; border-radius: 8px; position: relative; }
+        #quote-print-area .box-gray { flex: 1; background: #fafafa; border: none; padding: 20px; border-radius: 8px; position: relative; }
+        #quote-print-area .box-title { position: absolute; top: -10px; left: 15px; background: white; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #quote-print-area .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        #quote-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
       `}</style>
 
       <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
-          <div className="flex items-center justify-between p-4 border-b">
+          <div className="no-print flex items-center justify-between p-4 border-b">
             <span className="font-semibold text-sm text-gray-800">{docTitle} 미리보기</span>
             <div className="flex gap-2">
               <Button size="sm" onClick={() => {
                 const area = document.getElementById('quote-print-area');
                 if (!area) return;
-                const w = window.open('', '_blank');
-                if (!w) { alert('팝업이 차단되었습니다. 팝업을 허용해주세요.'); return; }
-                const css = `
+                const printCss = `
                   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
-                  * { box-sizing: border-box; margin: 0; padding: 0; }
-                  body { font-family: "Noto Sans KR", sans-serif; background: white; }
+                  * { box-sizing: border-box; }
+                  body { margin: 0; padding: 0; font-family: "Noto Sans KR", sans-serif; background: white; color: #171717; }
                   @page { size: A4 portrait; margin: 0; }
                   .quote-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
                   .quote-table th { text-align: center; border-top: 2px solid #171717; border-bottom: 1px solid #171717; padding: 10px 4px; font-size: 11px; font-weight: 700; color: #171717; background: #f9f9f9; text-transform: uppercase; }
@@ -726,10 +725,17 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                   .box-title-gray { position: absolute; top: -10px; left: 15px; background: #fafafa; padding: 0 10px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 1px; }
                   .box-content { font-size: 13px; line-height: 1.6; color: #333; }
                 `;
-                w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${quote.businessId}</title><style>${css}</style></head><body>${area.innerHTML}</body></html>`);
-                w.document.close();
-                w.focus();
-                setTimeout(() => { w.print(); }, 1000);
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:1px;border:none;';
+                document.body.appendChild(iframe);
+                const doc = iframe.contentDocument!;
+                doc.open();
+                doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${quote.businessId}</title><style>${printCss}</style></head><body>${area.innerHTML}</body></html>`);
+                doc.close();
+                setTimeout(() => {
+                  iframe.contentWindow!.print();
+                  setTimeout(() => document.body.removeChild(iframe), 2000);
+                }, 800);
               }}>
                 <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF
               </Button>
