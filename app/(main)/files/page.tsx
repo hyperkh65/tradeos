@@ -242,8 +242,19 @@ export default function FilesPage() {
     });
   };
 
-  // 청크 업로드 (2MB씩 분할 → nginx 프록시 body limit 우회)
-  const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+  // 청크 업로드 (512KB씩 분할 → nginx 1MB 기본 제한 우회)
+  const CHUNK_SIZE = 512 * 1024; // 512KB
+
+  const fetchWithTimeout = async (url: string, opts: RequestInit, ms = 30000): Promise<Response> => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const r = await fetch(url, { ...opts, signal: ctrl.signal });
+      return r;
+    } finally {
+      clearTimeout(tid);
+    }
+  };
 
   const uploadOneFile = async (file: File, folderId: string | null): Promise<boolean> => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
@@ -252,39 +263,48 @@ export default function FilesPage() {
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const chunk = file.slice(start, start + CHUNK_SIZE);
-      const pct = Math.round(((i) / totalChunks) * 90); // 90%까지는 청크, 나머지 10%는 완료
+      const pct = Math.round((i / totalChunks) * 90);
       setUploadProgress(`${file.name}|${pct}`);
 
       const fd = new FormData();
-      fd.append('chunk', chunk);
+      fd.append('chunk', chunk, `chunk_${i}`);
       fd.append('uploadId', uploadId);
       fd.append('chunkIndex', String(i));
 
-      const r = await fetch('/api/file-items/chunk', { method: 'POST', body: fd });
+      let r: Response;
+      try {
+        r = await fetchWithTimeout('/api/file-items/chunk', { method: 'POST', body: fd });
+      } catch (e) {
+        setToast(`청크 ${i + 1}/${totalChunks} 전송 실패: ${e instanceof Error ? e.message : '네트워크 오류'}`);
+        setTimeout(() => setToast(''), 5000);
+        return false;
+      }
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        setToast(`업로드 실패 (청크 ${i}): ${err.error || r.status}`);
-        setTimeout(() => setToast(''), 4000);
+        const txt = await r.text().catch(() => '');
+        setToast(`청크 ${i + 1}/${totalChunks} 실패 (HTTP ${r.status}): ${txt.slice(0, 80)}`);
+        setTimeout(() => setToast(''), 5000);
         return false;
       }
     }
 
     setUploadProgress(`${file.name}|95`);
 
-    // 청크 합치기
-    const r = await fetch('/api/file-items/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uploadId, fileName: file.name, folderId,
-        fileType: file.type, totalChunks, fileSize: file.size,
-      }),
-    });
-
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      setToast(`업로드 실패: ${err.error || r.status}`);
-      setTimeout(() => setToast(''), 4000);
+    let cr: Response;
+    try {
+      cr = await fetchWithTimeout('/api/file-items/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId, fileName: file.name, folderId, fileType: file.type, totalChunks, fileSize: file.size }),
+      }, 60000);
+    } catch (e) {
+      setToast(`파일 합치기 실패: ${e instanceof Error ? e.message : '오류'}`);
+      setTimeout(() => setToast(''), 5000);
+      return false;
+    }
+    if (!cr.ok) {
+      const txt = await cr.text().catch(() => '');
+      setToast(`파일 저장 실패 (HTTP ${cr.status}): ${txt.slice(0, 80)}`);
+      setTimeout(() => setToast(''), 5000);
       return false;
     }
 
