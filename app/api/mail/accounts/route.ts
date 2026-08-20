@@ -19,7 +19,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, provider, label, email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE user_id = ? ORDER BY created_at ASC'
+    'SELECT id, provider, label, email, from_email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE user_id = ? ORDER BY created_at ASC'
   ).all(user.id);
   return NextResponse.json(rows);
 }
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const { provider = 'custom', email, password } = body;
+  const { provider = 'custom', email, password, from_email } = body;
 
   if (!email || !password) return NextResponse.json({ error: '이메일과 비밀번호를 입력하세요.' }, { status: 400 });
 
@@ -67,12 +67,12 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   db.prepare(`
-    INSERT INTO mail_accounts (id, user_id, provider, label, email, password_enc, imap_host, imap_port, smtp_host, smtp_port, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, user.id, provider, body.label || email, email, encryptPassword(password), host, port, smtpHost, smtpPort, now());
+    INSERT INTO mail_accounts (id, user_id, provider, label, email, from_email, password_enc, imap_host, imap_port, smtp_host, smtp_port, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, user.id, provider, body.label || email, email, from_email || null, encryptPassword(password), host, port, smtpHost, smtpPort, now());
 
   const row = db.prepare(
-    'SELECT id, provider, label, email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE id = ?'
+    'SELECT id, provider, label, email, from_email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE id = ?'
   ).get(id);
   return NextResponse.json(row, { status: 201 });
 }

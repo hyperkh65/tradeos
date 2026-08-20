@@ -345,6 +345,7 @@ function initSchema(db: Database.Database) {
       provider TEXT NOT NULL DEFAULT 'custom',
       label TEXT NOT NULL,
       email TEXT NOT NULL,
+      from_email TEXT,
       password_enc TEXT NOT NULL,
       imap_host TEXT NOT NULL,
       imap_port INTEGER NOT NULL DEFAULT 993,
@@ -572,6 +573,8 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE imports ADD COLUMN inland_freight_vat_rate REAL DEFAULT 10`,
     // 전표: 통관번호/매출번호 표시용 (related_ref는 내부 dedup 키)
     `ALTER TABLE journal_entries ADD COLUMN doc_no TEXT`,
+    // 메일 계정: 발신자 표시 주소 (daum.net 인증 → ynk2014.com 발신 등)
+    `ALTER TABLE mail_accounts ADD COLUMN from_email TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

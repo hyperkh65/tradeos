@@ -129,8 +129,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       contentType: p.mime,
     }));
 
+    const fromAddr = account.from_email ? String(account.from_email) : String(account.email);
     const result = await sendWithFallback(account, password, {
-      from: `"${user.name}" <${String(account.email)}>`,
+      from: `"${user.name}" <${fromAddr}>`,
       to,
       ...(cc && cc !== 'undefined' ? { cc } : {}),
       ...(bcc && bcc !== 'undefined' ? { bcc } : {}),
@@ -148,7 +149,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         INSERT OR IGNORE INTO mail_ext_messages
           (id, account_id, uid, from_name, from_email, to_json, subject, body_text, date, is_read, is_starred, folder, synced_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'sent', ?)
-      `).run(sentId, id, `local_${sentId}`, user.name, String(account.email),
+      `).run(sentId, id, `local_${sentId}`, user.name, fromAddr,
         JSON.stringify(recipients.map(r => r.trim()).filter(Boolean)),
         subject, body || '', new Date().toISOString(), now());
     } catch { /* non-critical */ }

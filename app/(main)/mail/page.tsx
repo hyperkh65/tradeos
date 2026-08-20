@@ -44,6 +44,7 @@ interface MailAccount {
   provider: string;
   label: string;
   email: string;
+  from_email?: string | null;
   imap_host: string;
   imap_port: number;
   smtp_host: string;
@@ -503,7 +504,7 @@ export default function MailPage() {
               <span className={cn('w-4 h-4 rounded text-white text-[9px] font-bold flex items-center justify-center shrink-0', PROVIDER_COLORS[acc.provider] ?? 'bg-gray-500')}>
                 {PROVIDER_ICONS[acc.provider] ?? '✉'}
               </span>
-              <span className="max-w-[140px] truncate">{acc.email}</span>
+              <span className="max-w-[140px] truncate">{acc.from_email || acc.email}</span>
               {source === acc.id && (
                 <button onClick={e => deleteAccount(acc, e)} className="ml-0.5 text-muted-foreground hover:text-destructive">
                   <X className="w-3 h-3" />
@@ -1004,7 +1005,7 @@ const PROVIDER_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: 
 function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [step, setStep] = useState<'provider' | 'form'>('provider');
   const [provider, setProvider] = useState('');
-  const [form, setForm] = useState({ email: '', password: '', imap_host: '', imap_port: '993', smtp_host: '', smtp_port: '587' });
+  const [form, setForm] = useState({ email: '', password: '', from_email: '', imap_host: '', imap_port: '993', smtp_host: '', smtp_port: '587' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -1069,8 +1070,12 @@ function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                 </div>
               )}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">이메일 주소</label>
+                <label className="text-xs font-medium text-muted-foreground">이메일 주소 (인증 계정)</label>
                 <Input className="mt-1 h-9" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="example@naver.com" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">발신자 이메일 <span className="text-muted-foreground/60">(선택 — 다른 주소로 보낼 때)</span></label>
+                <Input className="mt-1 h-9" value={form.from_email} onChange={e => setForm(f => ({ ...f, from_email: e.target.value }))} placeholder="예: hyperkh@ynk2014.com (비워두면 인증 계정 그대로)" />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
