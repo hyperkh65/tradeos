@@ -23,7 +23,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     const { ImapFlow } = await import('imapflow');
-    const password = decryptPassword(account.password_enc as string);
+    let password: string;
+    try {
+      password = decryptPassword(account.password_enc as string);
+    } catch {
+      return NextResponse.json({ error: '비밀번호 복호화 실패 - 메일 계정을 삭제하고 다시 등록해주세요.' }, { status: 400 });
+    }
     const port = account.imap_port as number;
 
     const client = new ImapFlow({
