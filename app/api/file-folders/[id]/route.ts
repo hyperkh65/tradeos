@@ -33,7 +33,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (folder.is_system) return NextResponse.json({ error: '시스템 폴더는 삭제할 수 없습니다.' }, { status: 403 });
 
   const fileCount = (db.prepare('SELECT COUNT(*) as n FROM file_items WHERE folder_id=?').get(id) as {n:number}).n;
-  if (fileCount > 0) return NextResponse.json({ error: `폴더 안에 파일 ${fileCount}개가 있습니다. 파일을 먼저 이동하거나 삭제하세요.` }, { status: 400 });
+  if (fileCount > 0) return NextResponse.json({ error: `폴더 안에 파일 ${fileCount}개가 있습니다.` }, { status: 400 });
+
+  const childCount = (db.prepare('SELECT COUNT(*) as n FROM file_folders WHERE parent_id=?').get(id) as {n:number}).n;
+  if (childCount > 0) return NextResponse.json({ error: `하위 폴더 ${childCount}개가 있습니다. 먼저 삭제하세요.` }, { status: 400 });
 
   db.prepare('DELETE FROM file_folders WHERE id=?').run(id);
   return NextResponse.json({ success: true });
