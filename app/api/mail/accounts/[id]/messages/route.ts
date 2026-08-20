@@ -14,10 +14,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   ).get(id, user.id);
   if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const folder = new URL(req.url).searchParams.get('folder') || 'inbox';
+  const url = new URL(req.url);
+  const folder = url.searchParams.get('folder') || 'inbox';
+  const limit = Math.min(Number(url.searchParams.get('limit') || '500'), 2000);
   const rows = db.prepare(
-    'SELECT * FROM mail_ext_messages WHERE account_id = ? AND folder = ? ORDER BY date DESC LIMIT 100'
-  ).all(id, folder);
+    'SELECT * FROM mail_ext_messages WHERE account_id = ? AND folder = ? ORDER BY date DESC LIMIT ?'
+  ).all(id, folder, limit);
   return NextResponse.json(rows);
 }
 

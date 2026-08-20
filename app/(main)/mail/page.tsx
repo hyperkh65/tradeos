@@ -188,7 +188,7 @@ export default function MailPage() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}`, { method: 'POST' });
+      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}&limit=300`, { method: 'POST' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) {
         setSyncMsg({ type: 'error', text: json.error || `동기화 실패 (${res.status})` });

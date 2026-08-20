@@ -66,8 +66,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const syncedAt = now();
     let count = 0;
 
+    // limit 파라미터로 가져올 개수 지정 (기본 200, 최대 1000)
+    const limitParam = Number(new URL(req.url).searchParams.get('limit') || '200');
+    const limit = Math.min(Math.max(limitParam, 1), 1000);
+
     if (total > 0) {
-      const start = Math.max(1, total - 49);
+      const start = Math.max(1, total - limit + 1);
       const range = start === total ? `${total}` : `${start}:${total}`;
 
       const lock = await client.getMailboxLock(imapFolderName);
