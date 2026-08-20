@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   Mail, Star, Search, Pencil, ArrowLeft, X, Send, Inbox,
   Plus, RefreshCw, Trash2, Paperclip, Clock,
-  ChevronDown, CheckCircle2, AlertCircle, BookMarked,
+  ChevronDown, CheckCircle2, AlertCircle, BookMarked, HardDrive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -111,6 +111,7 @@ export default function MailPage() {
   const [selectedExt, setSelectedExt] = useState<ExtMail | null>(null);
   const [extBody, setExtBody] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [backing, setBacking] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [extFolder, setExtFolder] = useState<ExtFolder>('inbox');
 
@@ -188,7 +189,8 @@ export default function MailPage() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}&limit=300`, { method: 'POST' });
+      // limit=0 → 전체 동기화
+      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}&limit=0`, { method: 'POST' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.error) {
         setSyncMsg({ type: 'error', text: json.error || `동기화 실패 (${res.status})` });
@@ -203,6 +205,26 @@ export default function MailPage() {
       setTimeout(() => setSyncMsg(null), 8000);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const backupAccount = async (accountId: string) => {
+    setBacking(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch(`/api/mail/accounts/${accountId}/backup`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) {
+        setSyncMsg({ type: 'error', text: json.error || '백업 실패' });
+      } else {
+        setSyncMsg({ type: 'success', text: `NAS 백업 완료: ${json.count}개 (${json.size})` });
+      }
+      setTimeout(() => setSyncMsg(null), 5000);
+    } catch (e) {
+      setSyncMsg({ type: 'error', text: `백업 실패: ${(e as Error).message}` });
+      setTimeout(() => setSyncMsg(null), 8000);
+    } finally {
+      setBacking(false);
     }
   };
 
@@ -537,6 +559,10 @@ export default function MailPage() {
             <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
               <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
               {syncing ? '동기화 중' : '동기화'}
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => backupAccount(source)} disabled={backing || syncing} title="NAS에 메일 백업">
+              <HardDrive className={cn('w-3.5 h-3.5', backing && 'animate-pulse')} />
+              {backing ? '백업 중' : '백업'}
             </Button>
             {syncMsg && (
               <span className={cn('text-xs px-2 py-0.5 rounded', syncMsg.type === 'error' ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50')}>
