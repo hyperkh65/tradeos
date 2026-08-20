@@ -397,7 +397,7 @@ export default function FilesPage() {
       <AppHeader title="파일" />
       <input ref={fileRef} type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
 
-      <div className="flex h-full overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
         {/* 사이드바 */}
         <div className="w-52 shrink-0 border-r border-border bg-muted/30 flex flex-col overflow-y-auto">
           <div className="p-2 border-b border-border">
@@ -461,8 +461,8 @@ export default function FilesPage() {
               ))}
             </div>
 
-            {/* 검색 + 뷰 + 업로드 */}
-            <div className="relative w-48 shrink-0">
+            {/* 검색 + 뷰 + 버튼들 */}
+            <div className="relative w-44 shrink-0">
               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
               <Input placeholder="파일명 검색..." className="pl-8 h-8 text-sm" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
@@ -471,6 +471,10 @@ export default function FilesPage() {
             </Button>
             <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" className="h-8 w-8 shrink-0" onClick={() => setView('list')}>
               <List className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={() => setShowNewFolder(true)}>
+              <FolderPlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-xs">폴더</span>
             </Button>
             <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={() => fileRef.current?.click()} disabled={uploading}>
               {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
