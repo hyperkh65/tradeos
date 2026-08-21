@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   Mail, Star, Search, Pencil, ArrowLeft, X, Send, Inbox,
   Plus, RefreshCw, Trash2, Paperclip, Clock,
-  ChevronDown, CheckCircle2, AlertCircle, BookMarked, HardDrive,
+  ChevronDown, CheckCircle2, AlertCircle, BookMarked, HardDrive, Wifi,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -114,6 +114,8 @@ export default function MailPage() {
   const [syncing, setSyncing] = useState(false);
   const [backing, setBacking] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [smtpMsg, setSmtpMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [extFolder, setExtFolder] = useState<ExtFolder>('inbox');
 
   // Contacts (즐겨찾기)
@@ -226,6 +228,30 @@ export default function MailPage() {
       setTimeout(() => setSyncMsg(null), 8000);
     } finally {
       setBacking(false);
+    }
+  };
+
+  const testSmtp = async (accountId: string) => {
+    setSmtpTesting(true);
+    setSmtpMsg(null);
+    try {
+      const res = await fetch(`/api/mail/accounts/${accountId}/test-smtp`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (json.working_port) {
+        setSmtpMsg({ type: 'success', text: `SMTP 연결 성공 (포트 ${json.working_port})` });
+      } else {
+        const errs = (json.results as { port: number; ok: boolean; error?: string }[] || [])
+          .filter(r => !r.ok)
+          .map(r => `포트${r.port}: ${r.error}`)
+          .join(' / ');
+        setSmtpMsg({ type: 'error', text: `SMTP 연결 실패 — ${errs || '알 수 없는 오류'}` });
+      }
+      setTimeout(() => setSmtpMsg(null), 12000);
+    } catch (e) {
+      setSmtpMsg({ type: 'error', text: `테스트 실패: ${(e as Error).message}` });
+      setTimeout(() => setSmtpMsg(null), 8000);
+    } finally {
+      setSmtpTesting(false);
     }
   };
 
@@ -571,6 +597,15 @@ export default function MailPage() {
               <HardDrive className={cn('w-3.5 h-3.5', backing && 'animate-pulse')} />
               {backing ? '백업 중' : '백업'}
             </Button>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => testSmtp(source)} disabled={smtpTesting} title="SMTP 발송 연결 테스트">
+              <Wifi className={cn('w-3.5 h-3.5', smtpTesting && 'animate-pulse')} />
+              {smtpTesting ? '테스트 중' : 'SMTP'}
+            </Button>
+            {smtpMsg && (
+              <span className={cn('text-xs px-2 py-0.5 rounded max-w-xs truncate', smtpMsg.type === 'error' ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50')} title={smtpMsg.text}>
+                {smtpMsg.text}
+              </span>
+            )}
             {syncMsg && (
               <span className={cn('text-xs px-2 py-0.5 rounded', syncMsg.type === 'error' ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50')}>
                 {syncMsg.text}
