@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { CheckSquare, Plus, Search, X, Loader2, Pencil, Trash2, FileText, Image, Info, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { Inspection } from '@/types';
 
 const INSPECTION_TYPES = ['공장검품', '입고검품', '선적전검품', '도입전 샘플 검품'];
@@ -435,6 +436,7 @@ function InspectionModal({ inspection, companies, products, purchaseOrders, onCl
 /* ─── Main Page ─────────────────────────────────────────────────────────────── */
 
 export default function InspectionsPage() {
+  const searchParams = useSearchParams();
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -464,6 +466,13 @@ export default function InspectionsPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = inspections.find(i => i.businessId === openId);
+    if (found) setModal({ open: true, inspection: found });
+  }, [loading, inspections, searchParams]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('이 검품 기록을 삭제하시겠습니까?')) return;

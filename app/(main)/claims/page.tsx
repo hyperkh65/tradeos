@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Claim } from '@/types';
 
@@ -424,6 +425,7 @@ function ClaimModal({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ClaimsPage() {
+  const searchParams = useSearchParams();
   const [claims, setClaims] = useState<Claim[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -453,6 +455,13 @@ export default function ClaimsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = claims.find(c => c.businessId === openId);
+    if (found) setModal({ open: true, item: found });
+  }, [loading, claims, searchParams]);
 
   const statuses = ['전체', ...STATUS_OPTIONS.filter(s => claims.some(c => c.status === s))];
 

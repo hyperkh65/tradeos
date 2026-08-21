@@ -17,7 +17,7 @@ const MODULE_LABELS: Record<string, string> = {
   quote: '견적', po: '발주', sale: '매출', shipment: '선적', claim: '클레임', inspection: '검품', cost: '비용원장', company: '거래처',
 };
 const MODULE_LINKS: Record<string, string> = {
-  quote: '/quotes', po: '/purchase-orders', sale: '/sales', shipment: '/shipments', claim: '/claims', inspection: '/inspections', cost: '/accounting', company: '/companies',
+  quote: '/quotes', po: '/purchase-orders', sale: '/crm', shipment: '/shipments', claim: '/claims', inspection: '/inspections', cost: '/costs', company: '/companies',
 };
 
 interface TaskComment {
@@ -378,7 +378,7 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
                   <div key={lk.id} className="flex items-center gap-2 p-2.5 border border-border rounded-lg">
                     <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium">{MODULE_LABELS[lk.module] ?? lk.module}</span>
                     <span className="text-sm flex-1 truncate">{lk.record_label || lk.record_id}</span>
-                    <a href={`${MODULE_LINKS[lk.module] ?? '/'}?id=${lk.record_id}`} className="text-primary shrink-0" target="_blank" rel="noopener noreferrer">
+                    <a href={`${MODULE_LINKS[lk.module] ?? '/'}?open=${encodeURIComponent(lk.record_id)}`} className="text-primary shrink-0" target="_blank" rel="noopener noreferrer">
                       <ChevronRight className="w-3.5 h-3.5" />
                     </a>
                     <button onClick={() => handleRemoveLink(lk.id)} className="text-muted-foreground hover:text-destructive shrink-0">
@@ -500,7 +500,7 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
                                 </div>
                               )}
                               <a
-                                href={`${MODULE_LINKS[linkModule] ?? '/'}?id=${selectedRecord.businessId}`}
+                                href={`${MODULE_LINKS[linkModule] ?? '/'}?open=${encodeURIComponent(selectedRecord.businessId)}`}
                                 target="_blank" rel="noopener noreferrer"
                                 className="text-xs text-primary hover:underline flex items-center gap-1 mt-3"
                               >

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, Maximize2, PackageMinus } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 
 const ADMIN_PASSWORD = '1209';
@@ -718,6 +719,7 @@ function SalePrintModal({ sale, company, companies, onClose }: {
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function CRMPage() {
+  const searchParams = useSearchParams();
   const curYear = new Date().getFullYear();
   const [sales, setSales] = useState<SalesRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -764,6 +766,13 @@ export default function CRMPage() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = sales.find(s => s.businessId === openId);
+    if (found) setModal({ open: true, sale: found });
+  }, [loading, sales, searchParams]);
 
   const guardEdit = (sale: SalesRecord, action: () => void) => {
     if (isPrevMonth(sale.saleDate)) setAdminModal({ open: true, action });

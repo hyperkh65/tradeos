@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, History, Maximize2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { PurchaseOrder } from '@/types';
 
 const statusLabel: Record<string, string> = { draft: '초안', confirmed: '확정', production: '생산', inspection: '검품', shipped: '선적', completed: '완료', cancelled: '취소' };
@@ -972,6 +973,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
 export default function PurchaseOrdersPage() {
+  const searchParams = useSearchParams();
   const [pos, setPos] = useState<(PurchaseOrder & { imagesJson?: string; depositRatio?: string })[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -999,6 +1001,13 @@ export default function PurchaseOrdersPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = pos.find(p => p.businessId === openId);
+    if (found) setModal({ open: true, item: found });
+  }, [loading, pos, searchParams]);
 
   const guardEdit = (po: any, action: () => void) => {
     if (isPrevMonth(po.orderDate || po.createdAt)) setAdminModal({ open: true, action });

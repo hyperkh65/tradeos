@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1837,6 +1838,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
 // ── 메인 페이지 ────────────────────────────────────────────────────────────
 
 export default function CostsPage() {
+  const searchParams = useSearchParams();
   const [records, setRecords] = useState<CostRecord[]>([]);
   const [invoices, setInvoices] = useState<ForeignInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1861,6 +1863,13 @@ export default function CostsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = records.find(r => r.businessId === openId);
+    if (found) setEditModal({ open: true, record: found });
+  }, [loading, records, searchParams]);
 
   const filtered = records.filter(r => {
     if (filterDisposition !== 'all' && r.disposition !== filterDisposition) return false;

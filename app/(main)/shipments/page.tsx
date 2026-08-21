@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { Shipment, CargoItem, ShipDocument, ShipDocType, PurchaseOrder } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -960,6 +961,7 @@ function ShipmentModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ShipmentsPage() {
+  const searchParams = useSearchParams();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -972,6 +974,13 @@ export default function ShipmentsPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = shipments.find(s => s.businessId === openId);
+    if (found) setModal({ open: true, item: found });
+  }, [loading, shipments, searchParams]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('선적을 삭제하시겠습니까?')) return;

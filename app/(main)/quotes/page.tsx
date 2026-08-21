@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { Quote } from '@/types';
 
@@ -902,6 +903,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
 export default function QuotesPage() {
+  const searchParams = useSearchParams();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -934,6 +936,14 @@ export default function QuotesPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // ?open=<businessId> 로 직접 레코드 오픈
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = quotes.find(q => q.businessId === openId);
+    if (found) setModal({ open: true, item: found });
+  }, [loading, quotes, searchParams]);
 
   // Guard edit: previous month quotes require admin
   const guardEdit = (quote: Quote, action: () => void) => {

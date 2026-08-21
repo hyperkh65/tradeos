@@ -3,9 +3,27 @@ import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 
 type RawRow = Record<string, unknown>;
+type RawItem = Record<string, unknown>;
 
-function parseItems(json: unknown): { name?: string; name_ko?: string; qty?: number; unit_price?: number; amount?: number; currency?: string; unit?: string }[] {
+function parseItems(json: unknown): RawItem[] {
   try { return JSON.parse(String(json || '[]')); } catch { return []; }
+}
+
+function itemName(i: RawItem): string {
+  return String(i.productName || i.name || i.name_ko || i.product || '');
+}
+function itemQty(i: RawItem): number | undefined {
+  const v = i.qty ?? i.quantity;
+  return v != null ? Number(v) : undefined;
+}
+function itemUnitPrice(i: RawItem): number | undefined {
+  const v = i.unitPrice ?? i.unit_price;
+  return v != null ? Number(v) : undefined;
+}
+function itemAmount(i: RawItem, currency: string): { amount: number | undefined; currency: string } {
+  const a = i.amount != null ? Number(i.amount)
+    : (itemQty(i) != null && itemUnitPrice(i) != null ? (itemQty(i)! * itemUnitPrice(i)!) : undefined);
+  return { amount: a, currency };
 }
 
 export async function GET(req: NextRequest) {
@@ -25,7 +43,8 @@ export async function GET(req: NextRequest) {
         const r = db.prepare(`SELECT * FROM quotes WHERE business_id = ?`).get(bizId) as RawRow | undefined;
         if (!r) return NextResponse.json({ error: '없음' }, { status: 404 });
         const items = parseItems(r.items_json);
-        const total = items.reduce((s, i) => s + (Number(i.amount) || (Number(i.qty || 0) * Number(i.unit_price || 0))), 0);
+        const cur = String(r.currency || '');
+        const total = items.reduce((s, i) => s + (itemAmount(i, cur).amount ?? 0), 0);
         return NextResponse.json({
           type: 'quote',
           title: `견적 ${r.business_id}`,
@@ -40,11 +59,8 @@ export async function GET(req: NextRequest) {
             { label: '비고', value: r.remark || '-' },
           ],
           items: items.map(i => ({
-            name: i.name || i.name_ko || '',
-            qty: i.qty,
-            unit_price: i.unit_price,
-            amount: i.amount || (Number(i.qty || 0) * Number(i.unit_price || 0)),
-            currency: String(r.currency || ''),
+            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+            amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total, currency: r.currency,
         });
@@ -53,6 +69,7 @@ export async function GET(req: NextRequest) {
         const r = db.prepare(`SELECT * FROM purchase_orders WHERE business_id = ?`).get(bizId) as RawRow | undefined;
         if (!r) return NextResponse.json({ error: '없음' }, { status: 404 });
         const items = parseItems(r.items_json);
+        const cur = String(r.currency || '');
         return NextResponse.json({
           type: 'po',
           title: `발주 ${r.business_id}`,
@@ -60,7 +77,7 @@ export async function GET(req: NextRequest) {
             { label: '공급업체', value: r.supplier_name },
             { label: '발주일', value: String(r.order_date || '').slice(0, 10) },
             { label: '통화', value: r.currency },
-            { label: '총액', value: r.total_amount ? `${Number(r.total_amount).toLocaleString()} ${r.currency}` : '-' },
+            { label: '총액', value: r.total_amount ? `${Number(r.total_amount).toLocaleString()} ${cur}` : '-' },
             { label: '상태', value: r.status },
             { label: '결제조건', value: r.payment_terms || '-' },
             { label: '인코텀', value: r.incoterm || '-' },
@@ -69,11 +86,8 @@ export async function GET(req: NextRequest) {
             { label: '비고', value: r.remark || '-' },
           ],
           items: items.map(i => ({
-            name: i.name || i.name_ko || '',
-            qty: i.qty,
-            unit_price: i.unit_price,
-            amount: i.amount || (Number(i.qty || 0) * Number(i.unit_price || 0)),
-            currency: String(r.currency || ''),
+            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+            amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total: r.total_amount, currency: r.currency,
         });
@@ -82,6 +96,7 @@ export async function GET(req: NextRequest) {
         const r = db.prepare(`SELECT * FROM sales WHERE business_id = ?`).get(bizId) as RawRow | undefined;
         if (!r) return NextResponse.json({ error: '없음' }, { status: 404 });
         const items = parseItems(r.items_json);
+        const cur = String(r.currency || 'KRW');
         return NextResponse.json({
           type: 'sale',
           title: `매출 ${r.business_id}`,
@@ -89,18 +104,15 @@ export async function GET(req: NextRequest) {
             { label: '고객', value: r.customer },
             { label: '매출일', value: String(r.sale_date || '').slice(0, 10) },
             { label: '통화', value: r.currency },
-            { label: '공급가', value: r.net_amount ? `${Number(r.net_amount).toLocaleString()} ${r.currency}` : '-' },
-            { label: '부가세', value: r.vat ? `${Number(r.vat).toLocaleString()} ${r.currency}` : '-' },
-            { label: '합계', value: r.total_amount ? `${Number(r.total_amount).toLocaleString()} ${r.currency}` : '-' },
+            { label: '공급가', value: r.net_amount ? `${Number(r.net_amount).toLocaleString()} ${cur}` : '-' },
+            { label: '부가세', value: r.vat ? `${Number(r.vat).toLocaleString()} ${cur}` : '-' },
+            { label: '합계', value: r.total_amount ? `${Number(r.total_amount).toLocaleString()} ${cur}` : '-' },
             { label: '유형', value: r.sale_type || '-' },
             { label: '영업자', value: r.salesperson || '-' },
           ],
           items: items.map(i => ({
-            name: i.name || i.name_ko || '',
-            qty: i.qty,
-            unit_price: i.unit_price,
-            amount: i.amount || (Number(i.qty || 0) * Number(i.unit_price || 0)),
-            currency: String(r.currency || ''),
+            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+            amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total: r.total_amount, currency: r.currency,
         });

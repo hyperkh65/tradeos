@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Building2, Globe, Phone, Mail, Plus, Search, X, Loader2, Pencil, Trash2, Upload, FileText, ExternalLink, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { Company } from '@/types';
 
 const typeColor: Record<string, string> = {
@@ -291,6 +292,7 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
 }
 
 export default function CompaniesPage() {
+  const searchParams = useSearchParams();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -305,6 +307,13 @@ export default function CompaniesPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || loading) return;
+    const found = companies.find(c => c.businessId === openId);
+    if (found) setModal({ open: true, item: found, preId: '' });
+  }, [loading, companies, searchParams]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('거래처를 삭제하시겠습니까?')) return;
