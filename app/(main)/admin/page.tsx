@@ -2,7 +2,7 @@
 
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle2, XCircle, Clock, Trash2, ShieldCheck, Users } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, Trash2, ShieldCheck, Users, UserPlus, Download, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 
@@ -22,10 +22,25 @@ const statusIcon = { approved: <CheckCircle2 className="w-4 h-4 text-green-500" 
 const statusLabel = { approved: '승인', pending: '대기', rejected: '거절' };
 
 export default function AdminPage() {
+  type ErpUser = { id: string; email: string; name: string; role: string; department: string | null; status: string; alreadyExists: boolean };
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [tab, setTab] = useState<'pending' | 'all'>('pending');
+
+  // 직접 추가
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', email: '', password: '', role: 'staff', department: '' });
+  const [addLoading, setAddLoading] = useState(false);
+
+  // 구 ERP 가져오기
+  const [showImport, setShowImport] = useState(false);
+  const [importDbPath, setImportDbPath] = useState('');
+  const [erpUsers, setErpUsers] = useState<ErpUser[]>([]);
+  const [selectedErpIds, setSelectedErpIds] = useState<Set<string>>(new Set());
+  const [importLoading, setImportLoading] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -42,6 +57,51 @@ export default function AdminPage() {
     } finally {
       setActing(null);
     }
+  };
+
+  const handleAddUser = async () => {
+    if (!addForm.name || !addForm.email || !addForm.password) { alert('이름, 이메일, 비밀번호를 입력하세요.'); return; }
+    setAddLoading(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addForm),
+      }).then(r => r.json());
+      if (res.error) { alert(res.error); return; }
+      setShowAdd(false);
+      setAddForm({ name: '', email: '', password: '', role: 'staff', department: '' });
+      load();
+    } finally { setAddLoading(false); }
+  };
+
+  const loadErpUsers = async () => {
+    setImportLoading(true);
+    setImportMsg('');
+    try {
+      const url = `/api/admin/import-from-erp${importDbPath ? `?dbPath=${encodeURIComponent(importDbPath)}` : ''}`;
+      const res = await fetch(url).then(r => r.json());
+      if (res.error) { setImportMsg(res.error); setErpUsers([]); return; }
+      setErpUsers(res.users ?? []);
+      setSelectedErpIds(new Set((res.users ?? []).filter((u: ErpUser) => !u.alreadyExists).map((u: ErpUser) => u.id)));
+      if (!importDbPath && res.dbPath) setImportDbPath(res.dbPath);
+    } finally { setImportLoading(false); }
+  };
+
+  const doImport = async () => {
+    if (selectedErpIds.size === 0) { alert('가져올 사용자를 선택하세요.'); return; }
+    setImportLoading(true);
+    try {
+      const res = await fetch('/api/admin/import-from-erp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dbPath: importDbPath, userIds: Array.from(selectedErpIds) }),
+      }).then(r => r.json());
+      if (res.error) { setImportMsg(res.error); return; }
+      setImportMsg(`완료: ${res.imported}명 가져옴, ${res.skipped}명 중복 건너뜀`);
+      load();
+      setTimeout(() => setShowImport(false), 2000);
+    } finally { setImportLoading(false); }
   };
 
   const deleteUser = async (id: string, name: string) => {
@@ -61,6 +121,138 @@ export default function AdminPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="관리자" />
+
+      {/* 직접 추가 모달 */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-semibold">사용자 직접 추가</h3>
+              <button onClick={() => setShowAdd(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              {[
+                { label: '이름 *', key: 'name', type: 'text', placeholder: '홍길동' },
+                { label: '이메일 *', key: 'email', type: 'email', placeholder: 'user@example.com' },
+                { label: '비밀번호 *', key: 'password', type: 'password', placeholder: '초기 비밀번호' },
+                { label: '부서', key: 'department', type: 'text', placeholder: '영업팀' },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
+                  <input type={f.type} placeholder={f.placeholder}
+                    className="w-full mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+                    value={addForm[f.key as keyof typeof addForm]}
+                    onChange={e => setAddForm(p => ({ ...p, [f.key]: e.target.value }))} />
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">역할</label>
+                <select className="w-full mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  value={addForm.role} onChange={e => setAddForm(p => ({ ...p, role: e.target.value }))}>
+                  {Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowAdd(false)}>취소</Button>
+              <Button className="flex-1" onClick={handleAddUser} disabled={addLoading}>
+                {addLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '추가'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 구 ERP 가져오기 모달 */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-background rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <h3 className="font-semibold">구 ERP(erp.ynk2014.com) 사용자 가져오기</h3>
+              <button onClick={() => setShowImport(false)}><X className="w-4 h-4" /></button>
+            </div>
+            <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">구 ERP DB 경로 (NAS 절대경로)</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="text"
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-primary font-mono"
+                    placeholder="/volume1/web/erp/data/nexport.db"
+                    value={importDbPath}
+                    onChange={e => setImportDbPath(e.target.value)} />
+                  <Button size="sm" className="h-9 shrink-0" onClick={loadErpUsers} disabled={importLoading}>
+                    {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '검색'}
+                  </Button>
+                </div>
+                {importMsg && <p className={`text-xs mt-1 ${importMsg.includes('완료') ? 'text-green-600' : 'text-red-500'}`}>{importMsg}</p>}
+              </div>
+
+              {erpUsers.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-muted-foreground">{erpUsers.length}명 확인 · 선택 {selectedErpIds.size}명</p>
+                    <div className="flex gap-2">
+                      <button className="text-xs text-primary" onClick={() => setSelectedErpIds(new Set(erpUsers.filter(u => !u.alreadyExists).map(u => u.id)))}>
+                        미등록 전체선택
+                      </button>
+                      <button className="text-xs text-muted-foreground" onClick={() => setSelectedErpIds(new Set())}>
+                        전체해제
+                      </button>
+                    </div>
+                  </div>
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="px-3 py-2 text-left w-8"></th>
+                          <th className="px-3 py-2 text-left">이름</th>
+                          <th className="px-3 py-2 text-left">이메일</th>
+                          <th className="px-3 py-2 text-left">역할</th>
+                          <th className="px-3 py-2 text-left">상태</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {erpUsers.map(u => (
+                          <tr key={u.id} className={u.alreadyExists ? 'opacity-40' : 'hover:bg-muted/20'}>
+                            <td className="px-3 py-2">
+                              <input type="checkbox" disabled={u.alreadyExists}
+                                checked={selectedErpIds.has(u.id)}
+                                onChange={e => {
+                                  setSelectedErpIds(prev => {
+                                    const next = new Set(prev);
+                                    e.target.checked ? next.add(u.id) : next.delete(u.id);
+                                    return next;
+                                  });
+                                }} />
+                            </td>
+                            <td className="px-3 py-2 font-medium">{u.name}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
+                            <td className="px-3 py-2">{roleLabel[u.role] ?? u.role}</td>
+                            <td className="px-3 py-2">
+                              {u.alreadyExists
+                                ? <span className="text-yellow-600">이미 등록됨</span>
+                                : <span className="text-green-600">가져오기 가능</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            {erpUsers.length > 0 && (
+              <div className="px-5 pb-5 pt-3 border-t border-border flex gap-2 shrink-0">
+                <Button variant="outline" className="flex-1" onClick={() => setShowImport(false)}>취소</Button>
+                <Button className="flex-1 gap-1.5" onClick={doImport} disabled={importLoading || selectedErpIds.size === 0}>
+                  {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" />{selectedErpIds.size}명 가져오기</>}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 md:p-5">
 
         {/* Stats */}
@@ -79,14 +271,22 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-4">
+        {/* Tabs + Actions */}
+        <div className="flex items-center gap-1 mb-4 flex-wrap">
           <button onClick={() => setTab('pending')} className={cn('text-xs px-3 py-1.5 rounded-full border transition-colors', tab === 'pending' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-foreground')}>
             승인 대기 {pending.length > 0 && <span className="ml-1 bg-yellow-500 text-white text-[10px] px-1.5 rounded-full">{pending.length}</span>}
           </button>
           <button onClick={() => setTab('all')} className={cn('text-xs px-3 py-1.5 rounded-full border transition-colors', tab === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-foreground')}>
             전체 사용자
           </button>
+          <div className="ml-auto flex gap-1">
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => setShowAdd(true)}>
+              <UserPlus className="w-3.5 h-3.5" />직접 추가
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => { setShowImport(true); setErpUsers([]); setImportMsg(''); }}>
+              <Download className="w-3.5 h-3.5" />구 ERP 가져오기
+            </Button>
+          </div>
         </div>
 
         {loading ? (
