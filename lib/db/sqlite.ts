@@ -578,6 +578,13 @@ function runMigrations(db: Database.Database) {
     // 메일 계정: HTML 서명
     `ALTER TABLE mail_accounts ADD COLUMN signature_html TEXT`,
   ];
+  // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
+  db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
+    account_id TEXT NOT NULL,
+    folder TEXT NOT NULL DEFAULT 'inbox',
+    cursor_uid INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (account_id, folder)
+  )`);
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }
   }

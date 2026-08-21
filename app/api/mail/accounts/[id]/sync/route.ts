@@ -8,9 +8,10 @@ const SENT_FOLDER_NAMES = [
   'Sent Items', '[Gmail]/Sent Mail', 'sent',
 ];
 
-const MAX_PER_CALL = 200;
+// 1회 API 호출당 최대 fetch 개수
+const MAX_PER_CALL = 100;
 
-// Fetch messages in a UID range string (e.g. '1:200', '4801:5000') and insert them
+// UID 범위 문자열로 메시지 일괄 fetch & insert. 삽입된 행 수 반환.
 async function insertByRange(
   client: import('imapflow').ImapFlow,
   uidRange: string,
@@ -41,7 +42,7 @@ async function insertByRange(
       } catch { /* ON CONFLICT DO NOTHING */ }
     }
   } catch (e) {
-    console.error('[sync] fetch range error', uidRange, (e as Error).message);
+    console.error('[sync] fetch error', uidRange, (e as Error).message);
   }
   return count;
 }
@@ -77,19 +78,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     await client.connect();
 
-    // Determine IMAP folder name and open via lock
+    // ── IMAP 폴더 열기 ──────────────────────────────────────────────────────
     let imapFolderName = 'INBOX';
-    let lock: import('imapflow').MailboxLockObject | null = null;
+    let lock: import('imapflow').MailboxLockObject;
 
     if (folder === 'sent') {
       let found = false;
       for (const name of SENT_FOLDER_NAMES) {
-        try {
-          lock = await client.getMailboxLock(name);
-          imapFolderName = name;
-          found = true;
-          break;
-        } catch { /* try next */ }
+        try { lock = await client.getMailboxLock(name); imapFolderName = name; found = true; break; } catch { /* try next */ }
       }
       if (!found) {
         await client.logout();
@@ -101,15 +97,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const mb = client.mailbox as { exists: number; uidNext: number } | null;
     const total = mb?.exists ?? 0;
-    const uidNext = mb?.uidNext ?? (total + 1);
+    const uidNext = mb?.uidNext;
 
-    if (total === 0 || uidNext <= 1) {
+    if (!uidNext || total === 0 || uidNext <= 1) {
       lock!.release();
       await client.logout();
       return NextResponse.json({ ok: true, count: 0, total, remaining: 0 });
     }
 
-    // Get stored UID stats from DB
+    const highestUid = uidNext - 1;
+    const syncedAt = now();
+
+    // ── DB: 저장된 UID 통계 ────────────────────────────────────────────────
     const stats = db.prepare(`
       SELECT
         MIN(CAST(REPLACE(uid,'s_','') AS INTEGER)) as min_uid,
@@ -122,6 +121,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const maxStored = stats?.max_uid ?? null;
     const minStored = stats?.min_uid ?? null;
 
+    // ── DB: 동기화 커서 ────────────────────────────────────────────────────
+    // cursor_uid: 다음에 내려받을 범위의 상한 (0이면 완료)
+    const cursorRow = db.prepare(
+      'SELECT cursor_uid FROM mail_sync_cursors WHERE account_id = ? AND folder = ?'
+    ).get(id, folder) as { cursor_uid: number } | undefined;
+
+    let cursor: number;
+    if (!cursorRow) {
+      // 처음 sync: 이미 저장된 최솟값 바로 아래부터 시작 (없으면 최신 UID 상단부터)
+      cursor = minStored !== null ? Math.max(0, minStored - 1) : highestUid;
+      db.prepare('INSERT INTO mail_sync_cursors (account_id, folder, cursor_uid) VALUES (?, ?, ?)')
+        .run(id, folder, cursor);
+    } else {
+      cursor = cursorRow.cursor_uid;
+    }
+
     const insertStmt = db.prepare(`
       INSERT INTO mail_ext_messages
         (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, folder, synced_at)
@@ -129,41 +144,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ON CONFLICT(account_id, uid) DO NOTHING
     `);
 
-    const syncedAt = now();
     let count = 0;
     let remaining = 0;
-    const highestUid = uidNext - 1;
 
     try {
-      // ── A. 새 메일 (maxStored+1 ~ highestUid) ────────────────────────────
+      // ── A. 신규 메일 (maxStored+1 ~ highestUid), 최대 MAX_PER_CALL ─────
       if (maxStored !== null && maxStored < highestUid) {
-        const rangeStart = maxStored + 1;
-        count += await insertByRange(client, `${rangeStart}:${highestUid}`, insertStmt, id, folder, syncedAt);
+        const aStart = maxStored + 1;
+        const aEnd = Math.min(aStart + MAX_PER_CALL - 1, highestUid);
+        count += await insertByRange(client, `${aStart}:${aEnd}`, insertStmt, id, folder, syncedAt);
+        remaining += highestUid - aEnd; // 아직 내려받지 못한 신규 메일 수
       }
 
-      // ── B. 구형 메일 or 첫 동기화 ────────────────────────────────────────
-      let rangeStart: number;
-      let rangeEnd: number;
+      // ── B. 과거 메일: cursor 기반 하향 (A에 remaining이 없을 때) ──────
+      if (remaining === 0 && cursor > 0) {
+        const cEnd = cursor;
+        const cStart = Math.max(1, cEnd - MAX_PER_CALL + 1);
+        count += await insertByRange(client, `${cStart}:${cEnd}`, insertStmt, id, folder, syncedAt);
+        const newCursor = cStart - 1;
+        db.prepare('UPDATE mail_sync_cursors SET cursor_uid = ? WHERE account_id = ? AND folder = ?')
+          .run(newCursor, id, folder);
+        remaining = newCursor; // 0이면 과거 sync 완료
+      }
 
-      if (minStored !== null && minStored > 1) {
-        // 기존 min_uid보다 오래된 메일
-        rangeEnd = minStored - 1;
-        rangeStart = Math.max(1, rangeEnd - MAX_PER_CALL + 1);
-        remaining = rangeStart > 1 ? rangeStart - 1 : 0;
-        count += await insertByRange(client, `${rangeStart}:${rangeEnd}`, insertStmt, id, folder, syncedAt);
-      } else if (maxStored === null) {
-        // 첫 동기화: 최신 MAX_PER_CALL개 먼저
-        rangeEnd = highestUid;
-        rangeStart = Math.max(1, rangeEnd - MAX_PER_CALL + 1);
-        remaining = rangeStart > 1 ? rangeStart - 1 : 0;
-        count += await insertByRange(client, `${rangeStart}:${rangeEnd}`, insertStmt, id, folder, syncedAt);
+      // ── C. 첫 sync (DB가 비어있고 cursor도 방금 초기화됨) ─────────────
+      if (maxStored === null && cursor === 0) {
+        // cursor=0 but no data → fallback: fetch latest block
+        const cEnd = highestUid;
+        const cStart = Math.max(1, cEnd - MAX_PER_CALL + 1);
+        count += await insertByRange(client, `${cStart}:${cEnd}`, insertStmt, id, folder, syncedAt);
+        const newCursor = cStart - 1;
+        db.prepare('UPDATE mail_sync_cursors SET cursor_uid = ? WHERE account_id = ? AND folder = ?')
+          .run(newCursor, id, folder);
+        remaining = newCursor;
       }
     } finally {
       lock!.release();
     }
 
     await client.logout();
-    return NextResponse.json({ ok: true, count, total, stored: stats?.stored ?? 0, remaining, imapFolder: imapFolderName });
+    return NextResponse.json({
+      ok: true, count, total,
+      stored: stats?.stored ?? 0,
+      remaining,
+      cursor: db.prepare('SELECT cursor_uid FROM mail_sync_cursors WHERE account_id = ? AND folder = ?').get(id, folder),
+    });
   } catch (e) {
     console.error('[sync] error', (e as Error).message);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

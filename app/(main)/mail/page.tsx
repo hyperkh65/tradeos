@@ -303,7 +303,12 @@ export default function MailPage() {
     setExtFolder(f);
     setSelectedExt(null);
     setExtBody(null);
-    if (source !== 'internal') await loadExtMessages(source, f);
+    if (source !== 'internal') {
+      await loadExtMessages(source, f);
+      // 폴더 전환 후 DB에 데이터가 없으면 자동 동기화
+      const msgs = await fetch(`/api/mail/accounts/${source}/messages?folder=${f}`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(msgs) && msgs.length === 0) syncAccount(source, f);
+    }
   };
 
   const selectAccount = async (acc: MailAccount) => {
@@ -323,6 +328,16 @@ export default function MailPage() {
     setSelectedExt(msg);
     setExtBody(null);
     setMobileDetail(true);
+    // 읽음 처리
+    if (msg.is_read === 0) {
+      fetch(`/api/mail/accounts/${msg.account_id}/messages`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: msg.uid, is_read: 1 }),
+      }).catch(() => {});
+      setExtMails(prev => prev.map(m => m.uid === msg.uid ? { ...m, is_read: 1 } : m));
+      setSelectedExt({ ...msg, is_read: 1 });
+    }
     if (!msg.body_text) {
       const res = await fetch(`/api/mail/accounts/${msg.account_id}/messages?folder=${extFolder}`, {
         method: 'POST',
