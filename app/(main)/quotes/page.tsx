@@ -113,7 +113,7 @@ function ProductSearchHelper({
       recentQuotePrice: recentQuotes[0]?.price, recentQuoteCompany: recentQuotes[0]?.company,
       voltage: ex.voltage, watts: ex.watts, cct: ex.cct,
       sizeSpec: ex.sizeSpec, material: ex.material, converter: ex.converter, detail: ex.detail,
-      specification: [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || ex.detail || '',
+      specification: ex.detail || ex.sizeSpec || [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || '',
     };
   });
 
@@ -517,7 +517,7 @@ function QuoteModal({
                               p.nameKo === it.productName || p.code === it.productName ||
                               (p.code && it.productName?.includes(p.code))
                             ) as any;
-                            if (p) updateItem(idx, 'specification', p.sizeSpec || p.detail || '');
+                            if (p) updateItem(idx, 'specification', p.detail || p.sizeSpec || [p.voltage, p.watts, p.cct].filter(Boolean).join(' / ') || '');
                             else alert('제품 DB에서 매칭되는 제품을 찾을 수 없습니다.');
                           }}>↗</button>
                       </div>
