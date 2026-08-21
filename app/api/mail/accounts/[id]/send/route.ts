@@ -20,10 +20,22 @@ function makeTransport(host: string, port: number, email: string, password: stri
     ...(isSSL ? {} : { requireTLS: false, opportunisticTLS: true }),
     auth: { user: email, pass: password },
     tls: { rejectUnauthorized: false, minVersion: 'TLSv1' as 'TLSv1' },
-    connectionTimeout: 25000,
-    greetingTimeout: 25000,
-    socketTimeout: 35000,
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 15000,
   } as Parameters<typeof nodemailer.createTransport>[0]);
+}
+
+function friendlySmtpError(e: Error & { code?: string; response?: string; responseCode?: number }): string {
+  const msg = e.message || '';
+  const code = e.code || '';
+  const resp = e.response || '';
+  if (code === 'ECONNREFUSED' || msg.includes('ECONNREFUSED')) return 'SMTP 서버 연결 거부 — 포트가 방화벽에 막혀있거나 서버 주소가 잘못됐습니다';
+  if (code === 'ETIMEDOUT' || msg.includes('timeout') || msg.includes('ETIMEDOUT')) return 'SMTP 연결 시간 초과 — ISP가 SMTP 포트(465/587)를 차단했을 수 있습니다';
+  if (code === 'ENOTFOUND' || msg.includes('ENOTFOUND')) return `SMTP 서버를 찾을 수 없습니다 — 서버 주소를 확인하세요`;
+  if (msg.includes('인증') || resp.includes('535') || resp.includes('534') || resp.includes('Username and Password') || msg.includes('Invalid credentials') || msg.includes('Authentication')) return `SMTP 인증 실패 — 비밀번호가 틀렸거나 앱 비밀번호가 필요합니다 (${resp || msg})`;
+  if (resp.includes('550') || msg.includes('550')) return `발신 주소 거부 — 이 SMTP 서버에서 허용되지 않는 발신 주소입니다 (${resp})`;
+  return `${msg}${resp ? ` (${resp})` : ''}`;
 }
 
 async function sendWithFallback(
@@ -170,13 +182,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ ok: true, port: result.port, from: usedFrom });
   } catch (e) {
-    const err = e as Error & { code?: string; response?: string };
-    const detail = err.response ?? err.code ?? '';
-    const msg = err.message || '알 수 없는 오류';
+    const err = e as Error & { code?: string; response?: string; responseCode?: number };
     const host = String(account.smtp_host);
-    console.error(`SMTP error [${host}]`, msg, detail);
+    console.error(`SMTP error [${host}:${account.smtp_port}]`, err.code, err.message, err.response);
     return NextResponse.json(
-      { error: `${msg}${detail ? ` (${detail})` : ''}` },
+      { error: friendlySmtpError(err) },
       { status: 500 }
     );
   }

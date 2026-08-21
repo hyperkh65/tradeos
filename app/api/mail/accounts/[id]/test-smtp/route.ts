@@ -40,7 +40,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await transport.verify();
       results.push({ port, ok: true });
     } catch (e) {
-      results.push({ port, ok: false, error: (e as Error).message });
+      const err = e as Error & { code?: string; response?: string };
+      const detail = err.code ? `[${err.code}] ` : '';
+      results.push({ port, ok: false, error: `${detail}${err.message}` });
     }
   }
 
