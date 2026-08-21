@@ -398,6 +398,41 @@ interface ApprovalNotionInput {
   description?: string | null;
 }
 
+interface RestoredApproval {
+  notionId: string;
+  businessId: string;
+  formType: string;
+  formTitle: string;
+  requesterName: string;
+  requesterDept: string;
+  status: string;
+  priority: string;
+  dueDate: string | undefined;
+  description: string;
+  createdAt: string;
+}
+
+export function notionToApproval(page: { id: string; properties: Props; created_time: string }): RestoredApproval {
+  const p = page.properties;
+  return {
+    notionId: page.id,
+    businessId: getText(p, '문서번호') || page.id.slice(0, 8),
+    formType: getSelect(p, '양식유형') || '일반',
+    formTitle: getText(p, '기안제목'),
+    requesterName: getText(p, '기안자'),
+    requesterDept: getText(p, '부서'),
+    status: getSelect(p, '상태') || '대기',
+    priority: getSelect(p, '우선순위') || 'normal',
+    dueDate: getDate(p, '마감일'),
+    description: getText(p, '내용'),
+    createdAt: page.created_time,
+  };
+}
+
+export async function fetchNotionApprovals(): Promise<RestoredApproval[]> {
+  return fetchFromNotion(DB.approvals, notionToApproval);
+}
+
 export function approvalToNotion(a: ApprovalNotionInput) {
   return {
     '문서번호': titleProp(a.businessId),
