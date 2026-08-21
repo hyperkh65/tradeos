@@ -8,11 +8,54 @@ const SENT_FOLDER_NAMES = [
   'Sent Items', '[Gmail]/Sent Mail', 'sent',
 ];
 
+const MAX_PER_CALL = 300;
+
+async function insertMessages(
+  client: import('imapflow').ImapFlow,
+  uidList: number[],
+  insertStmt: import('better-sqlite3').Statement,
+  accountId: string,
+  folder: string,
+  syncedAt: string,
+): Promise<number> {
+  let count = 0;
+  if (uidList.length === 0) return 0;
+
+  const BATCH = 150;
+  for (let i = 0; i < uidList.length; i += BATCH) {
+    const batch = uidList.slice(i, i + BATCH);
+    const uidStr = batch.join(',');
+    try {
+      for await (const msg of client.fetch(uidStr, { envelope: true, uid: true, flags: true }, { uid: true })) {
+        const env = msg.envelope as Record<string, unknown>;
+        const from = (env?.from as Array<Record<string, string>> | undefined)?.[0];
+        const rawUid = String(msg.uid);
+        const storedUid = folder === 'sent' ? `s_${rawUid}` : rawUid;
+        const isRead = (msg.flags as Set<string>)?.has('\\Seen') ? 1 : 0;
+        try {
+          insertStmt.run(
+            newId(), accountId, storedUid,
+            from?.name || null,
+            from?.address || '',
+            JSON.stringify(((env?.to as Array<Record<string, string>> | undefined) ?? []).map(t => t.address).filter(Boolean)),
+            String(env?.subject || '(제목 없음)'),
+            new Date((env?.date as string | Date | undefined) || Date.now()).toISOString(),
+            isRead, folder, syncedAt,
+          );
+          count++;
+        } catch { /* ON CONFLICT DO NOTHING */ }
+      }
+    } catch (e) {
+      console.error('[sync] batch fetch error', e);
+    }
+  }
+  return count;
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
-
   const folder = new URL(req.url).searchParams.get('folder') || 'inbox';
 
   const db = getDb();
@@ -24,143 +67,109 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { ImapFlow } = await import('imapflow');
     let password: string;
-    try {
-      password = decryptPassword(account.password_enc as string);
-    } catch {
+    try { password = decryptPassword(account.password_enc as string); } catch {
       return NextResponse.json({ error: '비밀번호 복호화 실패 - 메일 계정을 삭제하고 다시 등록해주세요.' }, { status: 400 });
     }
-    const port = account.imap_port as number;
 
+    const port = account.imap_port as number;
     const client = new ImapFlow({
       host: account.imap_host as string,
       port,
       secure: port === 993 || port === 465,
       auth: { user: account.email as string, pass: password },
       logger: false,
+      tls: { rejectUnauthorized: false },
     });
 
     await client.connect();
 
+    // Open mailbox
     let imapFolderName = 'INBOX';
     let mailbox;
-
     if (folder === 'sent') {
       let found = false;
       for (const name of SENT_FOLDER_NAMES) {
-        try {
-          mailbox = await client.mailboxOpen(name);
-          imapFolderName = name;
-          found = true;
-          break;
-        } catch { /* try next */ }
+        try { mailbox = await client.mailboxOpen(name); imapFolderName = name; found = true; break; } catch { /* try next */ }
       }
-      if (!found) {
-        await client.logout();
-        return NextResponse.json({ error: '보낸편지함을 찾을 수 없습니다.' }, { status: 404 });
-      }
+      if (!found) { await client.logout(); return NextResponse.json({ error: '보낸편지함을 찾을 수 없습니다.' }, { status: 404 }); }
     } else {
       mailbox = await client.mailboxOpen('INBOX');
     }
 
     const total = (mailbox as { exists: number }).exists;
-    if (total === 0) {
-      await client.logout();
-      return NextResponse.json({ ok: true, count: 0, total: 0 });
-    }
+    if (total === 0) { await client.logout(); return NextResponse.json({ ok: true, count: 0, total: 0, remaining: 0 }); }
 
     const syncedAt = now();
     let count = 0;
     let remaining = 0;
 
-    // Step 1: Get UIDs already stored in DB for this folder
-    const storedRows = db.prepare(
-      'SELECT uid FROM mail_ext_messages WHERE account_id = ? AND folder = ?'
-    ).all(id, folder) as { uid: string }[];
+    // Get stored UID stats
+    const stats = db.prepare(`
+      SELECT
+        MIN(CAST(REPLACE(uid,'s_','') AS INTEGER)) as min_uid,
+        MAX(CAST(REPLACE(uid,'s_','') AS INTEGER)) as max_uid,
+        COUNT(*) as stored
+      FROM mail_ext_messages
+      WHERE account_id = ? AND folder = ? AND uid NOT LIKE 'local_%'
+    `).get(id, folder) as { min_uid: number | null; max_uid: number | null; stored: number };
 
-    const storedUidSet = new Set(
-      storedRows.map(r => {
-        const raw = folder === 'sent' ? r.uid.replace(/^s_/, '') : r.uid;
-        return parseInt(raw, 10);
-      }).filter(n => !isNaN(n))
-    );
+    const maxStored = stats?.max_uid ?? null;
+    const minStored = stats?.min_uid ?? null;
+
+    const insertStmt = db.prepare(`
+      INSERT INTO mail_ext_messages
+        (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, folder, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(account_id, uid) DO NOTHING
+    `);
 
     const lock = await client.getMailboxLock(imapFolderName);
     try {
-      // Step 2: Scan all messages on server to find UIDs we're missing
-      // (envelope-only scan is fast even for large mailboxes)
-      const missingUids: number[] = [];
-      const updateFlags: { uid: number; isRead: number }[] = [];
+      // ── A. 새 메일 (UID > max_stored) ────────────────────────────────────
+      if (maxStored !== null) {
+        const newUidRange = `${maxStored + 1}:*`;
+        let newUids: number[] = [];
+        try {
+          const r = await client.search({ uid: newUidRange } as Parameters<typeof client.search>[0], { uid: true });
+          newUids = Array.isArray(r) ? r : [];
+        } catch { newUids = []; }
 
-      for await (const msg of client.fetch('1:*', { uid: true, flags: true }, { uid: true })) {
-        const uid = msg.uid;
-        if (!storedUidSet.has(uid)) {
-          missingUids.push(uid);
-        } else {
-          // Update read status for existing messages
-          updateFlags.push({ uid, isRead: (msg.flags as Set<string>).has('\\Seen') ? 1 : 0 });
+        if (newUids.length > 0) {
+          count += await insertMessages(client, newUids, insertStmt, id, folder, syncedAt);
         }
       }
 
-      // Step 3: Update read flags for already-stored messages
-      if (updateFlags.length > 0) {
-        const updateStmt = db.prepare(
-          'UPDATE mail_ext_messages SET is_read = ?, synced_at = ? WHERE account_id = ? AND uid = ?'
-        );
-        db.transaction(() => {
-          for (const { uid, isRead } of updateFlags) {
-            const storedUid = folder === 'sent' ? `s_${uid}` : String(uid);
-            updateStmt.run(isRead, syncedAt, id, storedUid);
-          }
-        })();
+      // ── B. 구형 메일 (UID < min_stored) or 첫 동기화 ────────────────────
+      let oldUids: number[] = [];
+      if (minStored !== null && minStored > 1) {
+        // 기존 min_uid보다 오래된 메일 목록
+        try {
+          const r = await client.search({ uid: `1:${minStored - 1}` } as Parameters<typeof client.search>[0], { uid: true });
+          oldUids = Array.isArray(r) ? r : [];
+        } catch { oldUids = []; }
+      } else if (maxStored === null) {
+        // 첫 동기화: 전체 UID 목록 조회
+        try {
+          const r = await client.search({ all: true } as Parameters<typeof client.search>[0], { uid: true });
+          oldUids = Array.isArray(r) ? r : [];
+        } catch { oldUids = []; }
       }
 
-      // Step 4: Fetch envelopes only for missing messages (bounded per call to avoid timeout)
-      const MAX_PER_CALL = 300;
-      const toProcess = missingUids.slice(0, MAX_PER_CALL);
-      remaining = Math.max(0, missingUids.length - MAX_PER_CALL);
-
-      if (toProcess.length > 0) {
-        const insertStmt = db.prepare(`
-          INSERT INTO mail_ext_messages
-            (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, folder, synced_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-          ON CONFLICT(account_id, uid) DO NOTHING
-        `);
-
-        // Process in batches of 100 (uid list string length management)
-        const BATCH = 100;
-        for (let i = 0; i < toProcess.length; i += BATCH) {
-          const batch = toProcess.slice(i, i + BATCH);
-          const uidRange = batch.join(',');
-          for await (const msg of client.fetch(uidRange, { envelope: true, uid: true, flags: true }, { uid: true })) {
-            const env = msg.envelope as Record<string, unknown>;
-            const from = (env?.from as Array<Record<string, string>> | undefined)?.[0];
-            const rawUid = String(msg.uid);
-            const storedUid = folder === 'sent' ? `s_${rawUid}` : rawUid;
-            const isRead = (msg.flags as Set<string>)?.has('\\Seen') ? 1 : 0;
-
-            insertStmt.run(
-              newId(), id, storedUid,
-              from?.name || null,
-              from?.address || '',
-              JSON.stringify(
-                ((env?.to as Array<Record<string, string>> | undefined) ?? []).map(t => t.address).filter(Boolean)
-              ),
-              String(env?.subject || '(제목 없음)'),
-              new Date((env?.date as string | Date | undefined) || Date.now()).toISOString(),
-              isRead, folder, syncedAt
-            );
-            count++;
-          }
-        }
+      if (oldUids.length > 0) {
+        remaining = Math.max(0, oldUids.length - MAX_PER_CALL);
+        // 최신 것부터 (내림차순 slice)
+        const toFetch = oldUids.slice(-MAX_PER_CALL);
+        count += await insertMessages(client, toFetch, insertStmt, id, folder, syncedAt);
       }
+
     } finally {
       lock.release();
     }
 
     await client.logout();
-    return NextResponse.json({ ok: true, count, total, stored: storedRows.length, remaining });
+    return NextResponse.json({ ok: true, count, total, stored: stats?.stored ?? 0, remaining });
   } catch (e) {
+    console.error('[sync] error', (e as Error).message);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
