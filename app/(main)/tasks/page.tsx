@@ -148,6 +148,13 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
   const [moduleLoading, setModuleLoading] = useState(false);
   const [moduleQ, setModuleQ] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<ModuleRecord | null>(null);
+  const [detailData, setDetailData] = useState<{
+    type: string; title: string;
+    fields: { label: string; value: unknown }[];
+    items: { name: string; qty?: number; unit_price?: number; amount?: number; currency: string }[];
+    total: number | null; currency: string | null;
+  } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const loadComments = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}/comments`);
@@ -179,6 +186,17 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
   useEffect(() => {
     if (showLinkForm) loadModuleRecords(linkModule, moduleQ);
   }, [showLinkForm, linkModule]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 문서 선택 시 상세 내역 로드
+  useEffect(() => {
+    if (!selectedRecord) { setDetailData(null); return; }
+    setDetailLoading(true);
+    fetch(`/api/tasks/module-records/detail?module=${linkModule}&id=${encodeURIComponent(selectedRecord.businessId)}`)
+      .then(r => r.json())
+      .then(j => { if (!j.error) setDetailData(j); else setDetailData(null); })
+      .catch(() => setDetailData(null))
+      .finally(() => setDetailLoading(false));
+  }, [selectedRecord, linkModule]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -424,39 +442,77 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
                   </div>
 
                   {/* 상세/내역 패널 */}
-                  <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col overflow-hidden">
                     {selectedRecord ? (
                       <>
-                        <div className="p-3 border-b border-border">
-                          <p className="text-xs font-semibold">{selectedRecord.label}</p>
+                        <div className="p-3 border-b border-border shrink-0">
+                          <p className="text-xs font-semibold">{detailData?.title || selectedRecord.label}</p>
                           <p className="text-[11px] text-muted-foreground mt-0.5">{selectedRecord.sub}</p>
                         </div>
-                        <div className="p-3 flex-1 space-y-2">
-                          {selectedRecord.status && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground w-12">상태</span>
-                              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{selectedRecord.status}</span>
-                            </div>
+                        <div className="flex-1 overflow-y-auto p-3">
+                          {detailLoading && (
+                            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
                           )}
-                          {selectedRecord.date && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground w-12">날짜</span>
-                              <span className="text-xs">{selectedRecord.date}</span>
-                            </div>
+                          {!detailLoading && detailData && (
+                            <>
+                              <div className="space-y-1.5 mb-3">
+                                {detailData.fields.map((f, i) => (
+                                  <div key={i} className="flex gap-2 text-xs">
+                                    <span className="text-muted-foreground w-16 shrink-0">{f.label}</span>
+                                    <span className="font-medium break-all">{String(f.value ?? '-')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {detailData.items.length > 0 && (
+                                <div className="border border-border rounded overflow-hidden mt-2">
+                                  <table className="w-full text-[10px]">
+                                    <thead className="bg-muted/60">
+                                      <tr>
+                                        <th className="text-left px-2 py-1.5 font-medium">품목명</th>
+                                        <th className="text-right px-2 py-1.5 font-medium">수량</th>
+                                        <th className="text-right px-2 py-1.5 font-medium">단가</th>
+                                        <th className="text-right px-2 py-1.5 font-medium">금액</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                      {detailData.items.map((item, i) => (
+                                        <tr key={i}>
+                                          <td className="px-2 py-1.5">{item.name}</td>
+                                          <td className="px-2 py-1.5 text-right">{item.qty != null ? item.qty.toLocaleString() : '-'}</td>
+                                          <td className="px-2 py-1.5 text-right">{item.unit_price != null ? item.unit_price.toLocaleString() : '-'}</td>
+                                          <td className="px-2 py-1.5 text-right font-medium">
+                                            {item.amount != null ? `${Number(item.amount).toLocaleString()} ${item.currency}` : '-'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    {detailData.total != null && (
+                                      <tfoot className="bg-muted/40">
+                                        <tr>
+                                          <td colSpan={3} className="px-2 py-1.5 font-semibold text-right">합계</td>
+                                          <td className="px-2 py-1.5 text-right font-bold">
+                                            {Number(detailData.total).toLocaleString()} {detailData.currency}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    )}
+                                  </table>
+                                </div>
+                              )}
+                              <a
+                                href={`${MODULE_LINKS[linkModule] ?? '/'}?id=${selectedRecord.businessId}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline flex items-center gap-1 mt-3"
+                              >
+                                <ChevronRight className="w-3 h-3" />전체 보기
+                              </a>
+                            </>
                           )}
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-muted-foreground w-12">ID</span>
-                            <span className="text-xs font-mono">{selectedRecord.businessId}</span>
-                          </div>
-                          <a
-                            href={`${MODULE_LINKS[linkModule] ?? '/'}?id=${selectedRecord.businessId}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
-                          >
-                            <ChevronRight className="w-3 h-3" />전체 보기
-                          </a>
+                          {!detailLoading && !detailData && (
+                            <p className="text-xs text-muted-foreground text-center py-4">내역을 불러올 수 없습니다</p>
+                          )}
                         </div>
-                        <div className="p-3 border-t border-border">
+                        <div className="p-3 border-t border-border shrink-0">
                           <Button size="sm" className="w-full" onClick={() => handleAddLink(selectedRecord)}>
                             이 문서 연결
                           </Button>
