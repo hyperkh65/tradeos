@@ -384,6 +384,34 @@ export function taskToNotion(t: Partial<Task> & { title: string }) {
   };
 }
 
+// ─── Approval (결재) → Notion ────────────────────────────────────────────────
+
+interface ApprovalNotionInput {
+  businessId: string;
+  formType?: string | null;
+  formTitle: string;
+  requesterName: string;
+  requesterDept?: string | null;
+  status: string;
+  priority?: string | null;
+  dueDate?: string | null;
+  description?: string | null;
+}
+
+export function approvalToNotion(a: ApprovalNotionInput) {
+  return {
+    '문서번호': titleProp(a.businessId),
+    '기안제목': rich(a.formTitle),
+    ...(a.formType ? { '양식유형': sel(a.formType) } : {}),
+    '기안자': rich(a.requesterName),
+    ...(a.requesterDept ? { '부서': rich(a.requesterDept) } : {}),
+    '상태': sel(a.status),
+    ...(a.priority ? { '우선순위': sel(a.priority) } : {}),
+    ...(a.dueDate ? { '마감일': dt(a.dueDate) } : {}),
+    ...(a.description ? { '내용': rich(a.description.slice(0, 1900)) } : {}),
+  };
+}
+
 // ─── ERP Shipment / Import (DB_IMPORTS_MASTER) ──────────────────────────────
 // Each Notion page is one import shipment with both transport and customs data.
 
@@ -613,6 +641,21 @@ export async function createNotionTask(t: Partial<Task> & { title: string }): Pr
     return page.id;
   } catch (e) {
     console.error('[Notion] create task error:', e);
+    return null;
+  }
+}
+
+export async function createNotionApproval(a: ApprovalNotionInput): Promise<string | null> {
+  if (!DB.approvals || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const page = await notion.pages.create({
+      parent: { database_id: DB.approvals },
+      properties: approvalToNotion(a),
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[Notion] create approval error:', e);
     return null;
   }
 }

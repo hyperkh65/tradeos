@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { updateNotionPage } from '@/lib/notion/mapper';
+
+function syncNotionApprovalStatus(notionId: string | null | undefined, status: string) {
+  if (!notionId) return;
+  updateNotionPage(notionId, { '상태': { select: { name: status } } }).catch(() => {});
+}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -40,6 +46,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.action === 'submit') {
       db.prepare(`UPDATE approvals SET status = '대기', updated_at = ? WHERE id = ? AND status = '임시저장'`).run(now(), id);
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as Record<string, unknown>;
+      syncNotionApprovalStatus(updated.notion_id as string | null, updated.status as string);
       return NextResponse.json({ ...updated, steps: JSON.parse(updated.steps_json as string) });
     }
 
@@ -72,6 +79,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     `).run(JSON.stringify(steps), currentStep, overallStatus, now(), id);
 
     const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as Record<string, unknown>;
+    syncNotionApprovalStatus(updated.notion_id as string | null, updated.status as string);
     return NextResponse.json({ ...updated, steps: JSON.parse(updated.steps_json as string) });
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

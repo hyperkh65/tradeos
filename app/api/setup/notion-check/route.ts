@@ -13,6 +13,7 @@ const DB_LABELS: Record<string, string> = {
   claims:         '클레임 (NOTION_DB_CLAIMS)',
   inspections:    '검품 (NOTION_DB_INSPECTIONS)',
   inventory:      '재고 (NOTION_DB_INVENTORY)',
+  approvals:      '결재 (NOTION_DB_APPROVALS)',
 };
 
 export async function GET() {

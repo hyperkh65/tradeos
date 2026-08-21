@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { createNotionApproval } from '@/lib/notion/mapper';
 
 function genBusinessId(): string {
   const year = new Date().getFullYear();
@@ -62,10 +63,21 @@ export async function POST(req: NextRequest) {
     }));
 
     const initStatus = body.draft ? '임시저장' : '대기';
+    const notionId = await createNotionApproval({
+      businessId: business_id,
+      formType: body.form_type ?? '일반',
+      formTitle: body.form_title,
+      requesterName: user.name,
+      requesterDept: body.requester_dept ?? null,
+      status: initStatus,
+      priority: body.priority ?? 'normal',
+      dueDate: body.due_date ?? null,
+      description: body.description ?? null,
+    }).catch(() => null);
     db.prepare(`
       INSERT INTO approvals (id, business_id, form_type, form_title, requester_id, requester_name, requester_dept,
-        steps_json, current_step, status, description, body_html, priority, due_date, related_json, tags_json, archived, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        steps_json, current_step, status, description, body_html, priority, due_date, related_json, tags_json, archived, notion_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
     `).run(
       id, business_id, body.form_type ?? '일반', body.form_title,
       user.id, user.name, body.requester_dept ?? null,
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
       body.description ?? null, body.body_html ?? null,
       body.priority ?? 'normal', body.due_date ?? null,
       JSON.stringify(body.related ?? []), JSON.stringify(body.tags ?? []),
-      createdAt, createdAt
+      notionId, createdAt, createdAt
     );
     return NextResponse.json(db.prepare('SELECT * FROM approvals WHERE id = ?').get(id), { status: 201 });
   } catch {

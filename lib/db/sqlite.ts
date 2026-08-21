@@ -444,6 +444,7 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE approvals ADD COLUMN related_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE approvals ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE approvals ADD COLUMN requester_dept TEXT`,
+    `ALTER TABLE approvals ADD COLUMN notion_id TEXT`,
     `ALTER TABLE mail_ext_messages ADD COLUMN folder TEXT NOT NULL DEFAULT 'inbox'`,
     `ALTER TABLE companies ADD COLUMN ceo TEXT`,
     `ALTER TABLE companies ADD COLUMN business_no TEXT`,
