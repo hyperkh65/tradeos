@@ -116,3 +116,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { id } = await params;
+  const db = getDb();
+  const account = db.prepare('SELECT id FROM mail_accounts WHERE id = ? AND user_id = ?').get(id, user.id);
+  if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const { uid, is_read, is_starred } = await req.json();
+  const updates: string[] = [];
+  const vals: unknown[] = [];
+  if (is_read !== undefined) { updates.push('is_read = ?'); vals.push(is_read); }
+  if (is_starred !== undefined) { updates.push('is_starred = ?'); vals.push(is_starred); }
+  if (updates.length === 0) return NextResponse.json({ ok: true });
+
+  db.prepare(`UPDATE mail_ext_messages SET ${updates.join(', ')} WHERE account_id = ? AND uid = ?`)
+    .run(...vals, id, uid);
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { id } = await params;
+  const db = getDb();
+  const account = db.prepare('SELECT id FROM mail_accounts WHERE id = ? AND user_id = ?').get(id, user.id);
+  if (!account) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const { uid } = await req.json();
+  db.prepare('DELETE FROM mail_ext_messages WHERE account_id = ? AND uid = ?').run(id, uid);
+  return NextResponse.json({ ok: true });
+}
+

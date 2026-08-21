@@ -8,7 +8,7 @@ import {
   Plus, RefreshCw, Trash2, Paperclip, Clock,
   ChevronDown, CheckCircle2, AlertCircle, BookMarked, HardDrive, Wifi,
   BookUser, Feather, Bold, Italic, Underline, Link2, Eye, EyeOff,
-  FileText, Pen, Check,
+  FileText, Pen, Check, Reply, CornerUpRight, MailOpen, MoreHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -90,6 +90,14 @@ type Folder = 'inbox' | 'sent' | 'starred';
 type ExtFolder = 'inbox' | 'sent';
 type Source = 'internal' | string; // string = account id
 
+interface ReplyQuote {
+  from: string;
+  fromEmail: string;
+  date: string;
+  subject: string;
+  body: string | null;
+}
+
 const PROVIDER_ICONS: Record<string, string> = {
   naver: 'N',
   daum: 'D',
@@ -152,6 +160,9 @@ export default function MailPage() {
 
   // Signature editor
   const [sigEditAccount, setSigEditAccount] = useState<MailAccount | null>(null);
+
+  // Reply quote context
+  const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
 
   // Mobile detail view
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -397,6 +408,58 @@ export default function MailPage() {
     loadScheduled(accountId);
   };
 
+  // ── Mail actions ──
+  const handleReply = () => {
+    if (!selectedExt) return;
+    const subj = selectedExt.subject;
+    setReplyQuote({ from: selectedExt.from_name || selectedExt.from_email, fromEmail: selectedExt.from_email, date: selectedExt.date, subject: subj, body: extBody });
+    setCompose({ ...defaultCompose, to: selectedExt.from_email, subject: /^Re:/i.test(subj) ? subj : `Re: ${subj}` });
+    setShowCompose(true);
+  };
+
+  const handleForward = () => {
+    if (!selectedExt) return;
+    setReplyQuote({ from: selectedExt.from_name || selectedExt.from_email, fromEmail: selectedExt.from_email, date: selectedExt.date, subject: selectedExt.subject, body: extBody });
+    setCompose({ ...defaultCompose, subject: /^Fwd:/i.test(selectedExt.subject) ? selectedExt.subject : `Fwd: ${selectedExt.subject}` });
+    setShowCompose(true);
+  };
+
+  const handleMarkUnread = async () => {
+    if (!selectedExt) return;
+    await fetch(`/api/mail/accounts/${selectedExt.account_id}/messages`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: selectedExt.uid, is_read: 0 }),
+    }).catch(() => {});
+    setExtMails(prev => prev.map(m => m.uid === selectedExt.uid ? { ...m, is_read: 0 } : m));
+    setSelectedExt(prev => prev ? { ...prev, is_read: 0 } : prev);
+  };
+
+  const handleToggleStar = async () => {
+    if (!selectedExt) return;
+    const newVal = selectedExt.is_starred ? 0 : 1;
+    await fetch(`/api/mail/accounts/${selectedExt.account_id}/messages`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: selectedExt.uid, is_starred: newVal }),
+    }).catch(() => {});
+    setExtMails(prev => prev.map(m => m.uid === selectedExt.uid ? { ...m, is_starred: newVal } : m));
+    setSelectedExt(prev => prev ? { ...prev, is_starred: newVal } : prev);
+  };
+
+  const handleDeleteMsg = async () => {
+    if (!selectedExt || !confirm('이 메일을 목록에서 삭제할까요?\n(서버 메일은 삭제되지 않습니다)')) return;
+    await fetch(`/api/mail/accounts/${selectedExt.account_id}/messages`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: selectedExt.uid }),
+    }).catch(() => {});
+    setExtMails(prev => prev.filter(m => m.uid !== selectedExt.uid));
+    setSelectedExt(null);
+    setExtBody(null);
+    setMobileDetail(false);
+  };
+
   // ── Compose ──
   const handleSend = async () => {
     if (!compose.to || !compose.subject.trim()) return;
@@ -405,9 +468,14 @@ export default function MailPage() {
     setSendSuccess('');
 
     if (source !== 'internal') {
-      // 서명 자동 합산 (body에 서명이 없을 때만)
+      // 서명 + 답장 인용문 자동 합산
       const sig = currentAccount?.signature_html;
-      const finalBody = sig ? `${compose.body}<br><br>${sig}` : compose.body;
+      const quoteHtml = replyQuote
+        ? `<br><br><div style="border-left:3px solid #cccccc;padding-left:12px;margin-left:0;color:#666666"><p style="font-size:12px;margin:0 0 6px"><b>보낸 사람:</b> ${replyQuote.from} &lt;${replyQuote.fromEmail}&gt;<br><b>날짜:</b> ${new Date(replyQuote.date).toLocaleString('ko-KR')}<br><b>제목:</b> ${replyQuote.subject}</p><hr style="border:none;border-top:1px solid #dddddd;margin:6px 0">${replyQuote.body || ''}</div>`
+        : '';
+      const finalBody = sig
+        ? `${compose.body}<br><br>${sig}${quoteHtml}`
+        : `${compose.body}${quoteHtml}`;
 
       const fd = new FormData();
       fd.append('to', compose.to);
@@ -483,7 +551,16 @@ export default function MailPage() {
               <InternalDetail mail={selectedInternal} myId={myId} starred={isStarred(selectedInternal)} onStar={e => toggleStar(e, selectedInternal)} />
             )}
             {source !== 'internal' && selectedExt && (
-              <ExtDetail msg={selectedExt} body={extBody} />
+              <ExtDetail
+                msg={selectedExt}
+                body={extBody}
+                folder={extFolder}
+                onReply={handleReply}
+                onForward={handleForward}
+                onMarkUnread={handleMarkUnread}
+                onToggleStar={handleToggleStar}
+                onDelete={handleDeleteMsg}
+              />
             )}
           </div>
         </div>
@@ -501,11 +578,12 @@ export default function MailPage() {
           success={sendSuccess}
           contacts={contacts}
           signature={currentAccount?.signature_html ?? null}
+          replyQuote={replyQuote}
           onChange={setCompose}
           onSend={handleSend}
           onSaveContact={saveContact}
           onDeleteContact={deleteContact}
-          onClose={() => { setShowCompose(false); setCompose(defaultCompose); setSendError(''); setSendSuccess(''); }}
+          onClose={() => { setShowCompose(false); setCompose(defaultCompose); setSendError(''); setSendSuccess(''); setReplyQuote(null); }}
         />
       )}
 
@@ -636,6 +714,7 @@ export default function MailPage() {
 
         {/* Actions */}
         <Button size="sm" className="h-7 gap-1 text-xs px-3" onClick={() => {
+          setReplyQuote(null);
           setCompose(defaultCompose);
           setShowCompose(true);
         }}>
@@ -710,7 +789,10 @@ export default function MailPage() {
                   className={cn('w-full text-left p-4 hover:bg-muted/50 transition-colors border-b border-border last:border-0', selectedExt?.uid === m.uid && 'bg-primary/5')}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', unread ? 'bg-primary' : 'bg-transparent')} />
+                    <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+                      <div className={cn('w-2 h-2 rounded-full', unread ? 'bg-primary' : 'bg-transparent')} />
+                      {m.is_starred === 1 && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className={cn('text-sm truncate', unread && 'font-semibold')}>{displayName}</p>
@@ -731,7 +813,18 @@ export default function MailPage() {
         {/* Detail panel — fills all remaining space */}
         <div className="flex-1 hidden md:flex flex-col overflow-hidden">
           {selectedExt
-            ? <div className="flex-1 overflow-y-auto p-6"><ExtDetail msg={selectedExt} body={extBody} /></div>
+            ? <div className="flex-1 overflow-y-auto p-6">
+                <ExtDetail
+                  msg={selectedExt}
+                  body={extBody}
+                  folder={extFolder}
+                  onReply={handleReply}
+                  onForward={handleForward}
+                  onMarkUnread={handleMarkUnread}
+                  onToggleStar={handleToggleStar}
+                  onDelete={handleDeleteMsg}
+                />
+              </div>
             : <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <Mail className="w-12 h-12 opacity-15" />
                 <p className="text-sm">메일을 선택하세요</p>
@@ -781,32 +874,101 @@ function InternalDetail({ mail, myId, starred, onStar }: {
   );
 }
 
-function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
+function ExtDetail({ msg, body, folder, onReply, onForward, onMarkUnread, onToggleStar, onDelete }: {
+  msg: ExtMail;
+  body: string | null;
+  folder: ExtFolder;
+  onReply?: () => void;
+  onForward?: () => void;
+  onMarkUnread?: () => void;
+  onToggleStar?: () => void;
+  onDelete?: () => void;
+}) {
   const isHtml = body ? (/<[a-zA-Z][\s\S]*>/.test(body.slice(0, 500))) : false;
+  const isSent = folder === 'sent';
 
   return (
     <>
-      <div className="mb-4">
-        <h2 className="text-lg font-bold">{msg.subject}</h2>
+      {/* Action bar */}
+      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border flex-wrap">
+        {!isSent && (
+          <>
+            <button
+              onClick={onReply}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium"
+            >
+              <Reply className="w-3.5 h-3.5" />답장
+            </button>
+            <button
+              onClick={onForward}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <CornerUpRight className="w-3.5 h-3.5" />전달
+            </button>
+          </>
+        )}
+        {isSent && (
+          <button
+            onClick={onForward}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <CornerUpRight className="w-3.5 h-3.5" />전달
+          </button>
+        )}
+        <div className="flex-1" />
+        {!isSent && (
+          <button
+            onClick={onToggleStar}
+            title={msg.is_starred ? '중요 해제' : '중요 메일로 표시'}
+            className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-muted/50 transition-colors"
+          >
+            <Star className={cn('w-4 h-4', msg.is_starred ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground')} />
+          </button>
+        )}
+        {!isSent && (
+          <button
+            onClick={onMarkUnread}
+            title="안읽음으로 표시"
+            className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <MailOpen className="w-4 h-4" />
+          </button>
+        )}
+        <button
+          onClick={onDelete}
+          title="목록에서 삭제"
+          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Header */}
+      <div className="mb-3">
+        <h2 className="text-base font-bold leading-snug">{msg.subject}</h2>
       </div>
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+        <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-xs font-bold text-primary shrink-0">
           {(msg.from_name || msg.from_email)[0]?.toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{msg.from_name || msg.from_email}</p>
-          {msg.from_name && <p className="text-xs text-muted-foreground truncate">{msg.from_email}</p>}
+          <p className="text-sm font-medium">{msg.from_name || msg.from_email}</p>
+          {msg.from_name && <p className="text-xs text-muted-foreground">{msg.from_email}</p>}
         </div>
         <p className="text-xs text-muted-foreground shrink-0">{new Date(msg.date).toLocaleString('ko-KR')}</p>
       </div>
-      <hr className="my-4 border-border" />
+      <hr className="mb-4 border-border" />
+
+      {/* Body */}
       {body === null
-        ? <p className="text-sm text-muted-foreground">본문 불러오는 중...</p>
+        ? <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+            <RefreshCw className="w-4 h-4 animate-spin" />본문 불러오는 중...
+          </div>
         : isHtml
           ? <iframe
               srcDoc={body}
               className="w-full border-0 rounded"
-              style={{ minHeight: '500px' }}
+              style={{ minHeight: '400px' }}
               sandbox="allow-same-origin"
               onLoad={e => {
                 const iframe = e.currentTarget;
@@ -820,7 +982,7 @@ function ExtDetail({ msg, body }: { msg: ExtMail; body: string | null }) {
   );
 }
 
-function ComposeModal({ source, internalUsers, myId, compose, sending, error, success, contacts, signature, onChange, onSend, onSaveContact, onDeleteContact, onClose }: {
+function ComposeModal({ source, internalUsers, myId, compose, sending, error, success, contacts, signature, replyQuote, onChange, onSend, onSaveContact, onDeleteContact, onClose }: {
   source: Source;
   internalUsers: InternalUser[];
   myId: string;
@@ -830,6 +992,7 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
   success: string;
   contacts: MailContact[];
   signature?: string | null;
+  replyQuote?: ReplyQuote | null;
   onChange: (c: typeof compose) => void;
   onSend: () => void;
   onSaveContact: (name: string, email: string) => void;
@@ -1120,6 +1283,33 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
               <div className="text-xs text-muted-foreground border border-border/40 rounded-lg px-3 py-2 bg-muted/10"
                 dangerouslySetInnerHTML={{ __html: signature }}
               />
+            </div>
+          )}
+
+          {/* Reply quote preview */}
+          {isExternal && replyQuote && (
+            <div className="px-5 pb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 border-t border-border/60" />
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Reply className="w-3 h-3" />원본 메일
+                </span>
+                <div className="flex-1 border-t border-border/60" />
+              </div>
+              <div className="border-l-2 border-primary/30 pl-3 text-xs text-muted-foreground space-y-1 max-h-40 overflow-y-auto">
+                <p className="font-medium text-foreground/70">
+                  {replyQuote.from} &lt;{replyQuote.fromEmail}&gt; · {new Date(replyQuote.date).toLocaleString('ko-KR')}
+                </p>
+                <p className="font-medium">{replyQuote.subject}</p>
+                {replyQuote.body && (
+                  <div className="mt-1 opacity-70">
+                    {/<[a-zA-Z]/.test(replyQuote.body.slice(0, 200))
+                      ? <iframe srcDoc={replyQuote.body} className="w-full border-0 pointer-events-none" style={{ height: '80px' }} sandbox="allow-same-origin" />
+                      : <pre className="whitespace-pre-wrap font-sans text-[11px] line-clamp-4">{replyQuote.body.slice(0, 400)}</pre>
+                    }
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
