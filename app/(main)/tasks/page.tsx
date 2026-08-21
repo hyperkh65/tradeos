@@ -152,6 +152,7 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
     type: string; title: string;
     fields: { label: string; value: unknown }[];
     items: { name: string; spec?: string; qty?: number; unit_price?: number; amount?: number; currency: string }[];
+    _raw0?: string | null;
     total: number | null; currency: string | null;
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -507,6 +508,12 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
                                     )}
                                   </table>
                                 </div>
+                              )}
+                              {detailData._raw0 && (
+                                <details className="mt-2">
+                                  <summary className="text-[10px] text-muted-foreground cursor-pointer">🔍 raw item (디버그)</summary>
+                                  <pre className="text-[9px] text-muted-foreground break-all whitespace-pre-wrap mt-1">{detailData._raw0}</pre>
+                                </details>
                               )}
                               <a
                                 href={`${MODULE_LINKS[linkModule] ?? '/'}?open=${encodeURIComponent(selectedRecord.businessId)}`}

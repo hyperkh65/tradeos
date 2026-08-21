@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
             qty: itemQty(i), unit_price: itemUnitPrice(i),
             amount: itemAmount(i, cur).amount, currency: cur,
           })),
+          _raw0: items[0] ? JSON.stringify(items[0]) : null,
           total, currency: r.currency,
         });
       }
@@ -103,6 +104,7 @@ export async function GET(req: NextRequest) {
             qty: itemQty(i), unit_price: itemUnitPrice(i),
             amount: itemAmount(i, cur).amount, currency: cur,
           })),
+          _raw0: items[0] ? JSON.stringify(items[0]) : null,
           total: r.total_amount, currency: r.currency,
         });
       }
