@@ -9,16 +9,28 @@ function parseItems(json: unknown): RawItem[] {
   try { return JSON.parse(String(json || '[]')); } catch { return []; }
 }
 
-function itemName(i: RawItem): string {
-  return String(i.productName || i.name || i.name_ko || i.product || '');
+function itemName(i: RawItem, idx: number): string {
+  const n = String(
+    i.productName || i.product || i.name || i.name_ko ||
+    i.product_name || i.itemName || i.item_name || ''
+  ).trim();
+  return n || `품목 ${idx + 1}`;
+}
+function itemSpec(i: RawItem): string {
+  return String(i.specification || i.spec || i.description || '').trim();
 }
 function itemQty(i: RawItem): number | undefined {
-  const v = i.qty ?? i.quantity;
+  const v = i.qty ?? i.quantity ?? i.count ?? i.pcs;
   return v != null ? Number(v) : undefined;
 }
 function itemUnitPrice(i: RawItem): number | undefined {
-  const v = i.unitPrice ?? i.unit_price;
-  return v != null ? Number(v) : undefined;
+  const v = i.unitPrice ?? i.unit_price ?? i.price ?? i.pricePerUnit;
+  if (v != null) return Number(v);
+  // 역산: amount / qty
+  const a = i.amount != null ? Number(i.amount) : undefined;
+  const q = itemQty(i);
+  if (a != null && q != null && q > 0) return a / q;
+  return undefined;
 }
 function itemAmount(i: RawItem, currency: string): { amount: number | undefined; currency: string } {
   const a = i.amount != null ? Number(i.amount)
@@ -58,8 +70,9 @@ export async function GET(req: NextRequest) {
             { label: '인코텀', value: r.incoterm || '-' },
             { label: '비고', value: r.remark || '-' },
           ],
-          items: items.map(i => ({
-            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+          items: items.map((i, idx) => ({
+            name: itemName(i, idx), spec: itemSpec(i),
+            qty: itemQty(i), unit_price: itemUnitPrice(i),
             amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total, currency: r.currency,
@@ -85,8 +98,9 @@ export async function GET(req: NextRequest) {
             { label: '생산완료', value: String(r.production_due_date || '-').slice(0, 10) },
             { label: '비고', value: r.remark || '-' },
           ],
-          items: items.map(i => ({
-            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+          items: items.map((i, idx) => ({
+            name: itemName(i, idx), spec: itemSpec(i),
+            qty: itemQty(i), unit_price: itemUnitPrice(i),
             amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total: r.total_amount, currency: r.currency,
@@ -110,8 +124,9 @@ export async function GET(req: NextRequest) {
             { label: '유형', value: r.sale_type || '-' },
             { label: '영업자', value: r.salesperson || '-' },
           ],
-          items: items.map(i => ({
-            name: itemName(i), qty: itemQty(i), unit_price: itemUnitPrice(i),
+          items: items.map((i, idx) => ({
+            name: itemName(i, idx), spec: itemSpec(i),
+            qty: itemQty(i), unit_price: itemUnitPrice(i),
             amount: itemAmount(i, cur).amount, currency: cur,
           })),
           total: r.total_amount, currency: r.currency,

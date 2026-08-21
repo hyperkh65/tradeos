@@ -151,7 +151,7 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
   const [detailData, setDetailData] = useState<{
     type: string; title: string;
     fields: { label: string; value: unknown }[];
-    items: { name: string; qty?: number; unit_price?: number; amount?: number; currency: string }[];
+    items: { name: string; spec?: string; qty?: number; unit_price?: number; amount?: number; currency: string }[];
     total: number | null; currency: string | null;
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -477,9 +477,18 @@ function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: Extended
                                     <tbody className="divide-y divide-border">
                                       {detailData.items.map((item, i) => (
                                         <tr key={i}>
-                                          <td className="px-2 py-1.5">{item.name}</td>
+                                          <td className="px-2 py-1.5">
+                                            <div>{item.name}</div>
+                                            {item.spec && <div className="text-[9px] text-muted-foreground leading-tight">{item.spec}</div>}
+                                          </td>
                                           <td className="px-2 py-1.5 text-right">{item.qty != null ? item.qty.toLocaleString() : '-'}</td>
-                                          <td className="px-2 py-1.5 text-right">{item.unit_price != null ? item.unit_price.toLocaleString() : '-'}</td>
+                                          <td className="px-2 py-1.5 text-right">
+                                            {item.unit_price != null
+                                              ? (Number.isInteger(item.unit_price)
+                                                  ? item.unit_price.toLocaleString()
+                                                  : item.unit_price.toFixed(2))
+                                              : '-'}
+                                          </td>
                                           <td className="px-2 py-1.5 text-right font-medium">
                                             {item.amount != null ? `${Number(item.amount).toLocaleString()} ${item.currency}` : '-'}
                                           </td>
