@@ -646,8 +646,14 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
     if (!previewId) { setPreviewData(null); return; }
     setPreviewLoading(true);
     fetch(`/api/tasks/module-records/detail?module=${relatedModule}&id=${encodeURIComponent(previewId)}`)
-      .then(r => r.json())
-      .then(d => setPreviewData(d.data ?? d))
+      .then(async r => {
+        if (!r.ok) return null;
+        const d = await r.json();
+        // fields 배열이 있어야 유효한 응답
+        const payload = d.data ?? d;
+        return Array.isArray(payload?.fields) ? payload : null;
+      })
+      .then(d => setPreviewData(d))
       .catch(() => setPreviewData(null))
       .finally(() => setPreviewLoading(false));
   }, [previewId, relatedModule]);
@@ -892,7 +898,7 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
                         <p className="text-[11px] text-muted-foreground text-center mt-4">항목에 마우스를 올리면 세부내역이 표시됩니다</p>
                       ) : previewLoading ? (
                         <p className="text-[11px] text-muted-foreground text-center mt-4">로딩 중...</p>
-                      ) : previewData ? (
+                      ) : previewData && Array.isArray(previewData.fields) ? (
                         <div className="space-y-1.5">
                           <p className="text-xs font-semibold truncate">{previewData.title}</p>
                           {previewData.fields.slice(0, 6).map((f, i) => f.value != null && String(f.value) ? (
