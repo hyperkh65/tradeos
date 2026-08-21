@@ -112,8 +112,22 @@ export async function POST(req: NextRequest) {
     const user = await getSessionUser();
     const body = await req.json();
     const db = getDb();
-    const id = newId();
     const ts = now();
+
+    // 5초 내 동일 공급업체+품목수 중복 제출 방지
+    const recentDup = db.prepare(`
+      SELECT id FROM purchase_orders
+      WHERE supplier_name = ? AND created_at > ? AND json_array_length(items_json) = ?
+    `).get(
+      body.supplierName || '',
+      new Date(Date.now() - 5000).toISOString(),
+      (body.items || []).length
+    ) as { id: string } | undefined;
+    if (recentDup) {
+      return NextResponse.json({ error: '동일한 발주서가 방금 저장되었습니다. 잠시 후 다시 시도하세요.' }, { status: 409 });
+    }
+
+    const id = newId();
     const bizId = body.businessId || nextBizId('PO');
 
     const items = body.items || [];

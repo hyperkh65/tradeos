@@ -287,6 +287,7 @@ function QuoteModal({
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const savingRef = useRef(false);
   const [specMode, setSpecMode] = useState<Record<number, 'auto' | 'manual'>>({});
 
   const filteredCompanies = companies.filter(c =>
@@ -340,6 +341,8 @@ function QuoteModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.companyName) { setSaveError('거래처를 선택해주세요.'); return; }
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setSaveError('');
     try {
@@ -365,7 +368,10 @@ function QuoteModal({
       onSave(j.data);
     } catch (e) {
       setSaveError('네트워크 오류가 발생했습니다.');
-    } finally { setSaving(false); }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (

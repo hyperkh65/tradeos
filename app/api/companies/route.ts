@@ -68,6 +68,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const db = getDb();
+
+    // 같은 업체명+타입 중복 체크 (신규 등록 시만)
+    if (!body.businessId) {
+      const dup = db.prepare(
+        "SELECT id, business_id FROM companies WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND type = ?"
+      ).get(body.name?.trim(), body.type || '기타') as { id: string; business_id: string } | undefined;
+      if (dup) {
+        return NextResponse.json(
+          { error: `동일한 업체명이 이미 등록되어 있습니다. (${dup.business_id})` },
+          { status: 409 }
+        );
+      }
+    }
+
     const id = body.preId || newId();
     const ts = now();
     const prefixMap: Record<string, string> = { '고객사':'CUS','공급업체':'SUP','포워더':'FWD','관세사':'BRK','기타':'ETC' };

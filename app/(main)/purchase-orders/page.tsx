@@ -437,6 +437,7 @@ function POModal({
   const [images, setImages] = useState<string[]>(initImages);
   const [savedId] = useState<string>((item as any)?.id || '');
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
   const [showQuoteSelect, setShowQuoteSelect] = useState(false);
 
@@ -508,7 +509,8 @@ function POModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.supplierName) return;
+    if (!form.supplierName || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const body = {
@@ -523,7 +525,10 @@ function POModal({
         await fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       }
       onSave();
-    } finally { setSaving(false); }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   const uploadPoId = savedId || item?.id || `po-temp-${Date.now()}`;

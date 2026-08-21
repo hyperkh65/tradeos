@@ -141,20 +141,30 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
     bankCopyFile: ex?.bankCopyFile || '',
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const savingRef = useRef(false);
   const companyId = item?.id || preId;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name) return;
+    if (!form.name || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
+    setSaveError('');
     try {
       if (item) {
         await fetch(`/api/companies/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+        onSave();
       } else {
-        await fetch('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, preId }) });
+        const res = await fetch('/api/companies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, preId }) });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) { setSaveError(json.error || '저장 실패'); return; }
+        onSave();
       }
-      onSave();
-    } finally { setSaving(false); }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
@@ -267,6 +277,7 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
             <Input value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="비고" />
           </div>
 
+          {saveError && <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{saveError}</p>}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
