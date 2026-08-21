@@ -57,6 +57,58 @@ function CompanyAutocomplete({ label, value, onChange, companies }: {
   );
 }
 
+function ProductNameField({ value, onChange, allProducts, currentId }: {
+  value: string; onChange: (v: string) => void;
+  allProducts: Product[]; currentId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const q = value.trim().toLowerCase();
+  const suggestions = q.length >= 1
+    ? allProducts.filter(p => p.id !== currentId && p.nameKo.toLowerCase().includes(q))
+    : [];
+  const exactDup = allProducts.find(p => p.id !== currentId && p.nameKo === value.trim());
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">제품명 (한글) *</label>
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="LED 패널 40W"
+        required
+        autoComplete="off"
+        className={exactDup ? 'border-red-400 focus-visible:ring-red-400' : ''}
+      />
+      {exactDup && (
+        <p className="text-xs text-red-500 mt-1">이미 등록된 제품명입니다 — {exactDup.code} · {exactDup.nameKo}</p>
+      )}
+      {open && !exactDup && suggestions.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-background border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          <p className="px-3 py-1.5 text-[11px] text-muted-foreground border-b">유사한 제품명</p>
+          {suggestions.slice(0, 10).map(p => (
+            <button key={p.id} type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+              onMouseDown={() => { onChange(p.nameKo); setOpen(false); }}>
+              <span className="text-xs text-muted-foreground shrink-0">{p.code}</span>
+              <span className="font-medium truncate">{p.nameKo}</span>
+              {p.nameEn && <span className="text-xs text-muted-foreground truncate">{p.nameEn}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CATEGORIES = ['조명', '가전', '전자', '생활용품', '산업용품', '기타'];
 const MIN_IMAGE_SLOTS = 5;
 const ADMIN_PASSWORD = '1209';
@@ -728,7 +780,12 @@ function ProductModal({ item, preId, products: allProducts, onClose, onSave }: {
                 <datalist id="cat-list">{CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
               </div>
             </div>
-            {f('제품명 (한글) *', 'nameKo', 'LED 패널 40W', { required: true })}
+            <ProductNameField
+              value={form.nameKo}
+              onChange={v => { setForm(p => ({ ...p, nameKo: v })); setDupErr(''); }}
+              allProducts={allProducts}
+              currentId={item?.id}
+            />
             {f('제품명 (영문)', 'nameEn', 'LED Panel 40W')}
             <div className="grid grid-cols-2 gap-3">
               <CompanyAutocomplete label="공급업체" value={form.supplierName} onChange={v => setForm(p => ({ ...p, supplierName: v }))} companies={suppliers} />
@@ -780,7 +837,7 @@ function ProductModal({ item, preId, products: allProducts, onClose, onSave }: {
 
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
-            <Button type="submit" className="flex-1" disabled={saving}>
+            <Button type="submit" className="flex-1" disabled={saving || !!allProducts.find(p => p.id !== item?.id && p.nameKo === form.nameKo.trim())}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (item ? '수정' : '저장')}
             </Button>
           </div>
