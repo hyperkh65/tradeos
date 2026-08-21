@@ -601,12 +601,22 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
     template?.steps?.length ? template.steps : [{ approverId: '', approverName: '', role: '결재' }]
   );
   interface RelatedDoc { module: string; id: string; label: string; }
+  interface DetailData {
+    type: string; title: string;
+    fields: { label: string; value: unknown }[];
+    items: { name: string; spec?: string; qty?: number; unit_price?: number; amount?: number; currency: string }[];
+    total: number | null; currency: string | null;
+  }
   const [related, setRelated] = useState<RelatedDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [relatedModule, setRelatedModule] = useState('quote');
   const [relatedSearch, setRelatedSearch] = useState('');
   const [relatedResults, setRelatedResults] = useState<Array<{ businessId: string; label: string; sub: string }>>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedFocused, setRelatedFocused] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DetailData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const MODULE_LABELS: Record<string, string> = {
@@ -614,8 +624,9 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
     inspection: '검품', claim: '클레임', cost: '비용', company: '거래처',
   };
 
+  // 포커스/검색어 변경 시 자동 목록 로드
   useEffect(() => {
-    if (!relatedSearch.trim()) { setRelatedResults([]); return; }
+    if (!relatedFocused) return;
     setRelatedLoading(true);
     const timer = setTimeout(() => {
       fetch(`/api/tasks/module-records?module=${relatedModule}&q=${encodeURIComponent(relatedSearch)}`)
@@ -623,16 +634,32 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
         .then(d => { setRelatedResults(Array.isArray(d.data) ? d.data : []); })
         .catch(() => setRelatedResults([]))
         .finally(() => setRelatedLoading(false));
-    }, 300);
+    }, relatedSearch ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [relatedModule, relatedSearch]);
+  }, [relatedModule, relatedSearch, relatedFocused]);
+
+  // 모듈 변경 시 미리보기 초기화
+  useEffect(() => { setPreviewId(null); setPreviewData(null); setRelatedSearch(''); setRelatedResults([]); }, [relatedModule]);
+
+  // 미리보기 로드
+  useEffect(() => {
+    if (!previewId) { setPreviewData(null); return; }
+    setPreviewLoading(true);
+    fetch(`/api/tasks/module-records/detail?module=${relatedModule}&id=${encodeURIComponent(previewId)}`)
+      .then(r => r.json())
+      .then(d => setPreviewData(d.data ?? d))
+      .catch(() => setPreviewData(null))
+      .finally(() => setPreviewLoading(false));
+  }, [previewId, relatedModule]);
 
   const addRelated = (item: { businessId: string; label: string; sub: string }) => {
     const entry: RelatedDoc = { module: relatedModule, id: item.businessId, label: item.label + (item.sub ? ` ${item.sub}` : '') };
     if (!related.find(r => r.module === relatedModule && r.id === item.businessId)) {
       setRelated(prev => [...prev, entry]);
     }
-    setRelatedSearch('');
+    setPreviewId(null);
+    setPreviewData(null);
+    setRelatedFocused(false);
     setRelatedResults([]);
   };
 
@@ -809,48 +836,107 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
               {/* 관련 문서 */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-2 block flex items-center gap-1">
-                  <Link2 className="w-3.5 h-3.5" />관련 문서 연결 (복수 선택 가능)
+                  <Link2 className="w-3.5 h-3.5" />관련 문서 연결
                 </label>
-                <div className="flex gap-2 mb-2">
-                  <select
-                    className="h-8 rounded-md border border-input bg-background px-2 text-xs shrink-0"
-                    value={relatedModule}
-                    onChange={e => { setRelatedModule(e.target.value); setRelatedSearch(''); setRelatedResults([]); }}
-                  >
-                    {Object.entries(MODULE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                  <div className="relative flex-1">
-                    <Input
-                      placeholder={`${MODULE_LABELS[relatedModule] ?? relatedModule} 검색...`}
-                      value={relatedSearch}
-                      onChange={e => setRelatedSearch(e.target.value)}
-                      className="h-8 pr-8"
-                    />
-                    {relatedLoading && (
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">로딩</span>
-                    )}
-                  </div>
+
+                {/* 모듈 탭 */}
+                <div className="flex gap-1 mb-2 flex-wrap">
+                  {Object.entries(MODULE_LABELS).map(([k, v]) => (
+                    <button key={k} onClick={() => setRelatedModule(k)}
+                      className={cn('text-[11px] px-2.5 py-1 rounded-full border transition-colors',
+                        relatedModule === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-foreground')}>
+                      {v}
+                    </button>
+                  ))}
                 </div>
-                {relatedResults.length > 0 && (
-                  <div className="border border-border rounded-lg overflow-hidden max-h-36 overflow-y-auto mb-2">
-                    {relatedResults.map(item => (
-                      <button key={item.businessId}
-                        onClick={() => addRelated(item)}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-0 flex items-center gap-2">
-                        <span className="font-mono text-muted-foreground shrink-0">{item.businessId}</span>
-                        <span className="flex-1 truncate">{item.label}</span>
-                        {item.sub && <span className="text-muted-foreground shrink-0 truncate max-w-[80px]">{item.sub}</span>}
-                      </button>
-                    ))}
+
+                {/* 검색 */}
+                <div className="relative mb-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder={`${MODULE_LABELS[relatedModule] ?? relatedModule} 검색 (클릭하면 목록 표시)...`}
+                    value={relatedSearch}
+                    onChange={e => setRelatedSearch(e.target.value)}
+                    onFocus={() => setRelatedFocused(true)}
+                    onBlur={() => setTimeout(() => setRelatedFocused(false), 200)}
+                    className="h-8 pl-8 pr-8"
+                  />
+                  {relatedLoading && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">...</span>}
+                </div>
+
+                {/* 검색 결과 + 미리보기 */}
+                {relatedFocused && relatedResults.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden mb-2 flex" style={{ maxHeight: 240 }}>
+                    {/* 목록 */}
+                    <div className="w-1/2 border-r border-border overflow-y-auto">
+                      {relatedResults.map(item => (
+                        <div key={item.businessId}
+                          onMouseEnter={() => setPreviewId(item.businessId)}
+                          className={cn('px-2.5 py-2 cursor-pointer border-b border-border last:border-0 flex flex-col gap-0.5',
+                            previewId === item.businessId ? 'bg-primary/10' : 'hover:bg-muted/50')}
+                        >
+                          <span className="text-[10px] font-mono text-muted-foreground">{item.businessId}</span>
+                          <span className="text-xs font-medium truncate">{item.sub || item.label.replace(/^\S+\s/, '')}</span>
+                          <button
+                            onMouseDown={() => addRelated(item)}
+                            className="text-[10px] text-primary text-left hover:underline mt-0.5">
+                            + 연결 추가
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 미리보기 */}
+                    <div className="w-1/2 overflow-y-auto p-2.5 bg-muted/20">
+                      {!previewId ? (
+                        <p className="text-[11px] text-muted-foreground text-center mt-4">항목에 마우스를 올리면 세부내역이 표시됩니다</p>
+                      ) : previewLoading ? (
+                        <p className="text-[11px] text-muted-foreground text-center mt-4">로딩 중...</p>
+                      ) : previewData ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-semibold truncate">{previewData.title}</p>
+                          {previewData.fields.slice(0, 6).map((f, i) => f.value != null && String(f.value) ? (
+                            <div key={i} className="flex gap-1">
+                              <span className="text-[10px] text-muted-foreground shrink-0 w-16 truncate">{f.label}</span>
+                              <span className="text-[10px] font-medium truncate">{String(f.value)}</span>
+                            </div>
+                          ) : null)}
+                          {previewData.items.length > 0 && (
+                            <div className="mt-1 border border-border rounded overflow-hidden">
+                              <div className="bg-muted/40 grid grid-cols-3 text-[9px] text-muted-foreground px-1.5 py-0.5">
+                                <span>품목</span><span className="text-right">수량</span><span className="text-right">단가</span>
+                              </div>
+                              {previewData.items.slice(0, 4).map((it, i) => (
+                                <div key={i} className="grid grid-cols-3 text-[10px] px-1.5 py-0.5 border-t border-border">
+                                  <span className="truncate">{it.name}</span>
+                                  <span className="text-right">{it.qty ?? '-'}</span>
+                                  <span className="text-right">{it.unit_price?.toLocaleString() ?? '-'}</span>
+                                </div>
+                              ))}
+                              {previewData.total != null && (
+                                <div className="grid grid-cols-3 text-[10px] px-1.5 py-0.5 border-t border-border bg-muted/30 font-semibold">
+                                  <span className="col-span-2">합계</span>
+                                  <span className="text-right">{previewData.total.toLocaleString()}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 )}
+
+                {/* 연결된 문서 칩 */}
                 {related.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {related.map((doc, i) => (
-                      <span key={i} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
-                        <span className="text-[10px] opacity-70">[{MODULE_LABELS[doc.module] ?? doc.module}]</span>
-                        {doc.label}
-                        <button onClick={() => setRelated(r => r.filter((_, j) => j !== i))}><X className="w-2.5 h-2.5" /></button>
+                      <span key={i} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded-full px-2.5 py-0.5 border border-primary/20">
+                        <span className="text-[10px] opacity-60">[{MODULE_LABELS[doc.module] ?? doc.module}]</span>
+                        <span className="truncate max-w-[120px]">{doc.label}</span>
+                        <button onClick={() => setRelated(r => r.filter((_, j) => j !== i))} className="shrink-0 ml-0.5 hover:text-destructive">
+                          <X className="w-2.5 h-2.5" />
+                        </button>
                       </span>
                     ))}
                   </div>
