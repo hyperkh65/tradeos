@@ -1588,7 +1588,9 @@ function ImportModal({
                       const vatFromType = settlementItems.filter(s => s.costType === 'vat').reduce((a, s) => a + adjVal(s), 0);
                       const vatFromVatField = settlementItems.reduce((a, s) => a + adjVat(s), 0);
                       const vatSum = vatFromType + vatFromVatField;
-                      const expenseSum = settlementItems.filter(s => s.costType === 'expense').reduce((a, s) => a + adjVal(s), 0);
+                      // 환급(refund)은 당기비용을 되돌려받는 성격이므로 5440에 순액으로 반영한다.
+                      // (그렇지 않으면 현금(1020)에만 환급이 반영되고 비용 차변은 안 줄어서 차대가 안 맞는다)
+                      const expenseSum = settlementItems.filter(s => s.costType === 'expense' || s.costType === 'refund').reduce((a, s) => a + adjVal(s), 0);
                       const totalAdj = settlementItems.reduce((a, s) => a + adjVal(s), 0);
                       const invoiceKrw = Math.round((Number(form.invoiceValue) || 0) * (Number(form.exchangeRate) || 1));
                       // 보통예금 = 공급가 합계 + VAT 합계 - 인보이스(외상매입금)
@@ -1596,7 +1598,7 @@ function ImportModal({
                       const lines: { accountCode: string; accountName: string; debit: number; credit: number; note?: string }[] = [];
                       if (inventorySum > 0) lines.push({ accountCode: '1460', accountName: '상품', debit: inventorySum, credit: 0 });
                       if (vatSum > 0) lines.push({ accountCode: '1351', accountName: '부가세대급금', debit: vatSum, credit: 0 });
-                      if (expenseSum > 0) lines.push({ accountCode: '5440', accountName: '지급수수료', debit: expenseSum, credit: 0 });
+                      if (expenseSum !== 0) lines.push({ accountCode: '5440', accountName: '지급수수료', debit: expenseSum > 0 ? expenseSum : 0, credit: expenseSum < 0 ? -expenseSum : 0 });
                       if (invoiceKrw > 0) lines.push({ accountCode: '2510', accountName: '외상매입금', debit: 0, credit: invoiceKrw });
                       if (cashPaid > 0) lines.push({ accountCode: '1020', accountName: '보통예금', debit: 0, credit: Math.max(0, cashPaid) });
                       try {

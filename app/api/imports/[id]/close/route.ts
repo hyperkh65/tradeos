@@ -57,6 +57,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const updated = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
       const customCosts = (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })();
       syncImportExpenses(db, id, row.business_id as string, {
+        freightKrw: updated.freight_krw as number | undefined,
+        freightHandling: (() => { try { return JSON.parse((updated.freight_handling_json as string) || '[]'); } catch { return []; } })(),
         duty: updated.duty as number | undefined,
         vat: updated.vat as number | undefined,
         brokerFee: updated.broker_fee as number | undefined,
