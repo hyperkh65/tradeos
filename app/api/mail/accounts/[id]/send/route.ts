@@ -141,13 +141,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       contentType: p.mime,
     }));
 
-    // SMTP From = 인증 계정 주소 (다른 도메인 From은 서버가 거부)
-    // from_email이 설정되면 Reply-To로 사용 → 수신자 답장은 from_email로 옴
     const authAddr = String(account.email);
     const customAddr = account.from_email ? String(account.from_email) : null;
-    const mailOpts = {
-      from: `"${user.name}" <${authAddr}>`,
-      ...(customAddr ? { replyTo: `"${user.name}" <${customAddr}>` } : {}),
+    const displayFrom = customAddr || authAddr;
+
+    const buildOpts = (fromAddr: string) => ({
+      from: `"${user.name}" <${fromAddr}>`,
       to,
       ...(cc && cc !== 'undefined' ? { cc } : {}),
       ...(bcc && bcc !== 'undefined' ? { bcc } : {}),
@@ -155,10 +154,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       html: body || '',
       text: (body || '').replace(/<[^>]+>/g, ''),
       attachments,
-    };
+    });
 
-    const result = await sendWithFallback(account, password, mailOpts);
-    const usedFrom = customAddr || authAddr;
+    // 전략 1: from_email로 직접 SMTP 인증 + From 주소 사용 (Daum 스마트워크)
+    // 전략 2: auth 계정으로 인증 + from_email을 From에 사용
+    // 전략 3: auth 계정으로 인증 + auth 계정을 From에 사용
+    let result: { port: number };
+    let usedFrom = displayFrom;
+
+    const accountWithCustomAuth = customAddr ? { ...account, email: customAddr } : null;
+
+    if (customAddr && customAddr !== authAddr) {
+      try {
+        // 전략 1: from_email 주소로 직접 인증
+        result = await sendWithFallback(accountWithCustomAuth!, password, buildOpts(customAddr));
+      } catch {
+        try {
+          // 전략 2: auth 계정으로 인증하되 from_email을 From으로
+          result = await sendWithFallback(account, password, buildOpts(customAddr));
+        } catch {
+          // 전략 3: auth 계정으로 인증 + auth 계정 From
+          result = await sendWithFallback(account, password, buildOpts(authAddr));
+          usedFrom = authAddr;
+        }
+      }
+    } else {
+      result = await sendWithFallback(account, password, buildOpts(authAddr));
+    }
 
     // Save to sent folder in DB
     try {
