@@ -182,16 +182,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       result = await sendWithFallback(account, password, buildOpts(authAddr));
     }
 
-    // Save to sent folder in DB
+    // ── IMAP APPEND: 서버 Sent 폴더에 복사 ──────────────────────────────
+    // 일반 메일 클라이언트처럼 발송 후 IMAP Sent 폴더에 업로드해야 다음/gmail 앱에서 보임
+    const sentId = newId();
+    const recipients = [to, ...(cc && cc !== 'undefined' ? [cc] : []), ...(bcc && bcc !== 'undefined' ? [bcc] : [])];
+    let savedUid = `local_${sentId}`;
+
     try {
-      const sentId = newId();
-      const recipients = [to, ...(cc && cc !== 'undefined' ? [cc] : []), ...(bcc && bcc !== 'undefined' ? [bcc] : [])];
+      // nodemailer MailComposer로 raw RFC 2822 메시지 생성
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const MailComposer = require('nodemailer/lib/mail-composer');
+      const finalOpts = buildOpts(usedFrom);
+      const rawMsg: Buffer = await new Promise((resolve, reject) => {
+        new MailComposer(finalOpts).compile().build((err: Error | null, buf: Buffer) => {
+          if (err) reject(err); else resolve(buf);
+        });
+      });
+
+      const { ImapFlow } = await import('imapflow');
+      const imapPort = Number(account.imap_port);
+      const imap = new ImapFlow({
+        host: String(account.imap_host),
+        port: imapPort,
+        secure: imapPort === 993,
+        auth: { user: String(account.email), pass: password },
+        logger: false,
+        tls: { rejectUnauthorized: false },
+      });
+      await imap.connect();
+
+      const SENT_NAMES = [
+        'Sent', 'INBOX.Sent', '보낸편지함', '보낸 편지함', '보낸메일함',
+        'Sent Items', '[Gmail]/Sent Mail', 'sent',
+      ];
+      let sentFolder: string | null = null;
+      for (const name of SENT_NAMES) {
+        try { await imap.mailboxOpen(name); sentFolder = name; break; } catch { /* try next */ }
+      }
+
+      if (sentFolder) {
+        const appendResult = await imap.append(sentFolder, rawMsg, ['\\Seen'], new Date());
+        const ar = appendResult as false | { uid?: number };
+        if (ar && ar.uid) {
+          savedUid = `s_${ar.uid}`; // 실제 서버 UID 사용 → sync 중복 없음
+        }
+      }
+      await imap.logout();
+    } catch (appendErr) {
+      console.warn('[send] IMAP append 실패 (local 저장으로 대체):', (appendErr as Error).message);
+    }
+
+    // DB에 보낸 메일 저장 (IMAP append 성공 시 서버 UID, 실패 시 local_ UID)
+    try {
       db.prepare(`
         INSERT OR IGNORE INTO mail_ext_messages
           (id, account_id, uid, from_name, from_email, to_json, subject, body_text, date, is_read, is_starred, folder, synced_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'sent', ?)
-      `).run(sentId, id, `local_${sentId}`, user.name, usedFrom,
-        JSON.stringify(recipients.map(r => r.trim()).filter(Boolean)),
+      `).run(sentId, id, savedUid, user.name, usedFrom,
+        JSON.stringify(recipients.map((r: string) => r.trim()).filter(Boolean)),
         subject, body || '', new Date().toISOString(), now());
     } catch { /* non-critical */ }
 
