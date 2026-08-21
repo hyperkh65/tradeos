@@ -222,18 +222,31 @@ export default function MailPage() {
   const syncAccount = async (accountId: string, folder: ExtFolder = 'inbox') => {
     setSyncing(true);
     setSyncMsg(null);
+    let totalCount = 0;
+    let pass = 0;
     try {
-      // limit=0 → 전체 동기화
-      const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}&limit=0`, { method: 'POST' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error) {
-        setSyncMsg({ type: 'error', text: json.error || `동기화 실패 (${res.status})` });
-        setTimeout(() => setSyncMsg(null), 8000);
-      } else {
-        setSyncMsg({ type: 'success', text: `${json.count ?? 0}개 메일 동기화 완료` });
-        setTimeout(() => setSyncMsg(null), 3000);
-        await loadExtMessages(accountId, folder);
+      // remaining > 0이면 더 가져올 메일이 있음 → 자동 루프
+      let remaining = 1;
+      while (remaining > 0) {
+        pass++;
+        setSyncMsg({ type: 'success', text: `동기화 중... (${totalCount}개 완료)` });
+        const res = await fetch(`/api/mail/accounts/${accountId}/sync?folder=${folder}`, { method: 'POST' });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.error) {
+          setSyncMsg({ type: 'error', text: json.error || `동기화 실패 (${res.status})` });
+          setTimeout(() => setSyncMsg(null), 8000);
+          return;
+        }
+        totalCount += json.count ?? 0;
+        remaining = json.remaining ?? 0;
+        // 중간 결과 갱신
+        if (pass % 2 === 0 || remaining === 0) {
+          await loadExtMessages(accountId, folder);
+        }
       }
+      setSyncMsg({ type: 'success', text: `동기화 완료 — 신규 ${totalCount}개` });
+      setTimeout(() => setSyncMsg(null), 4000);
+      await loadExtMessages(accountId, folder);
     } catch (e) {
       setSyncMsg({ type: 'error', text: `연결 실패: ${(e as Error).message}` });
       setTimeout(() => setSyncMsg(null), 8000);
@@ -1009,6 +1022,7 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
   const [showHtmlBar, setShowHtmlBar] = useState(() => /<[a-zA-Z][\s\S]*>/.test(compose.body));
   const [showPreview, setShowPreview] = useState(false);
   const [showFilePicker, setShowFilePicker] = useState(false);
+  const [showGroupwareAttach, setShowGroupwareAttach] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const toRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -1328,11 +1342,30 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
                   ))}
                 </div>
               )}
-              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground w-fit">
-                <Paperclip className="w-3.5 h-3.5" />파일 첨부
-                <input ref={fileRef} type="file" multiple className="hidden" onChange={addFiles} />
-              </label>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                  <Paperclip className="w-3.5 h-3.5" />파일 첨부
+                  <input ref={fileRef} type="file" multiple className="hidden" onChange={addFiles} />
+                </label>
+                <button
+                  onClick={() => setShowGroupwareAttach(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <FileText className="w-3.5 h-3.5" />그룹웨어 파일 첨부
+                </button>
+              </div>
             </div>
+          )}
+
+          {/* Groupware file attach picker */}
+          {showGroupwareAttach && (
+            <GroupwareAttachModal
+              onAttach={(files) => {
+                onChange({ ...compose, files: [...compose.files, ...files] });
+                setShowGroupwareAttach(false);
+              }}
+              onClose={() => setShowGroupwareAttach(false)}
+            />
           )}
 
           {/* Scheduled */}
@@ -1888,6 +1921,203 @@ function FileLinkPickerModal({ onInsert, onClose }: {
               )}
             </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Groupware Attach Modal ───────────────────────────────────────────────────
+
+interface GwFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
+
+function GroupwareAttachModal({ onAttach, onClose }: {
+  onAttach: (files: File[]) => void;
+  onClose: () => void;
+}) {
+  const [folders, setFolders] = useState<GwFolder[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [folderName, setFolderName] = useState<string>('전체');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  const loadFiles = async (folderId: string | null, name: string) => {
+    setLoading(true);
+    setCurrentFolder(folderId);
+    setFolderName(name);
+    const q = folderId ? `?folderId=${folderId}` : '';
+    const [fRes, iRes] = await Promise.all([
+      fetch('/api/file-folders').then(r => r.json()).catch(() => ({ data: [] })),
+      fetch(`/api/file-items${q}`).then(r => r.json()).catch(() => ({ data: [] })),
+    ]);
+    setFolders(Array.isArray(fRes?.data) ? fRes.data : []);
+    setFiles(Array.isArray(iRes?.data) ? iRes.data : []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadFiles(null, '전체'); }, []);
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAttach = async () => {
+    if (selected.size === 0) return;
+    setDownloading(true);
+    const selectedFiles = files.filter(f => selected.has(f.id));
+    const result: File[] = [];
+    for (const f of selectedFiles) {
+      try {
+        const res = await fetch(`/api/file-items/${f.id}/download`);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        const fileObj = new File([blob], f.file_name, { type: f.file_type || 'application/octet-stream' });
+        result.push(fileObj);
+      } catch { /* skip failed files */ }
+    }
+    setDownloading(false);
+    if (result.length > 0) onAttach(result);
+  };
+
+  const filtered = files.filter(f =>
+    !search || f.file_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const visibleFolders = folders.filter(f =>
+    currentFolder === null ? f.parent_id === null : f.parent_id === currentFolder
+  );
+
+  const formatSize = (size: number) =>
+    !size ? '' : size < 1024 * 1024 ? `${(size / 1024).toFixed(0)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`;
+
+  const getFileIcon = (type: string | null) => {
+    if (!type) return '📄';
+    if (type.includes('pdf')) return '📕';
+    if (type.includes('sheet') || type.includes('excel') || type.includes('xlsx')) return '📗';
+    if (type.includes('word') || type.includes('docx')) return '📘';
+    if (type.includes('image')) return '🖼️';
+    if (type.includes('zip') || type.includes('compressed')) return '📦';
+    return '📄';
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">그룹웨어 파일 첨부</h3>
+            {selected.size > 0 && (
+              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{selected.size}개 선택</span>
+            )}
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Breadcrumb + Search */}
+        <div className="px-5 pt-3 flex items-center gap-2 shrink-0">
+          {currentFolder !== null && (
+            <button onClick={() => loadFiles(null, '전체')} className="text-xs text-primary hover:underline flex items-center gap-1">
+              <ArrowLeft className="w-3.5 h-3.5" />전체
+            </button>
+          )}
+          <span className="text-xs text-muted-foreground">{currentFolder !== null ? `/ ${folderName}` : folderName}</span>
+          <div className="flex-1" />
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input className="pl-8 h-8 text-sm w-48" placeholder="파일 검색..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pt-3 pb-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground gap-2 text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin" />불러오는 중...
+            </div>
+          ) : (
+            <>
+              {/* Folders */}
+              {visibleFolders.length > 0 && !search && (
+                <div className="mb-4">
+                  <p className="text-xs text-muted-foreground mb-2 font-medium">폴더</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {visibleFolders.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => loadFiles(f.id, f.name)}
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                      >
+                        <span className="text-2xl">📁</span>
+                        <span className="text-xs font-medium text-center line-clamp-2">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Files */}
+              {filtered.length > 0 && (
+                <div>
+                  {!search && <p className="text-xs text-muted-foreground mb-2 font-medium">파일</p>}
+                  <div className="space-y-1">
+                    {filtered.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => toggleSelect(f.id)}
+                        className={cn(
+                          'w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left',
+                          selected.has(f.id)
+                            ? 'border-primary bg-primary/5'
+                            : 'border-transparent hover:border-border hover:bg-muted/40'
+                        )}
+                      >
+                        <div className={cn(
+                          'w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0',
+                          selected.has(f.id) ? 'bg-primary/15' : 'bg-muted/50'
+                        )}>
+                          {getFileIcon(f.file_type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">{f.file_name}</p>
+                          <p className="text-xs text-muted-foreground">{formatSize(f.file_size || 0)}</p>
+                        </div>
+                        {selected.has(f.id) && <Check className="w-4 h-4 text-primary shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filtered.length === 0 && visibleFolders.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">파일이 없습니다.</p>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-border flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground flex-1">
+            {selected.size > 0 ? `${selected.size}개 파일 선택됨` : '파일을 클릭하여 선택하세요'}
+          </span>
+          <Button variant="outline" size="sm" onClick={onClose}>취소</Button>
+          <Button size="sm" onClick={handleAttach} disabled={selected.size === 0 || downloading} className="gap-1.5">
+            {downloading
+              ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />다운로드 중...</>
+              : <><Paperclip className="w-3.5 h-3.5" />{selected.size}개 첨부</>
+            }
+          </Button>
         </div>
       </div>
     </div>

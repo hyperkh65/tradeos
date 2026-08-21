@@ -70,6 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const syncedAt = now();
     let count = 0;
+    let remaining = 0;
 
     // Step 1: Get UIDs already stored in DB for this folder
     const storedRows = db.prepare(
@@ -113,8 +114,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         })();
       }
 
-      // Step 4: Fetch envelopes only for missing messages
-      if (missingUids.length > 0) {
+      // Step 4: Fetch envelopes only for missing messages (bounded per call to avoid timeout)
+      const MAX_PER_CALL = 300;
+      const toProcess = missingUids.slice(0, MAX_PER_CALL);
+      remaining = Math.max(0, missingUids.length - MAX_PER_CALL);
+
+      if (toProcess.length > 0) {
         const insertStmt = db.prepare(`
           INSERT INTO mail_ext_messages
             (id, account_id, uid, from_name, from_email, to_json, subject, date, is_read, is_starred, folder, synced_at)
@@ -122,10 +127,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ON CONFLICT(account_id, uid) DO NOTHING
         `);
 
-        // Fetch in batches to avoid timeouts on very large mailboxes
-        const BATCH = 500;
-        for (let i = 0; i < missingUids.length; i += BATCH) {
-          const batch = missingUids.slice(i, i + BATCH);
+        // Process in batches of 100 (uid list string length management)
+        const BATCH = 100;
+        for (let i = 0; i < toProcess.length; i += BATCH) {
+          const batch = toProcess.slice(i, i + BATCH);
           const uidRange = batch.join(',');
           for await (const msg of client.fetch(uidRange, { envelope: true, uid: true, flags: true }, { uid: true })) {
             const env = msg.envelope as Record<string, unknown>;
@@ -154,7 +159,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     await client.logout();
-    return NextResponse.json({ ok: true, count, total, stored: storedRows.length });
+    return NextResponse.json({ ok: true, count, total, stored: storedRows.length, remaining });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
