@@ -575,6 +575,8 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE journal_entries ADD COLUMN doc_no TEXT`,
     // 메일 계정: 발신자 표시 주소 (daum.net 인증 → ynk2014.com 발신 등)
     `ALTER TABLE mail_accounts ADD COLUMN from_email TEXT`,
+    // 메일 계정: HTML 서명
+    `ALTER TABLE mail_accounts ADD COLUMN signature_html TEXT`,
   ];
   for (const sql of cols) {
     try { db.exec(sql); } catch { /* column already exists */ }

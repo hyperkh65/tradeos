@@ -40,8 +40,17 @@ export async function DELETE(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { id, name } = await req.json();
+  const { id, name, email } = await req.json();
   const db = getDb();
-  db.prepare('UPDATE mail_contacts SET name = ? WHERE id = ? AND user_id = ?').run(name ?? '', id, user.id);
+  try {
+    if (email !== undefined) {
+      db.prepare('UPDATE mail_contacts SET name = ?, email = ? WHERE id = ? AND user_id = ?')
+        .run(name ?? '', email.trim().toLowerCase(), id, user.id);
+    } else {
+      db.prepare('UPDATE mail_contacts SET name = ? WHERE id = ? AND user_id = ?').run(name ?? '', id, user.id);
+    }
+  } catch {
+    return NextResponse.json({ error: '이미 사용 중인 이메일입니다.' }, { status: 409 });
+  }
   return NextResponse.json({ ok: true });
 }

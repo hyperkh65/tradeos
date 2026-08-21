@@ -19,7 +19,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, provider, label, email, from_email, imap_host, imap_port, smtp_host, smtp_port, created_at FROM mail_accounts WHERE user_id = ? ORDER BY created_at ASC'
+    'SELECT id, provider, label, email, from_email, imap_host, imap_port, smtp_host, smtp_port, signature_html, created_at FROM mail_accounts WHERE user_id = ? ORDER BY created_at ASC'
   ).all(user.id);
   return NextResponse.json(rows);
 }

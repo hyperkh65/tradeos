@@ -7,6 +7,8 @@ import {
   Mail, Star, Search, Pencil, ArrowLeft, X, Send, Inbox,
   Plus, RefreshCw, Trash2, Paperclip, Clock,
   ChevronDown, CheckCircle2, AlertCircle, BookMarked, HardDrive, Wifi,
+  BookUser, Feather, Bold, Italic, Underline, Link2, Eye, EyeOff,
+  FileText, Pen, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -49,6 +51,16 @@ interface MailAccount {
   imap_port: number;
   smtp_host: string;
   smtp_port: number;
+  signature_html?: string | null;
+}
+
+interface FileItem {
+  id: string;
+  file_name: string;
+  file_size: number;
+  file_type: string | null;
+  share_token: string | null;
+  created_at: string;
 }
 
 interface InternalUser {
@@ -81,6 +93,7 @@ type Source = 'internal' | string; // string = account id
 const PROVIDER_ICONS: Record<string, string> = {
   naver: 'N',
   daum: 'D',
+  smartwork: 'S',
   kakao: 'K',
   gmail: 'G',
   custom: '✉',
@@ -88,6 +101,7 @@ const PROVIDER_ICONS: Record<string, string> = {
 const PROVIDER_COLORS: Record<string, string> = {
   naver: 'bg-green-500',
   daum: 'bg-blue-500',
+  smartwork: 'bg-indigo-500',
   kakao: 'bg-yellow-500',
   gmail: 'bg-red-500',
   custom: 'bg-gray-500',
@@ -132,6 +146,12 @@ export default function MailPage() {
 
   // Add account modal
   const [showAddAccount, setShowAddAccount] = useState(false);
+
+  // Contacts manager
+  const [showContacts, setShowContacts] = useState(false);
+
+  // Signature editor
+  const [sigEditAccount, setSigEditAccount] = useState<MailAccount | null>(null);
 
   // Mobile detail view
   const [mobileDetail, setMobileDetail] = useState(false);
@@ -520,6 +540,33 @@ export default function MailPage() {
         />
       )}
 
+      {/* Contacts manager modal */}
+      {showContacts && (
+        <ContactsManagerModal
+          contacts={contacts}
+          onClose={() => setShowContacts(false)}
+          onUpdate={loadContacts}
+          onCompose={(email, name) => {
+            setShowContacts(false);
+            const sig = currentAccount?.signature_html;
+            setCompose({ ...defaultCompose, body: sig ? `<br><br>${sig}` : '', to: email });
+            setShowCompose(true);
+          }}
+        />
+      )}
+
+      {/* Signature editor modal */}
+      {sigEditAccount && (
+        <SignatureEditorModal
+          account={sigEditAccount}
+          onClose={() => setSigEditAccount(null)}
+          onSaved={(html) => {
+            setAccounts(prev => prev.map(a => a.id === sigEditAccount.id ? { ...a, signature_html: html } : a));
+            setSigEditAccount(null);
+          }}
+        />
+      )}
+
       {/* Top control bar */}
       <div className="border-b border-border px-3 py-2 flex items-center gap-2 shrink-0 flex-wrap">
         {/* Account tabs */}
@@ -584,9 +631,21 @@ export default function MailPage() {
         </div>
 
         {/* Actions */}
-        <Button size="sm" className="h-7 gap-1 text-xs px-3" onClick={() => setShowCompose(true)}>
+        <Button size="sm" className="h-7 gap-1 text-xs px-3" onClick={() => {
+          const sig = currentAccount?.signature_html;
+          setCompose({ ...defaultCompose, body: sig ? `<br><br>${sig}` : '' });
+          setShowCompose(true);
+        }}>
           <Pencil className="w-3.5 h-3.5" />새 메일
         </Button>
+        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => setShowContacts(true)} title="메일박스 (연락처 관리)">
+          <BookUser className="w-3.5 h-3.5" />메일박스
+        </Button>
+        {source !== 'internal' && currentAccount && (
+          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => setSigEditAccount(currentAccount)} title="서명 편집">
+            <Feather className="w-3.5 h-3.5" />서명
+          </Button>
+        )}
         {source !== 'internal' && (
           <>
             <Button variant="outline" size="sm" className="h-7 gap-1 text-xs px-2.5" onClick={() => syncAccount(source, extFolder)} disabled={syncing}>
@@ -780,8 +839,42 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
   const [showContactDrop, setShowContactDrop] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [showSaveForm, setShowSaveForm] = useState(false);
+  const [showHtmlBar, setShowHtmlBar] = useState(() => /<[a-zA-Z][\s\S]*>/.test(compose.body));
+  const [showPreview, setShowPreview] = useState(false);
+  const [showFilePicker, setShowFilePicker] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const toRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertHtmlTag = (tag: string, attrs?: string) => {
+    const ta = bodyRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? 0;
+    const selected = compose.body.slice(start, end);
+    const attrStr = attrs ? ` ${attrs}` : '';
+    const wrapped = `<${tag}${attrStr}>${selected}</${tag}>`;
+    const newBody = compose.body.slice(0, start) + wrapped + compose.body.slice(end);
+    onChange({ ...compose, body: newBody });
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + tag.length + 2 + attrStr.length, start + tag.length + 2 + attrStr.length + selected.length); }, 0);
+  };
+
+  const insertLink = () => {
+    const url = prompt('링크 URL을 입력하세요:');
+    if (!url) return;
+    const ta = bodyRef.current;
+    const start = ta?.selectionStart ?? compose.body.length;
+    const end = ta?.selectionEnd ?? compose.body.length;
+    const selected = compose.body.slice(start, end) || url;
+    const html = `<a href="${url}">${selected}</a>`;
+    onChange({ ...compose, body: compose.body.slice(0, start) + html + compose.body.slice(end) });
+  };
+
+  const insertRawHtml = (html: string) => {
+    const ta = bodyRef.current;
+    const pos = ta?.selectionStart ?? compose.body.length;
+    onChange({ ...compose, body: compose.body.slice(0, pos) + html + compose.body.slice(pos) });
+  };
 
   const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newFiles = Array.from(e.target.files ?? []);
@@ -954,15 +1047,63 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
             </div>
           </div>
 
+          {/* HTML Toolbar */}
+          {isExternal && (
+            <div className="px-5 pt-2">
+              <div className={cn('flex items-center gap-0.5 p-1 border border-border rounded-lg bg-muted/20 flex-wrap', !showHtmlBar && 'hidden')}>
+                <button onMouseDown={e => { e.preventDefault(); insertHtmlTag('strong'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground" title="굵게"><Bold className="w-3.5 h-3.5" /></button>
+                <button onMouseDown={e => { e.preventDefault(); insertHtmlTag('em'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground" title="기울임"><Italic className="w-3.5 h-3.5" /></button>
+                <button onMouseDown={e => { e.preventDefault(); insertHtmlTag('u'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground" title="밑줄"><Underline className="w-3.5 h-3.5" /></button>
+                <div className="w-px h-4 bg-border mx-0.5" />
+                <label className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 cursor-pointer" title="글자 색상">
+                  <span className="text-xs font-bold" style={{ color: '#e53e3e' }}>A</span>
+                  <input type="color" className="hidden" onChange={e => { const c = e.target.value; const ta = bodyRef.current; if (!ta) return; const s = ta.selectionStart ?? 0; const end = ta.selectionEnd ?? 0; const sel = compose.body.slice(s, end); const html = `<span style="color:${c}">${sel}</span>`; onChange({ ...compose, body: compose.body.slice(0, s) + html + compose.body.slice(end) }); }} />
+                </label>
+                <button onMouseDown={e => { e.preventDefault(); insertLink(); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground" title="링크 삽입"><Link2 className="w-3.5 h-3.5" /></button>
+                <button onMouseDown={e => { e.preventDefault(); insertRawHtml('<br>'); }} className="px-1.5 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground text-[11px]" title="줄바꿈">BR</button>
+                <div className="flex-1" />
+                <button onClick={() => setShowFilePicker(true)} className="flex items-center gap-1 px-2 h-7 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground text-[11px]" title="파일 링크 삽입"><FileText className="w-3 h-3" />파일 링크</button>
+                <div className="w-px h-4 bg-border mx-0.5" />
+                <button onClick={() => setShowPreview(v => !v)} className={cn('w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60', showPreview ? 'text-primary' : 'text-muted-foreground')} title="미리보기">
+                  {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              {!showHtmlBar && (
+                <button onClick={() => setShowHtmlBar(true)} className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  <Bold className="w-3 h-3" />HTML 서식 편집
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Body */}
-          <div className="px-5 pt-3 pb-2">
-            <textarea
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px] resize-y focus:outline-none focus:ring-1 focus:ring-primary"
-              value={compose.body}
-              onChange={e => onChange({ ...compose, body: e.target.value })}
-              placeholder="메일 내용을 입력하세요..."
-            />
+          <div className="px-5 pt-2 pb-2">
+            {showPreview && isExternal ? (
+              <iframe
+                srcDoc={compose.body}
+                className="w-full border border-border rounded min-h-[200px]"
+                style={{ minHeight: '200px' }}
+                sandbox="allow-same-origin"
+                onLoad={e => { const h = e.currentTarget.contentDocument?.body?.scrollHeight; if (h) e.currentTarget.style.height = h + 24 + 'px'; }}
+              />
+            ) : (
+              <textarea
+                ref={bodyRef}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[200px] resize-y focus:outline-none focus:ring-1 focus:ring-primary font-mono text-xs"
+                value={compose.body}
+                onChange={e => onChange({ ...compose, body: e.target.value })}
+                placeholder={showHtmlBar ? '<p>내용을 입력하세요</p>' : '메일 내용을 입력하세요...'}
+              />
+            )}
           </div>
+
+          {/* File link picker modal */}
+          {showFilePicker && (
+            <FileLinkPickerModal
+              onInsert={(html) => { insertRawHtml(html); setShowFilePicker(false); }}
+              onClose={() => setShowFilePicker(false)}
+            />
+          )}
 
           {/* Attachments */}
           {isExternal && (
@@ -1030,17 +1171,19 @@ function ComposeModal({ source, internalUsers, myId, compose, sending, error, su
 const PROVIDER_LIST = [
   { id: 'naver', label: '네이버', color: 'bg-green-500', help: '네이버 메일 → 환경설정 → POP3/IMAP 설정에서 IMAP 사용을 켜세요.' },
   { id: 'daum', label: '다음', color: 'bg-blue-500', help: '다음 메일(@daum.net, @hanmail.net)은 별도 설정 없이 바로 연결됩니다.' },
+  { id: 'smartwork', label: '다음 스마트워크', color: 'bg-indigo-500', help: '회사 이메일(@ynk2014.com)과 비밀번호를 입력하세요. IMAP/SMTP 서버는 자동으로 설정됩니다.' },
   { id: 'kakao', label: '카카오', color: 'bg-yellow-500', help: '카카오메일 → 설정 → IMAP 사용을 켜세요. 비밀번호는 카카오 계정 비밀번호를 입력하세요.' },
   { id: 'gmail', label: 'Gmail', color: 'bg-red-500', help: 'Google 계정 → 보안 → 2단계 인증 켜기 → 앱 비밀번호 발급 후 입력하세요.' },
-  { id: 'custom', label: '직접 입력', color: 'bg-gray-500', help: '다음 기업메일(@ynk2014.com 등)은 IMAP: imap.daum.net / SMTP: smtp.daum.net 으로 입력하세요.' },
+  { id: 'custom', label: '직접 입력', color: 'bg-gray-500', help: '직접 IMAP/SMTP 서버 주소를 입력하세요.' },
 ];
 
 const PROVIDER_DEFAULTS: Record<string, { imap: string; imapPort: number; smtp: string; smtpPort: number }> = {
-  naver:  { imap: 'imap.naver.com',  imapPort: 993, smtp: 'smtp.naver.com',  smtpPort: 587 },
-  daum:   { imap: 'imap.daum.net',   imapPort: 993, smtp: 'smtp.daum.net',   smtpPort: 465 },
-  kakao:  { imap: 'imap.kakao.com',  imapPort: 993, smtp: 'smtp.kakao.com',  smtpPort: 465 },
-  gmail:  { imap: 'imap.gmail.com',  imapPort: 993, smtp: 'smtp.gmail.com',  smtpPort: 587 },
-  custom: { imap: '', imapPort: 993, smtp: '', smtpPort: 587 },
+  naver:     { imap: 'imap.naver.com',  imapPort: 993, smtp: 'smtp.naver.com',  smtpPort: 587 },
+  daum:      { imap: 'imap.daum.net',   imapPort: 993, smtp: 'smtp.daum.net',   smtpPort: 465 },
+  smartwork: { imap: 'imap.daum.net',   imapPort: 993, smtp: 'smtp.daum.net',   smtpPort: 465 },
+  kakao:     { imap: 'imap.kakao.com',  imapPort: 993, smtp: 'smtp.kakao.com',  smtpPort: 465 },
+  gmail:     { imap: 'imap.gmail.com',  imapPort: 993, smtp: 'smtp.gmail.com',  smtpPort: 587 },
+  custom:    { imap: '', imapPort: 993, smtp: '', smtpPort: 587 },
 };
 
 function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
@@ -1160,6 +1303,384 @@ function AddAccountModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             </Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Signature Editor Modal ───────────────────────────────────────────────────
+
+function SignatureEditorModal({ account, onClose, onSaved }: {
+  account: MailAccount;
+  onClose: () => void;
+  onSaved: (html: string) => void;
+}) {
+  const [tab, setTab] = useState<'visual' | 'html'>('visual');
+  const [html, setHtml] = useState(account.signature_html ?? '');
+  const [saving, setSaving] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tab === 'visual' && editorRef.current && editorRef.current.innerHTML !== html) {
+      editorRef.current.innerHTML = html;
+    }
+  }, [tab, html]);
+
+  const execCmd = (cmd: string, val?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, val);
+    if (editorRef.current) setHtml(editorRef.current.innerHTML);
+  };
+
+  const handleSwitchToHtml = () => {
+    if (editorRef.current) setHtml(editorRef.current.innerHTML);
+    setTab('html');
+  };
+
+  const handleSwitchToVisual = () => {
+    setTab('visual');
+  };
+
+  const handleSave = async () => {
+    const finalHtml = tab === 'visual' ? (editorRef.current?.innerHTML ?? html) : html;
+    setSaving(true);
+    await fetch(`/api/mail/accounts/${account.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature_html: finalHtml || null }),
+    }).catch(() => {});
+    setSaving(false);
+    onSaved(finalHtml);
+  };
+
+  const clearSignature = async () => {
+    if (!confirm('서명을 삭제할까요?')) return;
+    await fetch(`/api/mail/accounts/${account.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature_html: null }),
+    }).catch(() => {});
+    onSaved('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <Feather className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">서명 편집</h3>
+            <span className="text-xs text-muted-foreground">{account.from_email || account.email}</span>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 px-5 pt-3 shrink-0">
+          <button
+            onClick={handleSwitchToVisual}
+            className={cn('px-3 py-1.5 text-xs rounded-md font-medium transition-colors', tab === 'visual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50')}
+          >시각적 편집</button>
+          <button
+            onClick={handleSwitchToHtml}
+            className={cn('px-3 py-1.5 text-xs rounded-md font-medium transition-colors', tab === 'html' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/50')}
+          >HTML 소스</button>
+        </div>
+
+        {tab === 'visual' && (
+          <div className="px-5 pt-2 shrink-0">
+            <div className="flex items-center gap-0.5 p-1 border border-border rounded-lg bg-muted/20 flex-wrap">
+              <button onMouseDown={e => { e.preventDefault(); execCmd('bold'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60" title="굵게"><Bold className="w-3.5 h-3.5" /></button>
+              <button onMouseDown={e => { e.preventDefault(); execCmd('italic'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60" title="기울임"><Italic className="w-3.5 h-3.5" /></button>
+              <button onMouseDown={e => { e.preventDefault(); execCmd('underline'); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60" title="밑줄"><Underline className="w-3.5 h-3.5" /></button>
+              <div className="w-px h-4 bg-border mx-0.5" />
+              <label className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 cursor-pointer" title="글자 색상">
+                <span className="text-xs font-bold" style={{ color: '#e53e3e' }}>A</span>
+                <input type="color" className="hidden" onChange={e => execCmd('foreColor', e.target.value)} />
+              </label>
+              <label className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 cursor-pointer text-xs" title="배경색">
+                <span style={{ backgroundColor: '#fef08a', padding: '0 2px' }}>H</span>
+                <input type="color" className="hidden" onChange={e => execCmd('hiliteColor', e.target.value)} />
+              </label>
+              <div className="w-px h-4 bg-border mx-0.5" />
+              <select className="h-7 text-xs border border-border rounded px-1 bg-background" onChange={e => execCmd('fontSize', e.target.value)} defaultValue="">
+                <option value="" disabled>크기</option>
+                {['1','2','3','4','5','6','7'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <div className="w-px h-4 bg-border mx-0.5" />
+              <button onMouseDown={e => { e.preventDefault(); const url = prompt('링크 URL:'); if (url) execCmd('createLink', url); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60" title="링크"><Link2 className="w-3.5 h-3.5" /></button>
+              <button onMouseDown={e => { e.preventDefault(); const url = prompt('이미지 URL:'); if (url) execCmd('insertImage', url); }} className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted/60 text-xs" title="이미지">IMG</button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto px-5 pt-3 pb-2">
+          {tab === 'visual' ? (
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={() => { /* html synced on tab switch */ }}
+              className="min-h-[180px] border border-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              style={{ lineHeight: '1.6' }}
+            />
+          ) : (
+            <textarea
+              className="w-full min-h-[180px] border border-border rounded-lg px-3 py-2 text-xs font-mono bg-muted/20 focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+              value={html}
+              onChange={e => setHtml(e.target.value)}
+              placeholder="<p>홍길동 | 팀장</p><p>📞 010-0000-0000 | ✉ example@company.com</p>"
+            />
+          )}
+        </div>
+
+        <div className="px-5 py-3.5 border-t border-border flex gap-2 shrink-0">
+          {account.signature_html && (
+            <button onClick={clearSignature} className="text-xs text-destructive hover:underline">서명 삭제</button>
+          )}
+          <div className="flex-1" />
+          <Button variant="outline" size="sm" onClick={onClose}>취소</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+            {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}저장
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Contacts Manager Modal ───────────────────────────────────────────────────
+
+function ContactsManagerModal({ contacts, onClose, onUpdate, onCompose }: {
+  contacts: MailContact[];
+  onClose: () => void;
+  onUpdate: () => void;
+  onCompose: (email: string, name: string) => void;
+}) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const startEdit = (c: MailContact) => {
+    setEditId(c.id);
+    setEditName(c.name);
+    setEditEmail(c.email);
+  };
+
+  const saveEdit = async () => {
+    if (!editEmail.trim()) return;
+    setSaving(true);
+    await fetch('/api/mail/contacts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editId, name: editName, email: editEmail.trim().toLowerCase() }),
+    }).catch(() => {});
+    setSaving(false);
+    setEditId(null);
+    onUpdate();
+  };
+
+  const deleteContact = async (id: string) => {
+    if (!confirm('연락처를 삭제할까요?')) return;
+    await fetch('/api/mail/contacts', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+    onUpdate();
+  };
+
+  const addContact = async () => {
+    if (!newEmail.trim()) return;
+    setSaving(true);
+    await fetch('/api/mail/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim(), email: newEmail.trim().toLowerCase() }),
+    }).catch(() => {});
+    setSaving(false);
+    setNewName('');
+    setNewEmail('');
+    onUpdate();
+  };
+
+  const filtered = contacts.filter(c =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <BookUser className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">메일박스</h3>
+            <span className="text-xs text-muted-foreground">{contacts.length}개 연락처</span>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-3 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input className="pl-8 h-8 text-sm" placeholder="이름 또는 이메일 검색..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Add new */}
+        <div className="px-5 pt-3 pb-2 shrink-0">
+          <div className="flex gap-2 items-center p-3 border border-dashed border-border rounded-lg bg-muted/10">
+            <Plus className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Input className="h-7 text-xs flex-1" placeholder="이름" value={newName} onChange={e => setNewName(e.target.value)} />
+            <Input className="h-7 text-xs flex-[2]" placeholder="이메일 주소" value={newEmail} onChange={e => setNewEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && addContact()} />
+            <button onClick={addContact} disabled={saving || !newEmail.trim()} className="text-xs text-primary hover:underline whitespace-nowrap">추가</button>
+          </div>
+        </div>
+
+        {/* Contact list */}
+        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-1">
+          {filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">연락처가 없습니다.</p>
+          ) : filtered.map(c => (
+            <div key={c.id} className="group flex items-center gap-2 p-2.5 rounded-lg hover:bg-muted/40 border border-transparent hover:border-border transition-colors">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                {(c.name || c.email)[0].toUpperCase()}
+              </div>
+              {editId === c.id ? (
+                <div className="flex-1 flex gap-1.5 items-center">
+                  <Input className="h-7 text-xs flex-1" value={editName} onChange={e => setEditName(e.target.value)} placeholder="이름" />
+                  <Input className="h-7 text-xs flex-[2]" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="이메일" onKeyDown={e => e.key === 'Enter' && saveEdit()} />
+                  <button onClick={saveEdit} disabled={saving} className="text-primary"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setEditId(null)} className="text-muted-foreground"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 min-w-0">
+                    {c.name && <p className="text-sm font-medium truncate">{c.name}</p>}
+                    <p className={cn('truncate', c.name ? 'text-xs text-muted-foreground' : 'text-sm')}>{c.email}</p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => onCompose(c.email, c.name)} className="px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded" title="이 주소로 메일 작성">
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => startEdit(c)} className="px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50 rounded" title="편집">
+                      <Pen className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => deleteContact(c.id)} className="px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded" title="삭제">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── File Link Picker Modal ───────────────────────────────────────────────────
+
+function FileLinkPickerModal({ onInsert, onClose }: {
+  onInsert: (html: string) => void;
+  onClose: () => void;
+}) {
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/file-items').then(r => r.json()).then(d => {
+      setFiles(Array.isArray(d?.data) ? d.data : []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const getOrCreateLink = async (file: FileItem): Promise<string | null> => {
+    if (file.share_token) {
+      return `${window.location.origin}/share/${file.share_token}`;
+    }
+    setGenerating(file.id);
+    const res = await fetch(`/api/file-items/${file.id}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresInDays: 365 }),
+    }).then(r => r.json()).catch(() => null);
+    setGenerating(null);
+    if (res?.url) {
+      setFiles(prev => prev.map(f => f.id === file.id ? { ...f, share_token: res.token } : f));
+      return res.url;
+    }
+    return null;
+  };
+
+  const insertLink = async (file: FileItem) => {
+    const url = await getOrCreateLink(file);
+    if (url) {
+      onInsert(`<a href="${url}">${file.file_name}</a>`);
+    }
+  };
+
+  const filtered = files.filter(f =>
+    !search || f.file_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const formatSize = (size: number) =>
+    size < 1024 * 1024 ? `${(size / 1024).toFixed(0)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold">파일 링크 삽입</h3>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="px-5 pt-3 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input className="pl-8 h-8 text-sm" placeholder="파일 검색..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pt-3 pb-4 space-y-1">
+          {loading ? (
+            <p className="text-sm text-muted-foreground text-center py-8">불러오는 중...</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">파일이 없습니다.</p>
+          ) : filtered.map(f => (
+            <button
+              key={f.id}
+              onClick={() => insertLink(f)}
+              disabled={generating === f.id}
+              className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 border border-transparent hover:border-border transition-colors text-left"
+            >
+              <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{f.file_name}</p>
+                <p className="text-xs text-muted-foreground">{formatSize(f.file_size || 0)} · {new Date(f.created_at).toLocaleDateString('ko-KR')}</p>
+              </div>
+              {generating === f.id ? (
+                <RefreshCw className="w-4 h-4 text-primary animate-spin shrink-0" />
+              ) : f.share_token ? (
+                <Link2 className="w-4 h-4 text-green-500 shrink-0" />
+              ) : (
+                <span className="text-[11px] text-muted-foreground shrink-0">링크 생성</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
