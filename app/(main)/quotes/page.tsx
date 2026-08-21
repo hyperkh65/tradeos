@@ -902,7 +902,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
-export default function QuotesPage() {
+function QuotesPageInner() {
   const searchParams = useSearchParams();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -1195,3 +1195,6 @@ export default function QuotesPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function QuotesPage() { return <_S><QuotesPageInner /></_S>; }

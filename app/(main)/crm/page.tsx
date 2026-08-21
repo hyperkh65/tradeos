@@ -718,7 +718,7 @@ function SalePrintModal({ sale, company, companies, onClose }: {
 
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
-export default function CRMPage() {
+function CRMPageInner() {
   const searchParams = useSearchParams();
   const curYear = new Date().getFullYear();
   const [sales, setSales] = useState<SalesRecord[]>([]);
@@ -903,3 +903,6 @@ export default function CRMPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function CRMPage() { return <_S><CRMPageInner /></_S>; }

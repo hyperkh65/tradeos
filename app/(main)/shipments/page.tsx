@@ -960,7 +960,7 @@ function ShipmentModal({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ShipmentsPage() {
+function ShipmentsPageInner() {
   const searchParams = useSearchParams();
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1107,3 +1107,6 @@ export default function ShipmentsPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function ShipmentsPage() { return <_S><ShipmentsPageInner /></_S>; }

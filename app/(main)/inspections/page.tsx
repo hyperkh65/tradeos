@@ -435,7 +435,7 @@ function InspectionModal({ inspection, companies, products, purchaseOrders, onCl
 
 /* ─── Main Page ─────────────────────────────────────────────────────────────── */
 
-export default function InspectionsPage() {
+function InspectionsPageInner() {
   const searchParams = useSearchParams();
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -628,3 +628,6 @@ export default function InspectionsPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function InspectionsPage() { return <_S><InspectionsPageInner /></_S>; }

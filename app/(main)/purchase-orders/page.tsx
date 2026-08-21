@@ -972,7 +972,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
 
 /* ─── Main Page ──────────────────────────────────────────────────────────── */
 
-export default function PurchaseOrdersPage() {
+function PurchaseOrdersPageInner() {
   const searchParams = useSearchParams();
   const [pos, setPos] = useState<(PurchaseOrder & { imagesJson?: string; depositRatio?: string })[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -1210,3 +1210,6 @@ export default function PurchaseOrdersPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function PurchaseOrdersPage() { return <_S><PurchaseOrdersPageInner /></_S>; }

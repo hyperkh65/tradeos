@@ -424,7 +424,7 @@ function ClaimModal({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function ClaimsPage() {
+function ClaimsPageInner() {
   const searchParams = useSearchParams();
   const [claims, setClaims] = useState<Claim[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -646,3 +646,6 @@ export default function ClaimsPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function ClaimsPage() { return <_S><ClaimsPageInner /></_S>; }

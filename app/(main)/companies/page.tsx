@@ -291,7 +291,7 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
   );
 }
 
-export default function CompaniesPage() {
+function CompaniesPageInner() {
   const searchParams = useSearchParams();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -478,3 +478,6 @@ export default function CompaniesPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function CompaniesPage() { return <_S><CompaniesPageInner /></_S>; }

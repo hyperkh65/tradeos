@@ -1837,7 +1837,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
 
 // ── 메인 페이지 ────────────────────────────────────────────────────────────
 
-export default function CostsPage() {
+function CostsPageInner() {
   const searchParams = useSearchParams();
   const [records, setRecords] = useState<CostRecord[]>([]);
   const [invoices, setInvoices] = useState<ForeignInvoice[]>([]);
@@ -2178,3 +2178,6 @@ export default function CostsPage() {
     </div>
   );
 }
+
+import { Suspense as _S } from 'react';
+export default function CostsPage() { return <_S><CostsPageInner /></_S>; }
