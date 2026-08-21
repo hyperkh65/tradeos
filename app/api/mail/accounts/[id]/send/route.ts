@@ -141,9 +141,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       contentType: p.mime,
     }));
 
-    const fromAddr = account.from_email ? String(account.from_email) : String(account.email);
+    // SMTP From = 인증 계정 주소 (다른 도메인 From은 서버가 거부)
+    // from_email이 설정되면 Reply-To로 사용 → 수신자 답장은 from_email로 옴
     const authAddr = String(account.email);
+    const customAddr = account.from_email ? String(account.from_email) : null;
     const mailOpts = {
+      from: `"${user.name}" <${authAddr}>`,
+      ...(customAddr ? { replyTo: `"${user.name}" <${customAddr}>` } : {}),
       to,
       ...(cc && cc !== 'undefined' ? { cc } : {}),
       ...(bcc && bcc !== 'undefined' ? { bcc } : {}),
@@ -153,19 +157,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       attachments,
     };
 
-    let result: { port: number };
-    let usedFrom = fromAddr;
-    try {
-      result = await sendWithFallback(account, password, { from: `"${user.name}" <${fromAddr}>`, ...mailOpts });
-    } catch (e1) {
-      // from_email이 SMTP에서 거부된 경우 auth 이메일로 재시도
-      if (fromAddr !== authAddr) {
-        result = await sendWithFallback(account, password, { from: `"${user.name}" <${authAddr}>`, ...mailOpts });
-        usedFrom = authAddr;
-      } else {
-        throw e1;
-      }
-    }
+    const result = await sendWithFallback(account, password, mailOpts);
+    const usedFrom = customAddr || authAddr;
 
     // Save to sent folder in DB
     try {
