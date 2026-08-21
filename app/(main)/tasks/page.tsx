@@ -14,10 +14,10 @@ const statusStyle: Record<string, string> = { '해야 함': 'bg-gray-100 text-gr
 const statuses = ['해야 함', '진행 중', '대기', '완료'] as const;
 
 const MODULE_LABELS: Record<string, string> = {
-  sale: '매출', quote: '견적', po: '발주', contract: '계약', claim: '클레임', shipment: '선적', company: '거래처',
+  quote: '견적', po: '발주', sale: '매출', shipment: '선적', claim: '클레임', inspection: '검품', cost: '비용원장', company: '거래처',
 };
 const MODULE_LINKS: Record<string, string> = {
-  sale: '/sales', quote: '/quotes', po: '/purchase-orders', contract: '/contracts', claim: '/claims', shipment: '/shipments', company: '/companies',
+  quote: '/quotes', po: '/purchase-orders', sale: '/sales', shipment: '/shipments', claim: '/claims', inspection: '/inspections', cost: '/accounting', company: '/companies',
 };
 
 interface TaskComment {
