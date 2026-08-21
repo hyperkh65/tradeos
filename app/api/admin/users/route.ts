@@ -11,8 +11,8 @@ export async function GET() {
       const rows = db.prepare('SELECT id,email,name,role,department,status,approved_at,created_at FROM users ORDER BY created_at DESC').all();
       return NextResponse.json({ data: rows });
     }
-    // 일반 사용자: 기본 정보만
-    const rows = db.prepare("SELECT id,name,department FROM users WHERE status='approved' ORDER BY name ASC").all();
+    // 일반 사용자: 결재라인 선택용 전체 목록
+    const rows = db.prepare("SELECT id,name,department FROM users ORDER BY name ASC").all();
     return NextResponse.json({ data: rows });
   } catch {
     return NextResponse.json({ error: '오류 발생' }, { status: 500 });

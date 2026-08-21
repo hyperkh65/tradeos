@@ -1,7 +1,7 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -91,6 +91,8 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: '', type: 'personal', date: '', description: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   const load = useCallback(async () => {
     const data = await fetch('/api/calendar').then(r => r.json());
@@ -175,6 +177,19 @@ export default function CalendarPage() {
   const selErp = erpOn(selectedDate);
   const selTotal = selManual.length + selErp.length;
 
+  // 검색 필터 (전체 이벤트 대상)
+  const q = searchQuery.toLowerCase().trim();
+  const searchResults = q
+    ? [
+        ...events
+          .filter(e => e.title.toLowerCase().includes(q) || (e.description ?? '').toLowerCase().includes(q))
+          .map(e => ({ id: e.id, date: e.date, title: e.title, colorClass: getManualColor(e, myId), isErp: false, link: undefined as string | undefined })),
+        ...erpEvents
+          .filter(e => e.title.toLowerCase().includes(q))
+          .map(e => ({ id: e.id, date: e.date, title: e.title, colorClass: ERP_COLORS[e.erpType] || 'bg-gray-400', isErp: true, link: e.link })),
+      ].sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="일정" />
@@ -233,9 +248,29 @@ export default function CalendarPage() {
               <Button variant="outline" size="icon" className="h-8 w-8" onClick={prev}><ChevronLeft className="w-4 h-4" /></Button>
               <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDate(todayStr); }}>오늘</Button>
               <Button variant="outline" size="icon" className="h-8 w-8" onClick={next}><ChevronRight className="w-4 h-4" /></Button>
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setShowSearch(s => !s)}><Search className="w-4 h-4" /></Button>
               <Button size="sm" className="h-8 px-3 text-xs gap-1" onClick={() => openCreate(selectedDate)}><Plus className="w-3.5 h-3.5" />추가</Button>
             </div>
           </div>
+
+          {/* 검색바 */}
+          {showSearch && (
+            <div className="relative mb-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                autoFocus
+                className="w-full h-8 rounded-md border border-input bg-background pl-8 pr-8 text-sm outline-none focus:ring-1 focus:ring-primary"
+                placeholder="일정/전산 검색..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setSearchQuery('')}>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* 범례 */}
           <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
@@ -339,22 +374,49 @@ export default function CalendarPage() {
           {/* 패널 헤더 */}
           <div className="bg-primary px-4 py-3 shrink-0">
             <h3 className="text-sm font-semibold text-primary-foreground">
-              {fmtDate(selectedDate)}
+              {q ? `검색: "${searchQuery}"` : fmtDate(selectedDate)}
             </h3>
             <p className="text-[11px] text-primary-foreground/70 mt-0.5">
-              총 {selTotal}건
-              {selTotal > 0 && ` · 수동 ${selManual.length} / 전산 ${selErp.length}`}
+              {q ? `${searchResults.length}건 검색됨` : `총 ${selTotal}건${selTotal > 0 ? ` · 수동 ${selManual.length} / 전산 ${selErp.length}` : ''}`}
             </p>
           </div>
 
           {/* 일정 추가 버튼 */}
-          <div className="px-4 py-2 border-b border-border shrink-0">
-            <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1" onClick={() => openCreate(selectedDate)}>
-              <Plus className="w-3 h-3" />이 날 일정 추가
-            </Button>
-          </div>
+          {!q && (
+            <div className="px-4 py-2 border-b border-border shrink-0">
+              <Button size="sm" variant="outline" className="w-full h-8 text-xs gap-1" onClick={() => openCreate(selectedDate)}>
+                <Plus className="w-3 h-3" />이 날 일정 추가
+              </Button>
+            </div>
+          )}
 
-          {/* 이벤트 목록 */}
+          {/* 검색 결과 */}
+          {q ? (
+            <div className="flex-1 overflow-y-auto divide-y divide-border">
+              {searchResults.length === 0 ? (
+                <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">검색 결과 없음</div>
+              ) : searchResults.map(ev => (
+                ev.link ? (
+                  <a key={ev.id} href={ev.link} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+                    <span className={cn('w-2 h-2 rounded-full shrink-0', ev.colorClass)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs truncate">{ev.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{ev.date.slice(5).replace('-', '/')}</p>
+                    </div>
+                  </a>
+                ) : (
+                  <div key={ev.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className={cn('w-2 h-2 rounded-full shrink-0', ev.colorClass)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs truncate">{ev.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{ev.date.slice(5).replace('-', '/')}</p>
+                    </div>
+                  </div>
+                )
+              ))}
+            </div>
+          ) : (
+          /* 이벤트 목록 */
           <div className="flex-1 overflow-y-auto">
             {selTotal === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground">
@@ -398,6 +460,7 @@ export default function CalendarPage() {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

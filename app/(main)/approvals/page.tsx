@@ -600,17 +600,41 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
   const [steps, setSteps] = useState<Array<{ approverId: string; approverName: string; role: string }>>(
     template?.steps?.length ? template.steps : [{ approverId: '', approverName: '', role: '결재' }]
   );
-  const [related, setRelated] = useState<string[]>([]);
+  interface RelatedDoc { module: string; id: string; label: string; }
+  const [related, setRelated] = useState<RelatedDoc[]>([]);
   const [loading, setLoading] = useState(false);
+  const [relatedModule, setRelatedModule] = useState('quote');
   const [relatedSearch, setRelatedSearch] = useState('');
-  const [allApprovals, setAllApprovals] = useState<Approval[]>([]);
+  const [relatedResults, setRelatedResults] = useState<Array<{ businessId: string; label: string; sub: string }>>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
+  const MODULE_LABELS: Record<string, string> = {
+    quote: '견적', po: '발주', sale: '매출', shipment: '선적',
+    inspection: '검품', claim: '클레임', cost: '비용', company: '거래처',
+  };
+
   useEffect(() => {
-    fetch('/api/approvals?tab=mine').then(r => r.json()).then(d => {
-      if (Array.isArray(d)) setAllApprovals(d);
-    }).catch(() => {});
-  }, []);
+    if (!relatedSearch.trim()) { setRelatedResults([]); return; }
+    setRelatedLoading(true);
+    const timer = setTimeout(() => {
+      fetch(`/api/tasks/module-records?module=${relatedModule}&q=${encodeURIComponent(relatedSearch)}`)
+        .then(r => r.json())
+        .then(d => { setRelatedResults(Array.isArray(d.data) ? d.data : []); })
+        .catch(() => setRelatedResults([]))
+        .finally(() => setRelatedLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [relatedModule, relatedSearch]);
+
+  const addRelated = (item: { businessId: string; label: string; sub: string }) => {
+    const entry: RelatedDoc = { module: relatedModule, id: item.businessId, label: item.label + (item.sub ? ` ${item.sub}` : '') };
+    if (!related.find(r => r.module === relatedModule && r.id === item.businessId)) {
+      setRelated(prev => [...prev, entry]);
+    }
+    setRelatedSearch('');
+    setRelatedResults([]);
+  };
 
   const selectType = (id: string) => { setFormType(id); setStep('form'); };
 
@@ -785,35 +809,50 @@ function CreateModal({ users, myId, myName, onClose, onCreated, template }: {
               {/* 관련 문서 */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-2 block flex items-center gap-1">
-                  <Link2 className="w-3.5 h-3.5" />관련 문서 연결
+                  <Link2 className="w-3.5 h-3.5" />관련 문서 연결 (복수 선택 가능)
                 </label>
-                <Input
-                  placeholder="문서 제목 검색..."
-                  value={relatedSearch}
-                  onChange={e => setRelatedSearch(e.target.value)}
-                  className="h-8 mb-2"
-                />
-                {relatedSearch && (
-                  <div className="border border-border rounded-lg overflow-hidden max-h-32 overflow-y-auto">
-                    {allApprovals.filter(a => a.form_title.toLowerCase().includes(relatedSearch.toLowerCase()) && !related.includes(a.id)).map(a => (
-                      <button key={a.id} onClick={() => { setRelated(r => [...r, a.id]); setRelatedSearch(''); }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-0">
-                        <span className="font-mono text-muted-foreground mr-2">{a.business_id}</span>{a.form_title}
+                <div className="flex gap-2 mb-2">
+                  <select
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs shrink-0"
+                    value={relatedModule}
+                    onChange={e => { setRelatedModule(e.target.value); setRelatedSearch(''); setRelatedResults([]); }}
+                  >
+                    {Object.entries(MODULE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <div className="relative flex-1">
+                    <Input
+                      placeholder={`${MODULE_LABELS[relatedModule] ?? relatedModule} 검색...`}
+                      value={relatedSearch}
+                      onChange={e => setRelatedSearch(e.target.value)}
+                      className="h-8 pr-8"
+                    />
+                    {relatedLoading && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">로딩</span>
+                    )}
+                  </div>
+                </div>
+                {relatedResults.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden max-h-36 overflow-y-auto mb-2">
+                    {relatedResults.map(item => (
+                      <button key={item.businessId}
+                        onClick={() => addRelated(item)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-0 flex items-center gap-2">
+                        <span className="font-mono text-muted-foreground shrink-0">{item.businessId}</span>
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {item.sub && <span className="text-muted-foreground shrink-0 truncate max-w-[80px]">{item.sub}</span>}
                       </button>
                     ))}
                   </div>
                 )}
                 {related.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {related.map(relId => {
-                      const a = allApprovals.find(x => x.id === relId);
-                      return a ? (
-                        <span key={relId} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
-                          {a.form_title}
-                          <button onClick={() => setRelated(r => r.filter(x => x !== relId))}><X className="w-2.5 h-2.5" /></button>
-                        </span>
-                      ) : null;
-                    })}
+                  <div className="flex flex-wrap gap-1">
+                    {related.map((doc, i) => (
+                      <span key={i} className="flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
+                        <span className="text-[10px] opacity-70">[{MODULE_LABELS[doc.module] ?? doc.module}]</span>
+                        {doc.label}
+                        <button onClick={() => setRelated(r => r.filter((_, j) => j !== i))}><X className="w-2.5 h-2.5" /></button>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>

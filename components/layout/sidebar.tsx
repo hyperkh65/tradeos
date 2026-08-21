@@ -52,11 +52,11 @@ const navGroups = [
     label: '협업',
     items: [
       { label: '홈', href: '/', icon: LayoutDashboard },
-      { label: '메신저', href: '/messenger', icon: MessageSquare, badge: '3' },
-      { label: '메일', href: '/mail', icon: Mail, badge: '5' },
+      { label: '메신저', href: '/messenger', icon: MessageSquare, badgeKey: 'messenger' },
+      { label: '메일', href: '/mail', icon: Mail, badgeKey: 'mail' },
       { label: '내 업무', href: '/tasks', icon: CheckSquare },
       { label: '일정', href: '/calendar', icon: Calendar },
-      { label: '결재', href: '/approvals', icon: FileText, badge: '1' },
+      { label: '결재', href: '/approvals', icon: FileText, badgeKey: 'approvals' },
     ],
   },
   {
@@ -118,9 +118,18 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const { close, collapsed, toggleCollapsed } = useSidebar();
   const [groupCollapsed, setGroupCollapsed] = useState<Record<string, boolean>>({});
   const [me, setMe] = useState<{ name: string; role: string } | null>(null);
+  const [counts, setCounts] = useState<{ approvals: number; mail: number; messenger: number }>({ approvals: 0, mail: 0, messenger: 0 });
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMe(j.user); }).catch(() => {});
+    const fetchCounts = () => {
+      fetch('/api/notifications/counts').then(r => r.json()).then(d => {
+        if (d && typeof d === 'object') setCounts({ approvals: d.approvals ?? 0, mail: d.mail ?? 0, messenger: d.messenger ?? 0 });
+      }).catch(() => {});
+    };
+    fetchCounts();
+    const timer = setInterval(fetchCounts, 30000);
+    return () => clearInterval(timer);
   }, []);
 
   const toggleGroup = (label: string) => {
@@ -170,7 +179,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                 )}
               >
                 <item.icon className="w-4 h-4 shrink-0" />
-                {item.badge && (
+                {item.badgeKey && (counts[item.badgeKey as keyof typeof counts] > 0) && (
                   <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-destructive rounded-full" />
                 )}
               </button>
@@ -252,12 +261,12 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
                     >
                       <item.icon className={cn('w-4 h-4 shrink-0', active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground')} />
                       <span className="truncate">{item.label}</span>
-                      {item.badge && (
+                      {item.badgeKey && (counts[item.badgeKey as keyof typeof counts] > 0) && (
                         <Badge
                           variant={active ? 'outline' : 'secondary'}
                           className="ml-auto text-[10px] h-4 px-1 py-0 min-w-[16px] flex items-center justify-center"
                         >
-                          {item.badge}
+                          {counts[item.badgeKey as keyof typeof counts]}
                         </Badge>
                       )}
                     </button>
