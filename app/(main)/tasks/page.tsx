@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckSquare, Plus, Clock, X, Loader2, Link as LinkIcon, MessageSquare, ChevronRight } from 'lucide-react';
+import { CheckSquare, Plus, Clock, X, Loader2, Link as LinkIcon, ChevronRight, Trash2, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Task } from '@/types';
@@ -123,7 +123,9 @@ function TaskCreateModal({ onClose, onSave }: { onClose: () => void; onSave: (t:
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
 
-function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onClose: () => void; onUpdate: (t: ExtendedTask) => void }) {
+interface ModuleRecord { id: string; businessId: string; label: string; sub: string; status?: string; date?: string; }
+
+function TaskDetailModal({ task, onClose, onUpdate, onDelete }: { task: ExtendedTask; onClose: () => void; onUpdate: (t: ExtendedTask) => void; onDelete: (id: string) => void }) {
   const [form, setForm] = useState({
     title: task.title,
     description: task.description || '',
@@ -133,15 +135,19 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
     relatedName: task.relatedName || '',
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [links, setLinks] = useState<TaskLink[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
   const [linkModule, setLinkModule] = useState('quote');
-  const [linkLabel, setLinkLabel] = useState('');
-  const [linkRecordId, setLinkRecordId] = useState('');
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [tab, setTab] = useState<'detail' | 'comments' | 'links'>('detail');
+  // 연결 - 모듈 레코드 검색
+  const [moduleRecords, setModuleRecords] = useState<ModuleRecord[]>([]);
+  const [moduleLoading, setModuleLoading] = useState(false);
+  const [moduleQ, setModuleQ] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState<ModuleRecord | null>(null);
 
   const loadComments = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}/comments`);
@@ -155,7 +161,24 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
     setLinks(json.data || []);
   }, [task.id]);
 
+  const loadModuleRecords = useCallback(async (mod: string, q: string) => {
+    setModuleLoading(true);
+    setSelectedRecord(null);
+    try {
+      const res = await fetch(`/api/tasks/module-records?module=${mod}&q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      setModuleRecords(json.data || []);
+    } finally {
+      setModuleLoading(false);
+    }
+  }, []);
+
   useEffect(() => { loadComments(); loadLinks(); }, [loadComments, loadLinks]);
+
+  // 링크 폼 열릴 때 + 모듈 변경 시 자동 로드
+  useEffect(() => {
+    if (showLinkForm) loadModuleRecords(linkModule, moduleQ);
+  }, [showLinkForm, linkModule]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     setSaving(true);
@@ -169,6 +192,18 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
       if (json.data) onUpdate({ ...task, ...json.data });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('이 업무를 삭제할까요?')) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+      onDelete(task.id);
+      onClose();
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -188,14 +223,14 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
     }
   };
 
-  const handleAddLink = async () => {
-    if (!linkLabel.trim()) return;
+  const handleAddLink = async (rec: ModuleRecord) => {
     await fetch(`/api/tasks/${task.id}/links`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ module: linkModule, recordId: linkRecordId, recordLabel: linkLabel }),
+      body: JSON.stringify({ module: linkModule, recordId: rec.businessId, recordLabel: rec.label }),
     });
-    setLinkLabel(''); setLinkRecordId(''); setShowLinkForm(false);
+    setShowLinkForm(false);
+    setSelectedRecord(null);
     loadLinks();
   };
 
@@ -206,10 +241,15 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className={cn('bg-background rounded-xl shadow-2xl w-full max-h-[90vh] flex flex-col transition-all', tab === 'links' && showLinkForm ? 'max-w-4xl' : 'max-w-2xl')}>
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold truncate flex-1 mr-2">{task.title}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={handleDelete} disabled={deleting} className="text-muted-foreground hover:text-destructive p-1 rounded" title="삭제">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            </button>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded"><X className="w-5 h-5" /></button>
+          </div>
         </div>
 
         {/* 탭 */}
@@ -267,6 +307,9 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
               </div>
               <div className="flex gap-2 pt-1">
                 <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+                <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting} className="gap-1">
+                  <Trash2 className="w-3.5 h-3.5" />삭제
+                </Button>
                 <Button className="flex-1" onClick={handleSave} disabled={saving}>
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
                 </Button>
@@ -307,20 +350,17 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
           )}
 
           {tab === 'links' && (
-            <div className="p-4 space-y-3">
-              <div className="space-y-2">
-                {links.length === 0 && (
+            <div className="flex flex-col gap-0">
+              {/* 기존 연결 목록 */}
+              <div className="p-4 space-y-2">
+                {links.length === 0 && !showLinkForm && (
                   <p className="text-sm text-muted-foreground text-center py-4">연결된 문서가 없습니다.</p>
                 )}
                 {links.map(lk => (
                   <div key={lk.id} className="flex items-center gap-2 p-2.5 border border-border rounded-lg">
                     <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium">{MODULE_LABELS[lk.module] ?? lk.module}</span>
                     <span className="text-sm flex-1 truncate">{lk.record_label || lk.record_id}</span>
-                    <a
-                      href={`${MODULE_LINKS[lk.module] ?? '/'}?id=${lk.record_id}`}
-                      className="text-xs text-primary hover:underline shrink-0"
-                      target="_blank" rel="noopener noreferrer"
-                    >
+                    <a href={`${MODULE_LINKS[lk.module] ?? '/'}?id=${lk.record_id}`} className="text-primary shrink-0" target="_blank" rel="noopener noreferrer">
                       <ChevronRight className="w-3.5 h-3.5" />
                     </a>
                     <button onClick={() => handleRemoveLink(lk.id)} className="text-muted-foreground hover:text-destructive shrink-0">
@@ -328,34 +368,107 @@ function TaskDetailModal({ task, onClose, onUpdate }: { task: ExtendedTask; onCl
                     </button>
                   </div>
                 ))}
+                {!showLinkForm && (
+                  <Button size="sm" variant="outline" className="w-full gap-1 mt-1" onClick={() => { setShowLinkForm(true); setModuleQ(''); }}>
+                    <LinkIcon className="w-3.5 h-3.5" />모듈 연결
+                  </Button>
+                )}
               </div>
-              {showLinkForm ? (
-                <div className="border border-border rounded-lg p-3 space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">모듈</label>
-                      <select value={linkModule} onChange={e => setLinkModule(e.target.value)} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
-                        {Object.entries(MODULE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
+
+              {/* 문서 선택 패널 (3단: 모듈 | 목록 | 상세) */}
+              {showLinkForm && (
+                <div className="border-t border-border flex h-72">
+                  {/* 모듈 선택 */}
+                  <div className="w-28 shrink-0 border-r border-border flex flex-col">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase px-2 pt-2 pb-1">모듈</p>
+                    {Object.entries(MODULE_LABELS).map(([k, v]) => (
+                      <button
+                        key={k}
+                        onClick={() => { setLinkModule(k); setModuleQ(''); setSelectedRecord(null); }}
+                        className={cn('text-left text-xs px-3 py-2 transition-colors', linkModule === k ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground')}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                    <div className="flex-1" />
+                    <button onClick={() => { setShowLinkForm(false); setSelectedRecord(null); }} className="text-xs text-muted-foreground hover:text-foreground px-3 py-2 border-t border-border text-left">취소</button>
+                  </div>
+
+                  {/* 문서 목록 */}
+                  <div className="w-52 shrink-0 border-r border-border flex flex-col">
+                    <div className="p-2 border-b border-border">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                        <input
+                          className="w-full h-7 pl-6 pr-2 text-xs rounded border border-input bg-background"
+                          placeholder="검색..."
+                          value={moduleQ}
+                          onChange={e => { setModuleQ(e.target.value); loadModuleRecords(linkModule, e.target.value); }}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">문서 번호/ID</label>
-                      <Input className="h-8 text-xs" value={linkRecordId} onChange={e => setLinkRecordId(e.target.value)} placeholder="QT-2026-0006" />
+                    <div className="flex-1 overflow-y-auto">
+                      {moduleLoading && <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>}
+                      {!moduleLoading && moduleRecords.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">결과 없음</p>}
+                      {moduleRecords.map(rec => (
+                        <button
+                          key={rec.id}
+                          onClick={() => setSelectedRecord(rec)}
+                          className={cn('w-full text-left px-3 py-2 border-b border-border/50 transition-colors', selectedRecord?.id === rec.id ? 'bg-primary/10' : 'hover:bg-muted/50')}
+                        >
+                          <p className="text-xs font-medium truncate">{rec.businessId}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{rec.sub}</p>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">표시 이름</label>
-                    <Input className="h-8 text-xs" value={linkLabel} onChange={e => setLinkLabel(e.target.value)} placeholder="견적 QT-2026-0006" />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowLinkForm(false)}>취소</Button>
-                    <Button size="sm" className="flex-1" onClick={handleAddLink} disabled={!linkLabel.trim()}>추가</Button>
+
+                  {/* 상세/내역 패널 */}
+                  <div className="flex-1 flex flex-col">
+                    {selectedRecord ? (
+                      <>
+                        <div className="p-3 border-b border-border">
+                          <p className="text-xs font-semibold">{selectedRecord.label}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{selectedRecord.sub}</p>
+                        </div>
+                        <div className="p-3 flex-1 space-y-2">
+                          {selectedRecord.status && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-muted-foreground w-12">상태</span>
+                              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">{selectedRecord.status}</span>
+                            </div>
+                          )}
+                          {selectedRecord.date && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-muted-foreground w-12">날짜</span>
+                              <span className="text-xs">{selectedRecord.date}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground w-12">ID</span>
+                            <span className="text-xs font-mono">{selectedRecord.businessId}</span>
+                          </div>
+                          <a
+                            href={`${MODULE_LINKS[linkModule] ?? '/'}?id=${selectedRecord.businessId}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                          >
+                            <ChevronRight className="w-3 h-3" />전체 보기
+                          </a>
+                        </div>
+                        <div className="p-3 border-t border-border">
+                          <Button size="sm" className="w-full" onClick={() => handleAddLink(selectedRecord)}>
+                            이 문서 연결
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center">
+                        <p className="text-xs text-muted-foreground">문서를 선택하면 내역이 표시됩니다</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => setShowLinkForm(true)}>
-                  <LinkIcon className="w-3.5 h-3.5" />모듈 연결
-                </Button>
               )}
             </div>
           )}
@@ -413,6 +526,18 @@ export default function TasksPage() {
     setSelectedTask(updated);
   };
 
+  const handleDelete = async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setSelectedTask(null);
+  };
+
+  const handleDeleteFromCard = async (e: React.MouseEvent, task: ExtendedTask) => {
+    e.stopPropagation();
+    if (!confirm('이 업무를 삭제할까요?')) return;
+    await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+    setTasks(prev => prev.filter(t => t.id !== task.id));
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="내 업무" />
@@ -427,6 +552,7 @@ export default function TasksPage() {
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdate}
+          onDelete={handleDelete}
         />
       )}
 
@@ -514,12 +640,21 @@ export default function TasksPage() {
                       {byStatus(status).map(task => (
                         <div
                           key={task.id}
-                          className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-sm transition-all"
+                          className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-sm transition-all group"
                           onClick={() => setSelectedTask(task)}
                         >
                           <div className="flex items-start justify-between gap-2 mb-2">
                             <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', priorityStyle[task.priority])}>{priorityLabel[task.priority]}</span>
-                            {task.dueDate && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{String(task.dueDate).slice(5, 10)}</span>}
+                            <div className="flex items-center gap-1">
+                              {task.dueDate && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{String(task.dueDate).slice(5, 10)}</span>}
+                              <button
+                                onClick={e => handleDeleteFromCard(e, task)}
+                                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
                           </div>
                           <p className="text-sm font-medium leading-tight">{task.title}</p>
                           {task.assigneeName && <p className="text-[11px] text-blue-600 mt-1">담당: {task.assigneeName}</p>}
@@ -541,17 +676,22 @@ export default function TasksPage() {
               <div className="rounded-lg border border-border overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
-                    <tr>{['우선순위', '업무명', '담당자', '상태', '마감일', '관련'].map(h => <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>)}</tr>
+                    <tr>{['우선순위', '업무명', '담당자', '상태', '마감일', '관련', ''].map(h => <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredTasks.map(t => (
-                      <tr key={t.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setSelectedTask(t)}>
+                      <tr key={t.id} className="hover:bg-muted/30 transition-colors cursor-pointer group" onClick={() => setSelectedTask(t)}>
                         <td className="px-4 py-3"><span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', priorityStyle[t.priority])}>{priorityLabel[t.priority]}</span></td>
                         <td className="px-4 py-3 font-medium">{t.title}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{t.assigneeName || t.ownerName || '-'}</td>
                         <td className="px-4 py-3"><span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', statusStyle[t.status])}>{t.status}</span></td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{t.dueDate ? String(t.dueDate).slice(0, 10) : '-'}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[120px]">{t.relatedName ?? '-'}</td>
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                          <button onClick={e => handleDeleteFromCard(e, t)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all" title="삭제">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
