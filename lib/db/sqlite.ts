@@ -1050,6 +1050,8 @@ function ensureIndexes(db: Database.Database) {
     `CREATE INDEX IF NOT EXISTS idx_shipments_bizid     ON shipments(business_id)`,
     `CREATE INDEX IF NOT EXISTS idx_imports_shipment    ON imports(shipment_id, shipment_business_id)`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_related    ON expenses(related_type, related_id)`,
+    // 전표번호 중복 방지 (과거 COUNT(*) 기반 채번 버그로 중복 생성된 적 있음)
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_entry_no ON journal_entries(entry_no)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }

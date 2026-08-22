@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, newId, now } from '@/lib/db/sqlite';
-
-function nextEntryNo(db: ReturnType<typeof getDb>) {
-  const year = new Date().getFullYear();
-  const row = db.prepare("SELECT COUNT(*) as n FROM journal_entries WHERE entry_no LIKE ?").get(`J-${year}-%`) as {n:number};
-  return `J-${year}-${String(row.n + 1).padStart(4,'0')}`;
-}
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 
 export async function GET(req: NextRequest) {
   const db = getDb();
@@ -49,10 +43,10 @@ export async function POST(req: NextRequest) {
       existingId = existing.id;
       entryNo = existing.entry_no; // 전표번호 유지
     } else {
-      entryNo = nextEntryNo(db);
+      entryNo = nextBizId('J');
     }
   } else {
-    entryNo = nextEntryNo(db);
+    entryNo = nextBizId('J');
   }
 
   const id = existingId || newId();
