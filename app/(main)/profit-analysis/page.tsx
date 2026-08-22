@@ -7,7 +7,7 @@ import {
   Plus, Search, X, Loader2, Pencil, Trash2,
   ChevronDown, ChevronRight, History, TrendingUp,
   Link2, CheckCircle2, AlertCircle, Save, FileSpreadsheet,
-  Copy, Printer, Upload,
+  Copy, Printer, Upload, Folder, Download, Archive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback } from 'react';
@@ -231,6 +231,7 @@ export default function ProfitAnalysisPage() {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkQ, setLinkQ] = useState('');
   const [notionSaving, setNotionSaving] = useState(false);
+  const [filesFor, setFilesFor] = useState<PA | null>(null);
 
   // ── Load list ───────────────────────────────────────────────────────────────
 
@@ -542,7 +543,14 @@ export default function ProfitAnalysisPage() {
                     <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full', pa.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
                       {pa.status === 'confirmed' ? '확정' : '작성중'}
                     </span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">{pa.analysisDate || ''}</span>
+                    <button
+                      type="button"
+                      title="관련 서류 모아보기"
+                      className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-blue-600 px-1 py-0.5 rounded hover:bg-blue-50"
+                      onClick={(e) => { e.stopPropagation(); setFilesFor(pa); }}>
+                      <Folder className="w-3 h-3" />파일보기
+                    </button>
+                    <span className="text-[10px] text-muted-foreground">{pa.analysisDate || ''}</span>
                   </div>
                   <div className="text-sm font-medium mt-0.5 truncate">{pa.title}</div>
                   <div className="flex items-center gap-3 mt-1 text-xs">
@@ -571,6 +579,9 @@ export default function ProfitAnalysisPage() {
                   </span>
                   <span className="font-semibold text-sm truncate">{selected.title}</span>
                   <div className="ml-auto flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setFilesFor(selected)}>
+                      <Folder className="w-3.5 h-3.5" />파일보기
+                    </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => exportExcel(selected)}>
                       <FileSpreadsheet className="w-3.5 h-3.5" />엑셀
                     </Button>
@@ -955,12 +966,106 @@ export default function ProfitAnalysisPage() {
             </div>
           </div>
         )}
+        {filesFor && <DocumentsModal pa={filesFor} onClose={() => setFilesFor(null)} />}
       </div>
     </div>
   );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface DocFileEntry { category: string; sourceLabel: string; label: string; url: string; size?: number; uploadedAt?: string }
+
+function DocumentsModal({ pa, onClose }: { pa: PA; onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [files, setFiles] = useState<DocFileEntry[]>([]);
+  const [error, setError] = useState('');
+  const [zipping, setZipping] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    fetch(`/api/profit-analysis/${pa.id}/documents`)
+      .then(r => r.json())
+      .then(d => { if (d.error) setError(d.error); else setFiles(d.data || []); })
+      .catch(() => setError('서류 목록을 불러오지 못했습니다.'))
+      .finally(() => setLoading(false));
+  }, [pa.id]);
+
+  const groups = files.reduce((acc, f) => {
+    (acc[f.category] ||= []).push(f);
+    return acc;
+  }, {} as Record<string, DocFileEntry[]>);
+
+  const downloadableCount = files.length; // 온디맨드 생성물 포함 - zip 대상은 서버에서 실제 존재하는 파일만 추림
+
+  const handleZipDownload = async () => {
+    setZipping(true);
+    try {
+      const res = await fetch(`/api/profit-analysis/${pa.id}/documents/zip`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || '다운로드할 파일이 없습니다.');
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? decodeURIComponent(match[1]) : `${pa.businessId}_서류.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setZipping(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-card rounded-xl shadow-xl w-[640px] max-h-[75vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Folder className="w-4 h-4 text-muted-foreground" />
+          <div className="text-sm font-semibold">{pa.businessId} 관련 서류</div>
+          <span className="text-[10px] text-muted-foreground">{pa.title}</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleZipDownload} disabled={zipping || downloadableCount === 0}>
+              <Archive className="w-3.5 h-3.5" />{zipping ? '압축중…' : '전체 다운로드'}
+            </Button>
+            <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : error ? (
+            <div className="py-8 text-center text-xs text-red-600">{error}</div>
+          ) : files.length === 0 ? (
+            <div className="py-12 text-center text-xs text-muted-foreground">연결된 서류가 없습니다.</div>
+          ) : (
+            Object.entries(groups).map(([category, items]) => (
+              <div key={category} className="border-b border-border">
+                <div className="px-4 pt-3 pb-1 text-[11px] font-semibold text-muted-foreground">{category} ({items.length})</div>
+                {items.map((f, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/40">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs truncate">{f.label}</div>
+                      <div className="text-[10px] text-muted-foreground">{f.sourceLabel}{f.size ? ` · ${(f.size / 1024).toFixed(0)}KB` : ''}{f.uploadedAt ? ` · ${f.uploadedAt.slice(0, 10)}` : ''}</div>
+                    </div>
+                    <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-blue-600" title="다운로드">
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ViewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
