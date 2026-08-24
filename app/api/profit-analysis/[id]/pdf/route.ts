@@ -15,7 +15,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return new NextResponse(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${encodeURIComponent(row.business_id)}_수익분석표.pdf"`,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(`${row.business_id}_수익분석표.pdf`)}"`,
       'Cache-Control': 'no-store',
     },
   });
