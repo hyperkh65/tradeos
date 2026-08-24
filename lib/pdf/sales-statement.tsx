@@ -27,8 +27,8 @@ export function SalesStatementDoc(p: SalesStatementProps) {
 
   return (
     <Document>
-      <Page size="A4" style={{ fontFamily: 'NotoSansKR', padding: '12mm', fontSize: 9, color: '#111' }}>
-        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+      <Page size="A4" style={{ fontFamily: 'NotoSansKR', padding: '9mm', fontSize: 9, color: '#111' }}>
+        <View style={{ alignItems: 'center', marginBottom: 12 }}>
           <Text style={{ fontSize: 22, fontWeight: 800, letterSpacing: 12, color: '#222' }}>거 래 명 세 표</Text>
           <Text style={{ fontSize: 8.5, color: '#888', marginTop: 4, letterSpacing: 1 }}>TRANSACTION STATEMENT</Text>
         </View>
@@ -90,9 +90,9 @@ export function SalesStatementDoc(p: SalesStatementProps) {
           ))}
           {Array.from({ length: emptyRows }).map((_, i) => (
             <View style={{ flexDirection: 'row' }} key={`e${i}`}>
-              <Text style={{ width: 24, height: 20, textAlign: 'center', color: '#bbb', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{p.items.length + i + 1}</Text>
+              <Text style={{ width: 24, height: 14, textAlign: 'center', color: '#bbb', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{p.items.length + i + 1}</Text>
               {[44, 68, 72, 68].map((w, j) => (
-                <Text key={j} style={j === 0 ? { flex: 1, height: 20, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' } : { width: w, height: 20, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }} />
+                <Text key={j} style={j === 0 ? { flex: 1, height: 14, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' } : { width: w, height: 14, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }} />
               ))}
             </View>
           ))}
@@ -105,7 +105,7 @@ export function SalesStatementDoc(p: SalesStatementProps) {
         </View>
 
         <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
-          <View style={{ backgroundColor: '#f9f9f9', padding: 20, borderRadius: 8, minWidth: 260 }}>
+          <View style={{ backgroundColor: '#f9f9f9', padding: 14, borderRadius: 8, minWidth: 260 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, fontSize: 9 }}>
               <Text style={{ color: '#666' }}>공급가액</Text><Text style={{ fontWeight: 700 }}>{fmt(p.netAmount)}원</Text>
             </View>
@@ -125,7 +125,7 @@ export function SalesStatementDoc(p: SalesStatementProps) {
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
           {p.company.bank ? (
             <View style={{ border: '1px solid #eee', borderRadius: 6, padding: 10, fontSize: 8, flex: 1, marginRight: 20 }}>
               <Text style={{ fontWeight: 600, color: '#888', marginBottom: 6, fontSize: 7.5 }}>입금 계좌</Text>

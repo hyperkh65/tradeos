@@ -38,24 +38,37 @@ export async function generatePurchaseOrderPdf(poId: string): Promise<Buffer | n
 
   const items: POItem[] = (() => { try { return JSON.parse((row.items_json as string) || '[]'); } catch { return []; } })();
   const currency = (row.currency as string) || 'USD';
-  const total = items.reduce((s, i) => s + (i.amount || 0), 0) || (row.total_amount as number) || 0;
-  const depositRatio = parseInt((row.deposit_ratio as string) || '30', 10);
-  const depositAmt = (row.deposit_amount as number) ?? Math.round(total * depositRatio / 100);
-  const balanceAmt = (row.balance_amount as number) ?? (total - depositAmt);
+  const totalAmount = (row.total_amount as number) || items.reduce((s, i) => s + (i.amount || i.unitPrice * ((i.qty || i.quantity) || 0) || 0), 0);
+  const depositRatio = Number(row.deposit_ratio) || 30;
+  const depositAmount = (row.deposit_amount as number) || Math.round(totalAmount * depositRatio / 100 * 100) / 100;
+  const balanceAmount = (row.balance_amount as number) || totalAmount - depositAmount;
+
+  const supplier = row.supplier_id
+    ? db.prepare('SELECT * FROM companies WHERE id=?').get(row.supplier_id as string) as Record<string, unknown> | undefined
+    : undefined;
+
+  const company = getCompanySettings();
 
   return renderToBuffer(PurchaseOrderDoc({
     businessId: row.business_id as string,
-    piNumber: row.pi_number as string | undefined,
     orderDate: row.order_date as string,
-    supplierName: row.supplier_name as string,
-    incoterm: row.incoterm as string | undefined,
-    productionDueDate: row.production_due_date as string | undefined,
-    inspectionDate: row.inspection_date as string | undefined,
     etd: row.etd as string | undefined,
-    currency, items, total,
+    supplierName: row.supplier_name as string,
+    supplierCo: supplier ? {
+      ceo: supplier.ceo as string | undefined,
+      address: supplier.address as string | undefined,
+      phone: supplier.phone as string | undefined,
+      email: supplier.email as string | undefined,
+      wechat: supplier.wechat as string | undefined,
+    } : undefined,
+    currency, items, totalAmount,
+    depositRatio, depositAmount, balanceAmount,
     paymentTerms: row.payment_terms as string | undefined,
-    depositRatio, depositAmt, balanceAmt,
+    incoterm: row.incoterm as string | undefined,
     remark: row.remark as string | undefined,
+    company,
+    companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
+    stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }
 
