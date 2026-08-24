@@ -7,6 +7,7 @@ import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
+import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
@@ -85,6 +86,7 @@ function SaleProductSearch({ value, products, allSales, onSelect }: {
   onSelect: (name: string, unitPrice: number, specification: string) => void;
 }) {
   const [show, setShow] = useState(false);
+  const [manuallyClosed, setManuallyClosed] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 280 });
   const anchorRef = useRef<HTMLDivElement>(null);
   const lower = value.toLowerCase();
@@ -96,6 +98,7 @@ function SaleProductSearch({ value, products, allSales, onSelect }: {
     return prices[0]?.price ?? null;
   };
   useEffect(() => {
+    setManuallyClosed(false);
     if (matched.length > 0 && anchorRef.current) {
       const r = anchorRef.current.getBoundingClientRect();
       setPos({ top: r.bottom + 2, left: r.left, width: Math.max(280, r.width) });
@@ -104,14 +107,21 @@ function SaleProductSearch({ value, products, allSales, onSelect }: {
   }, [value, matched.length]);
   return (
     <div ref={anchorRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {show && typeof document !== 'undefined' && createPortal(
+      {show && !manuallyClosed && typeof document !== 'undefined' && createPortal(
         <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
           className="bg-background border border-border rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+          <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/30 sticky top-0">
+            <span className="text-[10px] text-muted-foreground">품목 가이드</span>
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setManuallyClosed(true)}
+              className="text-muted-foreground hover:text-foreground p-0.5">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
           {matched.map(p => {
             const recent = getRecentPrice(p.nameKo);
             return (
               <button key={p.id} type="button" onMouseDown={e => e.preventDefault()}
-                onClick={() => { onSelect(p.nameKo, recent ?? p.sellingPrice ?? 0, p.sizeSpec || ''); setShow(false); }}
+                onClick={() => { onSelect(p.nameKo, recent ?? p.sellingPrice ?? 0, p.sizeSpec || ''); setManuallyClosed(true); }}
                 className="w-full text-left px-3 py-2 hover:bg-muted/60 text-xs flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{p.nameKo}</span>
                 {recent != null && <span className="text-blue-500 shrink-0">최근 {recent.toLocaleString()}</span>}
@@ -210,6 +220,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
   const [saving, setSaving] = useState(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
   const [poPreview, setPoPreview] = useState<{ po: any; anchorRect: DOMRect } | null>(null);
+  const [customStatementOpen, setCustomStatementOpen] = useState(false);
 
   const showPoPreview = (businessId: string, el: HTMLElement) => {
     const po = purchaseOrders.find(p => p.businessId === businessId);
@@ -526,6 +537,11 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
           {poPreview && (
             <POPreviewPanel po={poPreview.po} anchorRect={poPreview.anchorRect} onClose={() => setPoPreview(null)} />
           )}
+          {sale && (
+            <Button type="button" variant="outline" className="w-full" onClick={() => setCustomStatementOpen(true)}>
+              별도 엑셀양식으로 작성
+            </Button>
+          )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
@@ -533,9 +549,233 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             </Button>
           </div>
         </form>
+        {customStatementOpen && sale && (
+          <CustomStatementModal sale={sale} companies={companies} onClose={() => setCustomStatementOpen(false)} />
+        )}
       </div>
     </div>
   );
+}
+
+/* ─── 별도 엑셀양식(고객 지정 양식) 거래명세표 ───────────────────────────────── */
+
+const emptyPartyEdit = (): { bizNo: string; name: string; ceo: string; address: string; bizType: string; bizItem: string } =>
+  ({ bizNo: '', name: '', ceo: '', address: '', bizType: '', bizItem: '' });
+
+const emptyStatementItem = (): TradeStatementItem => ({
+  id: Date.now().toString() + Math.random(), productName: '', specification: '', unit: 'EA',
+  qty: 1, unitPrice: 0, amount: 0, remark: '', vatIncluded: false,
+});
+
+function CustomStatementModal({ sale, companies, onClose }: { sale: SalesRecord; companies: Company[]; onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(false);
+  const [docNo, setDocNo] = useState('');
+  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [supplier, setSupplier] = useState(emptyPartyEdit());
+  const [customer, setCustomer] = useState(emptyPartyEdit());
+  const [customerCompanyId, setCustomerCompanyId] = useState('');
+  const [items, setItems] = useState<TradeStatementItem[]>([emptyStatementItem()]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`/api/sales/${sale.id}/custom-statement`).then(r => r.json()),
+      fetch('/api/settings/company').then(r => r.json()),
+    ]).then(([existing, companyRes]) => {
+      const c: CompanySettings | undefined = companyRes.data;
+      if (existing.data) {
+        const d = existing.data;
+        setDocNo(d.docNo || ''); setIssueDate(d.issueDate || issueDate);
+        setSupplier(d.supplier || emptyPartyEdit());
+        setCustomer(d.customer || emptyPartyEdit());
+        setItems(d.items?.length ? d.items : [emptyStatementItem()]);
+        setSavedOnce(true);
+      } else {
+        if (c) setSupplier({ bizNo: c.bizNo, name: c.name, ceo: c.ceo, address: c.address, bizType: c.bizType, bizItem: c.bizItem });
+        const matchedCo = companies.find(co => co.name === sale.customer);
+        if (matchedCo) {
+          setCustomerCompanyId(matchedCo.id);
+          setCustomer({ bizNo: matchedCo.businessNo || '', name: matchedCo.name, ceo: matchedCo.ceo || '', address: matchedCo.address || '', bizType: '', bizItem: '' });
+        } else {
+          setCustomer(c2 => ({ ...c2, name: sale.customer }));
+        }
+        setItems(sale.items.length ? sale.items.map(i => ({
+          id: i.id, productName: i.product, specification: i.specification, unit: 'EA',
+          qty: i.qty, unitPrice: i.unitPrice, amount: i.amount, remark: i.remark || '', vatIncluded: false,
+        })) : [emptyStatementItem()]);
+      }
+    }).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectCustomerCompany = (id: string) => {
+    setCustomerCompanyId(id);
+    const co = companies.find(c => c.id === id);
+    if (co) setCustomer(cur => ({ ...cur, bizNo: co.businessNo || '', name: co.name, ceo: co.ceo || '', address: co.address || '' }));
+  };
+
+  const updateItem = (idx: number, field: keyof TradeStatementItem, val: string | number | boolean) => {
+    const next = [...items];
+    (next[idx] as any)[field] = val;
+    if (field === 'qty' || field === 'unitPrice') next[idx].amount = next[idx].qty * next[idx].unitPrice;
+    setItems(next);
+  };
+
+  const { supplyAmount, vatAmount, totalAmount } = calcTradeStatementTotals(items);
+  const mismatch = Math.round(sale.totalAmount) !== Math.round(totalAmount);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/custom-statement`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docNo, issueDate, supplier, customer, items }),
+      });
+      const j = await res.json();
+      if (res.ok) { setDocNo(j.data.docNo); setSavedOnce(true); }
+    } finally { setSaving(false); }
+  };
+
+  const partyFields: { key: keyof ReturnType<typeof emptyPartyEdit>; label: string }[] = [
+    { key: 'bizNo', label: '등록번호' }, { key: 'name', label: '상호' }, { key: 'ceo', label: '대표자' },
+    { key: 'address', label: '주소' }, { key: 'bizType', label: '업태' }, { key: 'bizItem', label: '종목' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-2">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
+          <h2 className="font-semibold">거래명세표 - 별도 양식</h2>
+          <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">문서번호</label>
+                <Input value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="저장 시 자동 채번" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">일자</label>
+                <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* 공급자 */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold">공급자 (당사)</p>
+                {partyFields.map(f => (
+                  <div key={f.key} className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground w-14 shrink-0">{f.label}</span>
+                    <Input value={supplier[f.key]} onChange={e => setSupplier(s => ({ ...s, [f.key]: e.target.value }))} className="h-7 text-xs" />
+                  </div>
+                ))}
+              </div>
+              {/* 공급받는자 */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold">공급받는자</p>
+                  <select value={customerCompanyId} onChange={e => selectCustomerCompany(e.target.value)} className="h-6 text-[10px] rounded border border-input bg-background px-1">
+                    <option value="">업체 선택...</option>
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                {partyFields.map(f => (
+                  <div key={f.key} className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground w-14 shrink-0">{f.label}</span>
+                    <Input value={customer[f.key]} onChange={e => setCustomer(s => ({ ...s, [f.key]: e.target.value }))} className="h-7 text-xs" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 품목 */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-semibold">품목</p>
+                <button type="button" onClick={() => setItems([...items, emptyStatementItem()])} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> 품목 추가
+                </button>
+              </div>
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full text-xs min-w-[760px]">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">품목명</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">규격</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground w-14">단위</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-16">수량</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">단가</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">금액</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">비고</th>
+                      <th className="text-center px-2 py-1.5 font-medium text-muted-foreground w-16">부가세<br />포함</th>
+                      <th className="w-6" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {items.map((it, idx) => (
+                      <tr key={it.id}>
+                        <td className="px-1 py-1"><input value={it.productName} onChange={e => updateItem(idx, 'productName', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
+                        <td className="px-1 py-1"><input value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
+                        <td className="px-1 py-1"><input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
+                        <td className="px-1 py-1"><input type="number" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-xs text-right" /></td>
+                        <td className="px-1 py-1"><input type="number" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-xs text-right" /></td>
+                        <td className="px-2 py-1 text-right font-medium">{(it.qty * it.unitPrice).toLocaleString()}</td>
+                        <td className="px-1 py-1"><input value={it.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
+                        <td className="px-1 py-1 text-center">
+                          <input type="checkbox" checked={it.vatIncluded} onChange={e => updateItem(idx, 'vatIncluded', e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
+                        </td>
+                        <td className="px-1 py-1">
+                          <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">부가세 포함 체크는 계산용 옵션입니다 (인쇄/다운로드 결과물에는 표시되지 않습니다).</p>
+            </div>
+
+            <div className="bg-muted/30 rounded-lg p-3 space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-muted-foreground">공급가액</span><span>{supplyAmount.toLocaleString()}원</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">부가세</span><span>{vatAmount.toLocaleString()}원</span></div>
+              <div className="flex justify-between font-bold text-base border-t pt-1"><span>합계</span><span>{totalAmount.toLocaleString()}원</span></div>
+            </div>
+
+            <div className={cnStatement(mismatch)}>
+              {mismatch
+                ? `⚠ 전산 매출금액(${sale.totalAmount.toLocaleString()}원)과 ${Math.abs(sale.totalAmount - totalAmount).toLocaleString()}원 차이가 있습니다. 저장/다운로드 전에 확인하세요.`
+                : `✓ 전산 매출금액(${sale.totalAmount.toLocaleString()}원)과 일치합니다.`}
+            </div>
+          </div>
+        )}
+        <div className="p-4 border-t shrink-0 flex flex-wrap gap-2 justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>닫기</Button>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/custom-statement/excel`, '_blank')}>
+            엑셀 다운로드
+          </Button>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/custom-statement/pdf`, '_blank')}>
+            PDF 다운로드
+          </Button>
+          <Button type="button" onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function cnStatement(mismatch: boolean) {
+  return mismatch
+    ? 'text-xs rounded-lg px-3 py-2 bg-red-50 text-red-700 border border-red-200'
+    : 'text-xs rounded-lg px-3 py-2 bg-green-50 text-green-700 border border-green-200';
 }
 
 /* ─── 거래명세표 인쇄 모달 ───────────────────────────────────────────────── */

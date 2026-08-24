@@ -6,6 +6,8 @@ import { PurchaseOrderDoc, type POItem } from './purchase-order';
 import { ProfitAnalysisDoc } from './profit-analysis';
 import { OfficialDocumentDoc } from './official-document';
 import { ImportCostSettlementDoc } from './import-cost-settlement';
+import { TradeStatementCustomDoc } from './trade-statement-custom';
+import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
 
 export async function generateSalesStatementPdf(saleId: string): Promise<Buffer | null> {
   const db = getDb();
@@ -204,6 +206,32 @@ export async function generateImportCostSettlementPdf(docId: string): Promise<Bu
     items: data.items || [], advance: normalizeSide(data.advance), balance: normalizeSide(data.balance),
     company,
     companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
+    stampPath: resolveCompanyAssetPath(company.stampUrl),
+  }));
+}
+
+export async function generateTradeStatementCustomPdf(saleId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM documents WHERE doc_type='trade_statement_custom' AND related_type='sale' AND related_id=? ORDER BY updated_at DESC LIMIT 1`).get(saleId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    docNo: string; issueDate: string;
+    supplier: { bizNo: string; name: string; ceo: string; address: string; bizType: string; bizItem: string };
+    customer: { bizNo: string; name: string; ceo: string; address: string; bizType: string; bizItem: string };
+    items: TradeStatementItem[];
+  };
+  const items = data.items || [];
+  const { supplyAmount, vatAmount, totalAmount } = calcTradeStatementTotals(items);
+
+  const saleRow = db.prepare('SELECT total_amount FROM sales WHERE id=?').get(saleId) as { total_amount: number } | undefined;
+  const company = getCompanySettings();
+
+  return renderToBuffer(TradeStatementCustomDoc({
+    docNo: data.docNo, issueDate: data.issueDate,
+    supplier: data.supplier, customer: data.customer,
+    items: items.map(i => ({ productName: i.productName, specification: i.specification, unit: i.unit, qty: i.qty, unitPrice: i.unitPrice, amount: i.qty * i.unitPrice, remark: i.remark })),
+    supplyAmount, vatAmount, totalAmount,
+    systemTotalAmount: saleRow?.total_amount ?? null,
     stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }

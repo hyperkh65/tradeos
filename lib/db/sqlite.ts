@@ -581,6 +581,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE mail_accounts ADD COLUMN from_email TEXT`,
     // 메일 계정: HTML 서명
     `ALTER TABLE mail_accounts ADD COLUMN signature_html TEXT`,
+    // 문서양식: 특정 레코드(매출 등)에 종속된 문서를 빠르게 조회하기 위한 연결 필드
+    `ALTER TABLE documents ADD COLUMN related_type TEXT`,
+    `ALTER TABLE documents ADD COLUMN related_id TEXT`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
@@ -1019,6 +1022,8 @@ function runMigrations(db: Database.Database) {
       status TEXT NOT NULL DEFAULT 'draft',
       data_json TEXT NOT NULL DEFAULT '{}',
       history_json TEXT NOT NULL DEFAULT '[]',
+      related_type TEXT,
+      related_id TEXT,
       created_by TEXT,
       created_by_name TEXT,
       created_at TEXT NOT NULL,
