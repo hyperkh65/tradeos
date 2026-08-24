@@ -87,7 +87,6 @@ const navGroups = [
   {
     label: '공급관리',
     items: [
-      { label: '비용', href: '/expenses', icon: DollarSign },
       { label: 'SCM', href: '/scm', icon: GitMerge },
       { label: '오더 추적', href: '/scm/orders', icon: ListOrdered },
     ],

@@ -31,6 +31,7 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const isAdmin = user?.role === 'admin';
 
   // Notion DB check/create state
   const [notionCheckResult, setNotionCheckResult] = useState<Record<string, { set: boolean; reachable?: boolean; error?: string }> | null>(null);
@@ -178,6 +179,12 @@ export default function SettingsPage() {
             <form onSubmit={saveCompany} className="space-y-4">
               <h2 className="font-semibold text-base">회사 기초 정보</h2>
               <p className="text-xs text-muted-foreground">견적서, 발주서 등 출력 문서에 자동으로 입력됩니다.</p>
+              {!isAdmin && (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs rounded-lg px-3 py-2">
+                  회사정보는 관리자만 수정할 수 있습니다. 아래 내용은 조회만 가능합니다.
+                </div>
+              )}
+              <fieldset disabled={!isAdmin} className="space-y-4 disabled:opacity-60">
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -374,6 +381,7 @@ export default function SettingsPage() {
               </div>
 
               <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}</Button>
+              </fieldset>
             </form>
           )}
 

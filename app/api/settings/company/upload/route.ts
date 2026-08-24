@@ -11,6 +11,7 @@ const UPLOAD_BASE = process.env.NODE_ENV === 'production'
 export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.role !== 'admin') return NextResponse.json({ error: '관리자만 회사정보를 수정할 수 있습니다.' }, { status: 403 });
 
   const formData = await req.formData();
   const type = formData.get('type') as string; // 'logo' | 'stamp'

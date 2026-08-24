@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
+import { getSessionUser } from '@/lib/auth/session';
 
 export const DEFAULT_COMPANY: Record<string, string> = {
   name: '(주)와이엔케이',
@@ -52,6 +53,10 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
+  if (user.role !== 'admin') return NextResponse.json({ error: '관리자만 회사정보를 수정할 수 있습니다.' }, { status: 403 });
+
   try {
     const db = getDb();
     ensureTable(db);
