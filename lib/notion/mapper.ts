@@ -182,6 +182,7 @@ interface ERPPORow {
   poNo: string;
   date: string;
   supplier: string;
+  customer: string;
   currency: string;
   incoterm: string;
   remark: string;
@@ -204,6 +205,7 @@ function notionToERPPORow(page: { id: string; properties: Props; created_time: s
     poNo: getText(p, 'PoNo', 'PoNo1'),
     date: getDate(p, 'Date') ?? page.created_time.slice(0, 10),
     supplier: getText(p, 'Supplier'),
+    customer: getText(p, 'Customer'),
     currency: getText(p, 'Currency') || getSelect(p, 'Currency', 'Unit') || 'USD',
     incoterm: getText(p, 'GeneralInfo', 'generalInfo'),
     remark: getText(p, 'SpecialNotes', 'specialNotes'),
@@ -230,6 +232,8 @@ function groupERPPORows(rows: ERPPORow[]): PurchaseOrder[] {
     businessId: meta.poNo || meta.pageId,
     supplierId: '',
     supplierName: meta.supplier,
+    customerId: '',
+    customerName: meta.customer || undefined,
     items: items.map((it, i) => ({
       id: it.pageId,
       productId: '',
@@ -760,6 +764,7 @@ export async function createNotionPurchaseOrder(po: PurchaseOrder): Promise<stri
           'index': rich(String(i + 1)),
           'Date': dt(po.orderDate),
           'Supplier': rich(po.supplierName),
+          'Customer': rich(po.customerName || ''),
           'Currency': rich(po.currency),
           'Product': rich(item.productName || ''),
           'Description': rich((item as { specification?: string }).specification || ''),

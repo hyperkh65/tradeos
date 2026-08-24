@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Sync to Notion (ERP)
     await updateNotionPurchaseOrder(businessId, {
       id, businessId, supplierId: (row.supplier_id as string) || '',
-      supplierName, items, currency, totalAmount: total,
+      supplierName, customerId, customerName, items, currency, totalAmount: total,
       orderDate, status, incoterm: body.incoterm, remark: body.remark,
       createdBy: (row.created_by as string) || 'user-1',
       createdAt: row.created_at as string, updatedAt: ts,

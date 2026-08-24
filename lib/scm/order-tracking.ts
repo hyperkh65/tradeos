@@ -13,6 +13,7 @@ export interface OrderTrackingItem {
 export interface OrderTrackingPO {
   poId: string;
   poBusinessId: string;
+  piNumber: string;
   supplierId: string;
   supplierName: string;
   customerId: string;
@@ -24,6 +25,7 @@ export interface OrderTrackingPO {
   totalOrderedQty: number;
   totalRemainingQty: number;
   totalConsumedQty: number;
+  totalAmount: number;
   progressPct: number | null;
 }
 
@@ -88,10 +90,12 @@ export function computeOrderTracking(): OrderTrackingPO[] {
     const totalOrderedQty = outItems.reduce((s, i) => s + i.qty, 0);
     const totalRemainingQty = outItems.reduce((s, i) => s + i.remainingQty, 0);
     const totalConsumedQty = Math.max(0, totalOrderedQty - totalRemainingQty);
+    const totalAmount = outItems.reduce((s, i) => s + i.amount, 0);
 
     return {
       poId: row.id as string,
       poBusinessId: row.business_id as string,
+      piNumber: (row.pi_number as string) || '',
       supplierId: (row.supplier_id as string) || '',
       supplierName: (row.supplier_name as string) || '',
       customerId: (row.customer_id as string) || '',
@@ -100,7 +104,7 @@ export function computeOrderTracking(): OrderTrackingPO[] {
       currency: (row.currency as string) || 'USD',
       status: (row.status as string) || 'draft',
       items: outItems,
-      totalOrderedQty, totalRemainingQty, totalConsumedQty,
+      totalOrderedQty, totalRemainingQty, totalConsumedQty, totalAmount,
       progressPct: totalOrderedQty > 0 ? Math.round((totalConsumedQty / totalOrderedQty) * 1000) / 10 : null,
     };
   });
