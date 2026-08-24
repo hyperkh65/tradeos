@@ -1003,3 +1003,63 @@ export async function updateNotionQuote(estimateNo: string, q: Quote): Promise<v
   await deleteNotionQuote(estimateNo);
   await createNotionQuote(q);
 }
+
+// ─── 거래명세표(고객 지정 양식) ───────────────────────────────────────────────
+// Notion rich_text 속성은 블록 하나당 2000자 제한이 있어 JSON을 여러 블록으로 쪼갠다.
+const richLong = (v: string) => ({
+  rich_text: (v.match(/[\s\S]{1,2000}/g) || ['']).slice(0, 100).map(chunk => ({ text: { content: chunk } })),
+});
+
+export interface TradeStatementNotionInput {
+  docNo: string;
+  saleBusinessId: string;
+  customerName: string;
+  issueDate: string;
+  supplyAmount: number;
+  vatAmount: number;
+  totalAmount: number;
+  dataJson: string;
+}
+
+export async function createNotionTradeStatement(data: TradeStatementNotionInput): Promise<string | null> {
+  if (!DB.tradeStatements || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const page = await notion.pages.create({
+      parent: { database_id: DB.tradeStatements },
+      properties: {
+        '번호': titleProp(data.docNo),
+        'SaleBusinessId': rich(data.saleBusinessId),
+        'Customer': rich(data.customerName),
+        'IssueDate': dt(data.issueDate),
+        'SupplyAmount': num(data.supplyAmount),
+        'VatAmount': num(data.vatAmount),
+        'TotalAmount': num(data.totalAmount),
+        'DataJson': richLong(data.dataJson),
+      },
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[Notion] create trade statement error:', e);
+    return null;
+  }
+}
+
+export async function deleteNotionTradeStatement(docNo: string): Promise<void> {
+  if (!DB.tradeStatements || isDemoMode() || !docNo) return;
+  try {
+    const notion = getNotionClient();
+    const res = await notion.databases.query({
+      database_id: DB.tradeStatements,
+      filter: { property: '번호', title: { equals: docNo } },
+    });
+    await Promise.all(res.results.map(p => notion.pages.update({ page_id: p.id, archived: true })));
+  } catch (e) {
+    console.error('[Notion] delete trade statement error:', e);
+  }
+}
+
+export async function updateNotionTradeStatement(docNo: string, data: TradeStatementNotionInput): Promise<void> {
+  await deleteNotionTradeStatement(docNo);
+  await createNotionTradeStatement(data);
+}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { createNotionTradeStatement, updateNotionTradeStatement } from '@/lib/notion/mapper';
+import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
 
 function genDocNo(db: ReturnType<typeof getDb>, issueDate: string): string {
   const datePart = issueDate.replace(/-/g, '');
@@ -40,12 +42,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const data = { ...body, saleId };
   const title = `거래명세표(고객양식) - ${data.customer?.name || ''} ${data.issueDate || ''}`.trim();
+  const { supplyAmount, vatAmount, totalAmount } = calcTradeStatementTotals((data.items || []) as TradeStatementItem[]);
+  const saleRow = db.prepare('SELECT business_id FROM sales WHERE id=?').get(saleId) as { business_id: string } | undefined;
 
   if (existing) {
     const history: any[] = JSON.parse((existing.history_json as string) || '[]');
     history.push({ data: JSON.parse(existing.data_json as string), changedAt: ts, changedBy: user.name || user.id });
     db.prepare(`UPDATE documents SET title=?, data_json=?, history_json=?, updated_at=? WHERE id=?`)
       .run(title, JSON.stringify(data), JSON.stringify(history), ts, existing.id);
+
+    updateNotionTradeStatement(data.docNo, {
+      docNo: data.docNo, saleBusinessId: saleRow?.business_id || '', customerName: data.customer?.name || '',
+      issueDate: data.issueDate, supplyAmount, vatAmount, totalAmount, dataJson: JSON.stringify(data),
+    }).catch(e => console.error('[TradeStatement] Notion update error:', e));
+
     return NextResponse.json({ data: { id: existing.id, businessId: existing.business_id, ...data } });
   }
 
@@ -57,5 +67,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   db.prepare(`INSERT INTO documents (id, business_id, doc_type, title, status, data_json, history_json, related_type, related_id, created_by, created_by_name, created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(id, businessId, 'trade_statement_custom', title, 'active', JSON.stringify(finalData), '[]', 'sale', saleId, user.id, user.name || '', ts, ts);
+
+  createNotionTradeStatement({
+    docNo, saleBusinessId: saleRow?.business_id || '', customerName: finalData.customer?.name || '',
+    issueDate, supplyAmount, vatAmount, totalAmount, dataJson: JSON.stringify(finalData),
+  }).catch(e => console.error('[TradeStatement] Notion create error:', e));
+
   return NextResponse.json({ data: { id, businessId, ...finalData } }, { status: 201 });
 }
