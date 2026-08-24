@@ -17,8 +17,10 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   const cfg: Record<string, unknown> = {};
   if (typeof body.enabled === 'boolean') cfg.enabled = body.enabled;
+  if (typeof body.includeFullApp === 'boolean') cfg.includeFullApp = body.includeFullApp;
   if (Number.isFinite(body.intervalHours) && body.intervalHours > 0) cfg.intervalHours = body.intervalHours;
   if (Number.isFinite(body.retainCount) && body.retainCount > 0) cfg.retainCount = Math.floor(body.retainCount);
+  if (Number.isFinite(body.fullAppRetainCount) && body.fullAppRetainCount > 0) cfg.fullAppRetainCount = Math.floor(body.fullAppRetainCount);
 
   return NextResponse.json({ data: saveBackupConfig(cfg) });
 }

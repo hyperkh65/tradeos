@@ -522,6 +522,8 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE purchase_orders ADD COLUMN customer_name TEXT`,
     // idx_pos_deleted 인덱스가 매 서버 시작마다 조용히 실패하던 문제 (컬럼 자체가 없었음)
     `ALTER TABLE purchase_orders ADD COLUMN local_deleted INTEGER NOT NULL DEFAULT 0`,
+    // 백업 이력: DB만 백업한 건지, 프로그램 전체를 백업한 건지 구분
+    `ALTER TABLE backup_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'db'`,
     `ALTER TABLE shipments ADD COLUMN cargo_items_json TEXT DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN container_no TEXT`,
     `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,
@@ -1077,6 +1079,7 @@ function runMigrations(db: Database.Database) {
       triggered_by TEXT NOT NULL,
       status TEXT NOT NULL,
       error TEXT,
+      kind TEXT NOT NULL DEFAULT 'db',
       created_at TEXT NOT NULL
     )`);
   } catch { /* already exists */ }

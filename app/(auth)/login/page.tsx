@@ -1,42 +1,30 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { loginAction } from './actions';
-
-function CorosLogoMark({ className }: { className?: string }) {
-  // 굵은 C (300° 호) + 중심 dot — 36×36 기준
-  const cx = 18, cy = 18, r = 11.5, sw = 6;
-  const gap = 50;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const x1 = cx + r * Math.cos(toRad(gap / 2 - 90));
-  const y1 = cy + r * Math.sin(toRad(gap / 2 - 90));
-  const x2 = cx + r * Math.cos(toRad(360 - gap / 2 - 90));
-  const y2 = cy + r * Math.sin(toRad(360 - gap / 2 - 90));
-  return (
-    <svg viewBox="0 0 36 36" fill="none" className={className}>
-      <path d={`M ${x1} ${y1} A ${r} ${r} 0 1 0 ${x2} ${y2}`}
-        stroke="white" strokeWidth={sw} strokeLinecap="round" fill="none" />
-      <circle cx={cx} cy={cy} r="3" fill="white" />
-    </svg>
-  );
-}
+import { LogoMark } from '@/components/brand/logo-mark';
 
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, { error: '' });
+  const [brand, setBrand] = useState({ appName: 'YNK 그룹웨어', logoText: 'YnK' });
+
+  useEffect(() => {
+    fetch('/api/settings/brand').then(r => r.json()).then(j => { if (j.data) setBrand(j.data); }).catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50/30 px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
-            <CorosLogoMark className="w-9 h-9" />
+          <div className="mb-4 shadow-lg shadow-primary/25 rounded-2xl">
+            <LogoMark text={brand.logoText} size={64} />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Coros</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">{brand.appName}</h1>
           <p className="text-sm text-muted-foreground mt-1">무역회사 통합 그룹웨어</p>
         </div>
 
@@ -79,7 +67,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © 2026 Coros. All rights reserved.
+          © 2026 {brand.appName}. All rights reserved.
         </p>
       </div>
     </div>

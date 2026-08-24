@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Compass, Loader2, CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2 } from 'lucide-react';
+import { LogoMark } from '@/components/brand/logo-mark';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -15,6 +16,11 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [doneMsg, setDoneMsg] = useState('');
+  const [brand, setBrand] = useState({ appName: 'YNK 그룹웨어', logoText: 'YnK' });
+
+  useEffect(() => {
+    fetch('/api/settings/brand').then(r => r.json()).then(j => { if (j.data) setBrand(j.data); }).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,10 +57,10 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50/30 px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
-            <Compass className="w-7 h-7 text-primary-foreground" />
+          <div className="mb-4 shadow-lg shadow-primary/20 rounded-2xl">
+            <LogoMark text={brand.logoText} size={56} />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">NEXPORT</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">{brand.appName}</h1>
           <p className="text-sm text-muted-foreground mt-1">무역회사 통합 그룹웨어</p>
         </div>
 

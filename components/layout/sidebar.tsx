@@ -12,40 +12,10 @@ import {
   Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered,
 } from 'lucide-react';
 
-// Coros 로고마크 — 파란 둥근사각형 + 흰색 굵은 C + 중심 dot
-function CorosLogoMark({ size = 16 }: { size?: number }) {
-  const s = size;
-  // C 호: 중심 (s/2, s/2), 반지름 s*0.32, 두께 s*0.165
-  // 오른쪽이 열린 C (약 300°)
-  const cx = s / 2, cy = s / 2, r = s * 0.32;
-  // path: 오른쪽 위 → 왼쪽 반원 → 오른쪽 아래
-  const gap = 50; // degrees (opening angle, both sides)
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const startAngle = toRad(gap / 2);      // top-right
-  const endAngle   = toRad(360 - gap / 2); // bottom-right
-  const x1 = cx + r * Math.cos(startAngle - Math.PI / 2);
-  const y1 = cy + r * Math.sin(startAngle - Math.PI / 2);
-  const x2 = cx + r * Math.cos(endAngle - Math.PI / 2);
-  const y2 = cy + r * Math.sin(endAngle - Math.PI / 2);
-  const sw = s * 0.165; // stroke width
-  return (
-    <svg viewBox={`0 0 ${s} ${s}`} width={s} height={s} fill="none">
-      {/* C arc */}
-      <path
-        d={`M ${x1} ${y1} A ${r} ${r} 0 1 0 ${x2} ${y2}`}
-        stroke="white"
-        strokeWidth={sw}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Center dot */}
-      <circle cx={cx} cy={cy} r={s * 0.085} fill="white" />
-    </svg>
-  );
-}
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LogoMark } from '@/components/brand/logo-mark';
 
 const navGroups = [
   {
@@ -119,8 +89,10 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   const [groupCollapsed, setGroupCollapsed] = useState<Record<string, boolean>>({});
   const [me, setMe] = useState<{ name: string; role: string } | null>(null);
   const [counts, setCounts] = useState<{ approvals: number; mail: number; messenger: number }>({ approvals: 0, mail: 0, messenger: 0 });
+  const [brand, setBrand] = useState({ appName: 'YNK 그룹웨어', logoText: 'YnK' });
 
   useEffect(() => {
+    fetch('/api/settings/brand').then(r => r.json()).then(j => { if (j.data) setBrand(j.data); }).catch(() => {});
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMe(j.user); }).catch(() => {});
     const fetchCounts = () => {
       fetch('/api/notifications/counts').then(r => r.json()).then(d => {
@@ -157,9 +129,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
       <aside className="flex flex-col h-full w-full border-r border-border bg-sidebar shrink-0">
         {/* Logo icon */}
         <div className="h-12 flex items-center justify-center border-b border-sidebar-border shrink-0">
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
-            <CorosLogoMark size={16} />
-          </div>
+          <LogoMark text={brand.logoText} size={28} className="shadow-sm" />
         </div>
 
         {/* Nav icons */}
@@ -208,10 +178,8 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
     <aside className="flex flex-col h-full w-full border-r border-border bg-sidebar shrink-0">
       {/* Logo */}
       <div className="h-12 flex items-center gap-2 px-4 border-b border-sidebar-border shrink-0">
-        <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center shadow-sm">
-          <CorosLogoMark size={16} />
-        </div>
-        <span className="font-bold text-sidebar-foreground tracking-tight text-sm">Coros</span>
+        <LogoMark text={brand.logoText} size={28} className="shadow-sm" />
+        <span className="font-bold text-sidebar-foreground tracking-tight text-sm truncate">{brand.appName}</span>
         <button
           onClick={toggleCollapsed}
           title="사이드바 접기"
