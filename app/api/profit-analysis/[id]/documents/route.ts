@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const { files, context } = getProfitAnalysisDocuments(id);
   return NextResponse.json({
-    data: files.map(({ diskPath: _diskPath, ...f }) => f), // 디스크 경로는 서버 내부용, 클라이언트에 노출 안 함
+    data: files.map(({ diskPath: _diskPath, generate: _generate, ...f }) => f), // 디스크 경로/생성함수는 서버 내부용, 클라이언트에 노출 안 함
     context,
   });
 }

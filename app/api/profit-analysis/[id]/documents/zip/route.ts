@@ -10,6 +10,12 @@ function safeSegment(s: string): string {
   return (s || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'file';
 }
 
+function guessExt(label: string): string {
+  if (label.includes('Excel')) return '.xlsx';
+  if (label.includes('PDF')) return '.pdf';
+  return '';
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,19 +26,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const usedNames = new Set<string>();
   let added = 0;
 
-  for (const f of files) {
-    if (!f.diskPath) continue;
-    if (!fs.existsSync(f.diskPath)) continue;
-    const ext = path.extname(f.diskPath) || '';
-    let entryName = `${safeSegment(f.category)}/${safeSegment(f.sourceLabel)}_${safeSegment(f.label)}${ext}`;
+  const uniqueName = (category: string, sourceLabel: string, label: string, ext: string) => {
+    let entryName = `${safeSegment(category)}/${safeSegment(sourceLabel)}_${safeSegment(label)}${ext}`;
     let n = 2;
     while (usedNames.has(entryName)) {
-      entryName = `${safeSegment(f.category)}/${safeSegment(f.sourceLabel)}_${safeSegment(f.label)}_${n}${ext}`;
+      entryName = `${safeSegment(category)}/${safeSegment(sourceLabel)}_${safeSegment(label)}_${n}${ext}`;
       n++;
     }
     usedNames.add(entryName);
-    archive.file(f.diskPath, { name: entryName });
-    added++;
+    return entryName;
+  };
+
+  for (const f of files) {
+    if (f.diskPath) {
+      if (!fs.existsSync(f.diskPath)) continue;
+      const entryName = uniqueName(f.category, f.sourceLabel, f.label, path.extname(f.diskPath) || '');
+      archive.file(f.diskPath, { name: entryName });
+      added++;
+    } else if (f.generate) {
+      const buf = await f.generate().catch(() => null);
+      if (!buf) continue;
+      const entryName = uniqueName(f.category, f.sourceLabel, f.label, guessExt(f.label));
+      archive.append(buf, { name: entryName });
+      added++;
+    }
   }
 
   if (added === 0) {

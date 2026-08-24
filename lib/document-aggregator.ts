@@ -1,14 +1,24 @@
 import path from 'path';
 import { getDb } from './db/sqlite';
+import { generateSalesStatementPdf, generatePurchaseOrderPdf, generateProfitAnalysisPdf } from './pdf/generate';
+import { GET as excelGET } from '@/app/api/profit-analysis/[id]/excel/route';
+import type { NextRequest } from 'next/server';
 
 export interface AggregatedFile {
   category: string;
   sourceLabel: string;
   label: string;
   url: string;
-  diskPath: string | null; // null = 다운로드 링크만 있고 zip에는 못 담는 항목(온디맨드 생성물)
+  diskPath: string | null; // 실제 파일이 디스크에 있는 경우
+  generate?: () => Promise<Buffer | null>; // 온디맨드 생성물(PDF/엑셀) - zip에도 포함 가능
   size?: number;
   uploadedAt?: string;
+}
+
+async function generateExcelBuffer(paId: string): Promise<Buffer | null> {
+  const res = await excelGET({} as NextRequest, { params: Promise.resolve({ id: paId }) });
+  if (!res.ok) return null;
+  return Buffer.from(await res.arrayBuffer());
 }
 
 const base = (name: string) =>
@@ -54,6 +64,15 @@ export function getProfitAnalysisDocuments(profitAnalysisId: string): {
     label: '수익분석표 (Excel)',
     url: `/api/profit-analysis/${profitAnalysisId}/excel`,
     diskPath: null,
+    generate: () => generateExcelBuffer(profitAnalysisId),
+  });
+  files.push({
+    category: '수익분석',
+    sourceLabel: (pa.business_id as string) || '',
+    label: '수익분석표 (PDF)',
+    url: `/api/profit-analysis/${profitAnalysisId}/pdf`,
+    diskPath: null,
+    generate: () => generateProfitAnalysisPdf(profitAnalysisId),
   });
 
   // ── 매출 ──
@@ -61,7 +80,14 @@ export function getProfitAnalysisDocuments(profitAnalysisId: string): {
     const sale = db.prepare('SELECT * FROM sales WHERE id=?').get(pa.sale_id as string) as Record<string, unknown> | undefined;
     if (sale) {
       context.saleBizId = sale.business_id as string;
-      // 매출거래명세표: 별도 생성기가 아직 없음 - 향후 추가 필요
+      files.push({
+        category: '매출',
+        sourceLabel: context.saleBizId || '',
+        label: '거래명세표 (PDF)',
+        url: `/api/sales/${pa.sale_id}/pdf`,
+        diskPath: null,
+        generate: () => generateSalesStatementPdf(pa.sale_id as string),
+      });
     }
   }
 
@@ -157,6 +183,14 @@ export function getProfitAnalysisDocuments(profitAnalysisId: string): {
                 diskPath: path.join(UPLOAD_BASE.pi, poId, urlFilename(po.pi_stamped_url as string)),
               });
             }
+            files.push({
+              category: '발주(PO)',
+              sourceLabel: po.business_id as string,
+              label: `발주서 (PDF)`,
+              url: `/api/purchase-orders/${poId}/pdf`,
+              diskPath: null,
+              generate: () => generatePurchaseOrderPdf(poId),
+            });
           }
         }
       }
