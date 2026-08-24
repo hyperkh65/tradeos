@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GitMerge, Warehouse, ShoppingCart, Search, Loader2, AlertTriangle } from 'lucide-react';
+import { GitMerge, Warehouse, ShoppingCart, Search, Loader2, AlertTriangle, Timer } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -16,11 +16,18 @@ interface SalesRecord {
   items: Array<{ product: string; qty: number; unitPrice: number; amount: number }>;
   netAmount: number; totalAmount: number;
 }
+interface LeadTimeStage { key: string; label: string; avgDays: number | null; sampleCount: number }
+interface SupplierLeadTime {
+  supplierName: string; poCount: number; stages: LeadTimeStage[];
+  avgTotalDays: number | null; totalSampleCount: number;
+}
 
 export default function SCMPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [sales, setSales] = useState<SalesRecord[]>([]);
+  const [leadTime, setLeadTime] = useState<SupplierLeadTime[]>([]);
   const [loading, setLoading] = useState(true);
+  const [leadTimeLoading, setLeadTimeLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -31,6 +38,10 @@ export default function SCMPage() {
       setInventory(Array.isArray(inv.data) ? inv.data : []);
       setSales(Array.isArray(sal.data) ? sal.data : []);
     }).finally(() => setLoading(false));
+
+    fetch('/api/scm/lead-time').then(r => r.json()).then(j => {
+      setLeadTime(j.data?.suppliers || []);
+    }).finally(() => setLeadTimeLoading(false));
   }, []);
 
   const filtered = inventory.filter(i =>
@@ -125,6 +136,51 @@ export default function SCMPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Lead time analysis */}
+        <div className="bg-card border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Timer className="w-4 h-4 text-muted-foreground" />
+            <p className="text-sm font-medium">공급업체별 리드타임 (발주 → 생산 → 검품 → 선적 → 통관)</p>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">발주서/선적/통관에 입력된 날짜를 기준으로 자동 계산됩니다. 날짜가 비어있는 구간은 평균에서 제외됩니다.</p>
+          {leadTimeLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : leadTime.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">계산할 발주 데이터가 없습니다.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[720px]">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">공급업체</th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">발주건수</th>
+                    {leadTime[0]?.stages.map(s => (
+                      <th key={s.key} className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{s.label}</th>
+                    ))}
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">전체 평균</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {leadTime.map(sup => (
+                    <tr key={sup.supplierName} className="hover:bg-muted/30">
+                      <td className="px-3 py-2 font-medium truncate max-w-[160px]">{sup.supplierName}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">{sup.poCount}</td>
+                      {sup.stages.map(s => (
+                        <td key={s.key} className="px-3 py-2 text-right">
+                          {s.avgDays != null ? <span>{s.avgDays}일 <span className="text-muted-foreground">({s.sampleCount})</span></span> : <span className="text-muted-foreground">-</span>}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-right font-semibold">
+                        {sup.avgTotalDays != null ? <span>{sup.avgTotalDays}일 <span className="text-muted-foreground font-normal">({sup.totalSampleCount})</span></span> : <span className="text-muted-foreground font-normal">-</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Inventory list */}
