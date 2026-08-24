@@ -5,7 +5,7 @@ const SECRET = new TextEncoder().encode(
   process.env.AUTH_SECRET ?? 'tradeos-fallback-secret-change-in-production'
 );
 
-const PUBLIC_PATHS = ['/login', '/signup', '/api/auth/login', '/api/auth/signup'];
+const PUBLIC_PATHS = ['/login', '/signup', '/api/auth/login', '/api/auth/signup', '/api/settings/brand'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

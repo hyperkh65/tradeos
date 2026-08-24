@@ -109,9 +109,6 @@ export default function SignupPage() {
                 이미 계정이 있나요?{' '}
                 <Link href="/login" className="text-primary hover:underline font-medium">로그인</Link>
               </p>
-              <p className="text-center text-xs text-muted-foreground mt-3 bg-muted/50 rounded-lg px-3 py-2">
-                최초 가입자는 자동으로 관리자가 됩니다.
-              </p>
             </>
           )}
         </div>
