@@ -83,6 +83,11 @@ export async function GET(req: NextRequest) {
       if (notionPOs.length > 0) {
         db.transaction(() => {
           for (const po of notionPOs) {
+            // id(로컬 PK)뿐 아니라 business_id로도 중복 체크 — 발주서 수정 시 노션 페이지가
+            // 삭제 후 재생성되면서 id가 바뀌는데, 이때 로컬에 같은 발주번호가 이미 있으면
+            // 새로운 id로 또 삽입되어 중복 행이 생기던 문제 방지 (quotes와 동일한 패턴)
+            const existing = db.prepare('SELECT id FROM purchase_orders WHERE id=? OR business_id=?').get(po.id, po.businessId);
+            if (existing) continue;
             poToDb(db, po, po.id, ts, po.id);
           }
         })();
@@ -160,11 +165,14 @@ export async function POST(req: NextRequest) {
       depositRatio: body.depositRatio ?? '30',
     };
 
-    // Save to Notion (ERP)
-    const notionId = await createNotionPurchaseOrder(po).catch(() => null);
+    // Save to SQLite first (동시 요청 시 노션 API 대기 중 중복 제출 방지 창을 없애기 위해
+    // 노션 동기화보다 먼저 커밋한다)
+    poToDb(db, po, id, ts, null);
 
-    // Save to SQLite
-    poToDb(db, po, id, ts, notionId);
+    // Save to Notion (ERP) — 비동기로 처리, 완료되면 notion_id만 갱신
+    createNotionPurchaseOrder(po).then(notionId => {
+      if (notionId) db.prepare('UPDATE purchase_orders SET notion_id=? WHERE id=?').run(notionId, id);
+    }).catch(() => {});
 
     // ETD 있으면 캘린더 이벤트 자동 생성
     if (body.etd) {

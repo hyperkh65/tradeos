@@ -26,7 +26,12 @@ export async function GET(req: NextRequest) {
       const upsert = db.prepare(`INSERT OR REPLACE INTO tasks (id,title,description,owner_id,owner_name,due_date,priority,status,related_name,notion_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
       db.transaction(() => {
         for (const t of notionData) {
-          upsert.run(t.id,t.title,t.description??null,t.ownerId,t.ownerName,t.dueDate??null,t.priority,t.status,t.relatedName??null,t.id,t.createdAt,t.updatedAt);
+          // 로컬에서 만든 업무가 나중에 노션에 동기화되면 노션 페이지ID(t.id)가
+          // 로컬 id와 달라진다 — notion_id로 기존 행을 찾아 같은 id를 유지해야
+          // 행이 중복 생성되지 않는다 (PO에서 겪은 것과 동일한 문제 패턴)
+          const existing = db.prepare('SELECT id FROM tasks WHERE id=? OR notion_id=?').get(t.id, t.id) as { id: string } | undefined;
+          const localId = existing?.id || t.id;
+          upsert.run(localId,t.title,t.description??null,t.ownerId,t.ownerName,t.dueDate??null,t.priority,t.status,t.relatedName??null,t.id,t.createdAt,t.updatedAt);
         }
       })();
       return NextResponse.json({ data: notionData });

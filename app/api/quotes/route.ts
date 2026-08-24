@@ -129,16 +129,19 @@ export async function POST(req: NextRequest) {
       createdAt: ts,
     };
 
-    const notionId = await createNotionQuote(q).catch(() => null);
-
+    // 동시 요청 시 노션 API 대기 중 중복 제출 방지 창이 열리지 않도록 먼저 SQLite에 커밋
     db.prepare(UPSERT).run(
       id, bizId, body.type || 'customer', body.companyId ?? null, body.companyName,
       JSON.stringify(items), body.currency || 'KRW', body.incoterm ?? null, body.paymentTerms ?? null,
       body.validity ?? null, body.status || 'draft', body.remark ?? null,
-      user?.id || 'unknown', actorName, notionId ?? null, ts,
+      user?.id || 'unknown', actorName, null, ts,
       quoteDate, totalAmount, body.imagesJson ?? null, JSON.stringify([historyEntry]),
       body.docType ?? 'QUOTE', body.specialNotes ?? null, body.generalInfo ?? null,
     );
+
+    createNotionQuote(q).then(notionId => {
+      if (notionId) db.prepare('UPDATE quotes SET notion_id=? WHERE id=?').run(notionId, id);
+    }).catch(() => {});
 
     // validity 있으면 캘린더 이벤트 자동 생성
     if (body.validity) {

@@ -4,10 +4,10 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle, HardDrive, Download, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tab = 'profile' | 'company' | 'notion' | 'security';
+type Tab = 'profile' | 'company' | 'notion' | 'security' | 'backup';
 
 interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
@@ -33,6 +33,62 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const isAdmin = user?.role === 'admin';
 
+  // 백업 설정/이력 상태
+  const [backupConfig, setBackupConfig] = useState<{ enabled: boolean; intervalHours: number; retainCount: number } | null>(null);
+  const [backupList, setBackupList] = useState<Array<{ id: string; filename: string; sizeBytes: number; triggeredBy: string; status: string; error: string | null; createdAt: string; existsOnDisk: boolean }>>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [restoring, setRestoring] = useState(false);
+
+  const loadBackupData = () => {
+    setBackupLoading(true);
+    Promise.all([
+      fetch('/api/settings/backup').then(r => r.json()),
+      fetch('/api/settings/backup/list').then(r => r.json()),
+    ]).then(([cfgRes, listRes]) => {
+      if (cfgRes.data) setBackupConfig(cfgRes.data);
+      if (Array.isArray(listRes.data)) setBackupList(listRes.data);
+    }).finally(() => setBackupLoading(false));
+  };
+
+  const saveBackupConfig = async (patch: Partial<{ enabled: boolean; intervalHours: number; retainCount: number }>) => {
+    const res = await fetch('/api/settings/backup', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    const j = await res.json();
+    if (j.data) setBackupConfig(j.data);
+  };
+
+  const runBackupNow = async () => {
+    setBackupRunning(true);
+    try {
+      const res = await fetch('/api/settings/backup/run', { method: 'POST' });
+      const j = await res.json();
+      if (res.ok) { showMsg('success', '백업이 완료됐습니다.'); loadBackupData(); }
+      else showMsg('error', j.error ?? '백업 실패');
+    } finally { setBackupRunning(false); }
+  };
+
+  const confirmRestore = async () => {
+    if (!restoreTarget || restoreConfirmText !== restoreTarget) return;
+    setRestoring(true);
+    try {
+      const res = await fetch('/api/settings/backup/restore', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: restoreTarget, confirm: restoreConfirmText }),
+      });
+      const j = await res.json();
+      if (res.ok) { showMsg('success', '복원이 완료됐습니다. 서버가 새 데이터로 즉시 반영됩니다.'); setRestoreTarget(null); setRestoreConfirmText(''); loadBackupData(); }
+      else showMsg('error', j.error ?? '복원 실패');
+    } finally { setRestoring(false); }
+  };
+
+  const fmtBytes = (n: number) => {
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+    if (n >= 1024) return `${(n / 1024).toFixed(0)}KB`;
+    return `${n}B`;
+  };
+
   // Notion DB check/create state
   const [notionCheckResult, setNotionCheckResult] = useState<Record<string, { set: boolean; reachable?: boolean; error?: string }> | null>(null);
   const [notionChecking, setNotionChecking] = useState(false);
@@ -48,6 +104,11 @@ export default function SettingsPage() {
       if (j.data) setCompany(j.data);
     });
   }, []);
+
+  useEffect(() => {
+    if (tab === 'backup' && isAdmin) loadBackupData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isAdmin]);
 
   const showMsg = (type: 'success' | 'error', text: string) => {
     setMsg({ type, text });
@@ -93,6 +154,7 @@ export default function SettingsPage() {
     { id: 'company', label: '회사정보', icon: <Building2 className="w-4 h-4" /> },
     { id: 'security', label: '보안', icon: <Key className="w-4 h-4" /> },
     { id: 'notion', label: 'Notion 연동', icon: <Database className="w-4 h-4" /> },
+    ...(isAdmin ? [{ id: 'backup' as Tab, label: '백업', icon: <HardDrive className="w-4 h-4" /> }] : []),
   ];
 
   const checkNotionDbs = async () => {
@@ -509,8 +571,133 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {tab === 'backup' && isAdmin && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="font-semibold text-base">DB 자동 백업</h2>
+                <p className="text-xs text-muted-foreground mt-1">일정 주기로 전체 데이터베이스를 자동 백업하고, 필요 시 이전 시점으로 즉시 복원할 수 있습니다. 관리자만 볼 수 있습니다.</p>
+              </div>
+
+              {backupLoading ? (
+                <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+              ) : (
+                <>
+                  <div className="border rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">자동 백업 사용</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">꺼두면 예약 백업이 실행되지 않습니다. (수동 백업은 계속 가능)</p>
+                      </div>
+                      <button type="button"
+                        onClick={() => saveBackupConfig({ enabled: !backupConfig?.enabled })}
+                        className={cn('relative w-11 h-6 rounded-full transition-colors shrink-0', backupConfig?.enabled ? 'bg-primary' : 'bg-muted')}>
+                        <span className={cn('absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform', backupConfig?.enabled && 'translate-x-5')} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">백업 주기</label>
+                        <select value={backupConfig?.intervalHours ?? 24} onChange={e => saveBackupConfig({ intervalHours: Number(e.target.value) })}
+                          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                          <option value={6}>6시간마다</option>
+                          <option value={12}>12시간마다</option>
+                          <option value={24}>매일</option>
+                          <option value={72}>3일마다</option>
+                          <option value={168}>매주</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">보관 개수</label>
+                        <select value={backupConfig?.retainCount ?? 10} onChange={e => saveBackupConfig({ retainCount: Number(e.target.value) })}
+                          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                          {[5, 10, 15, 20, 30].map(n => <option key={n} value={n}>{n}개</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <Button type="button" variant="outline" onClick={runBackupNow} disabled={backupRunning} className="gap-1.5">
+                      {backupRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <HardDrive className="w-4 h-4" />}
+                      지금 백업
+                    </Button>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">백업 이력</h3>
+                    {backupList.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-6 text-center border rounded-xl">아직 백업이 없습니다.</p>
+                    ) : (
+                      <div className="border rounded-xl overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground">파일명</th>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground">시각</th>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground">크기</th>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground">유형</th>
+                              <th className="text-left px-3 py-2 font-medium text-muted-foreground">상태</th>
+                              <th className="text-right px-3 py-2 font-medium text-muted-foreground">작업</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {backupList.map(b => (
+                              <tr key={b.id} className="hover:bg-muted/30">
+                                <td className="px-3 py-2 font-mono whitespace-nowrap">{b.filename}</td>
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{new Date(b.createdAt).toLocaleString('ko-KR')}</td>
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{fmtBytes(b.sizeBytes)}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{b.triggeredBy === 'scheduled' ? '예약' : b.triggeredBy === 'manual' ? '수동' : b.triggeredBy === 'pre_restore_safety' ? '복원 전 안전백업' : '-'}</td>
+                                <td className="px-3 py-2">
+                                  <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', b.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600')}>
+                                    {b.status === 'success' ? '성공' : '실패'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center justify-end gap-2">
+                                    {b.existsOnDisk && b.status === 'success' && (
+                                      <>
+                                        <a href={`/api/settings/backup/download/${encodeURIComponent(b.filename)}`} className="text-muted-foreground hover:text-foreground" title="다운로드">
+                                          <Download className="w-3.5 h-3.5" />
+                                        </a>
+                                        <button type="button" onClick={() => { setRestoreTarget(b.filename); setRestoreConfirmText(''); }} className="text-orange-600 hover:text-orange-700" title="이 시점으로 복원">
+                                          <RotateCcw className="w-3.5 h-3.5" />
+                                        </button>
+                                      </>
+                                    )}
+                                    {!b.existsOnDisk && <span className="text-[10px] text-muted-foreground">파일 없음</span>}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
+
+      {restoreTarget && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-background rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-3 text-orange-600"><AlertTriangle className="w-5 h-5" /><h3 className="font-semibold">백업 복원 확인</h3></div>
+            <p className="text-sm text-muted-foreground mb-1">
+              <span className="font-mono font-medium text-foreground">{restoreTarget}</span> 시점으로 데이터베이스 전체를 되돌립니다.
+            </p>
+            <p className="text-sm text-red-600 mb-4">이 시점 이후에 입력된 모든 데이터(발주, 매출, 견적 등)는 사라집니다. 복원 직전 현재 상태는 자동으로 안전 백업됩니다.</p>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">계속하려면 파일명을 정확히 입력하세요</label>
+            <Input value={restoreConfirmText} onChange={e => setRestoreConfirmText(e.target.value)} placeholder={restoreTarget} className="mb-4" autoFocus />
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setRestoreTarget(null); setRestoreConfirmText(''); }}>취소</Button>
+              <Button variant="destructive" className="flex-1" disabled={restoreConfirmText !== restoreTarget || restoring} onClick={confirmRestore}>
+                {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : '복원 실행'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

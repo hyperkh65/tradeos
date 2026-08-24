@@ -27,6 +27,19 @@ export function getDb(): Database.Database {
   return _db;
 }
 
+export function getDbPath(): string {
+  return DB_PATH;
+}
+
+// 백업 복원 시 파일을 통째로 교체하기 전에 현재 연결을 닫는다.
+// 다음 getDb() 호출에서 새 파일로 자동 재연결된다.
+export function closeDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+}
+
 function initSchema(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -507,6 +520,8 @@ function runMigrations(db: Database.Database) {
     // 오더 추적: 발주 건이 어느 고객사 주문을 채우기 위한 것인지 (PO 1건 = 고객사 1곳)
     `ALTER TABLE purchase_orders ADD COLUMN customer_id TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN customer_name TEXT`,
+    // idx_pos_deleted 인덱스가 매 서버 시작마다 조용히 실패하던 문제 (컬럼 자체가 없었음)
+    `ALTER TABLE purchase_orders ADD COLUMN local_deleted INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE shipments ADD COLUMN cargo_items_json TEXT DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN container_no TEXT`,
     `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,
@@ -1053,6 +1068,19 @@ function runMigrations(db: Database.Database) {
     )`);
   } catch { /* already exists */ }
 
+  // DB 자동 백업 실행 이력 (관리자 설정 화면에서 조회/복원용)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS backup_runs (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      triggered_by TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -1074,6 +1102,18 @@ function runMigrations(db: Database.Database) {
         SELECT id FROM (
           SELECT id, business_id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY length(id) ASC, created_at ASC) AS rn
           FROM quotes
+        ) WHERE rn > 1
+      )
+    `);
+  } catch { /* ignore */ }
+  // purchase_orders도 동일한 노션 동기화 중복 문제가 있었음 (수정 시 노션 페이지ID가 바뀌면서
+  // 다음 조회 때 새 id로 다시 삽입되어 중복 행이 생기던 버그, GET 핸들러는 이미 수정됨)
+  try {
+    db.exec(`
+      DELETE FROM purchase_orders WHERE id IN (
+        SELECT id FROM (
+          SELECT id, business_id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY length(id) ASC, created_at ASC) AS rn
+          FROM purchase_orders
         ) WHERE rn > 1
       )
     `);
