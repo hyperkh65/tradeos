@@ -100,6 +100,7 @@ export default function OrderTrackingPage() {
   const [customerFilter, setCustomerFilter] = useState('전체');
   const [statusFilter, setStatusFilter] = useState('전체');
   const [productSearch, setProductSearch] = useState('');
+  const [companies, setCompanies] = useState<Array<{ name: string; type: string }>>([]);
 
   const load = () => {
     setLoading(true);
@@ -108,6 +109,7 @@ export default function OrderTrackingPage() {
   useEffect(() => {
     load();
     fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setCurrentUser(j.user); });
+    fetch('/api/companies').then(r => r.json()).then(j => setCompanies(Array.isArray(j.data) ? j.data : []));
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -129,8 +131,14 @@ export default function OrderTrackingPage() {
     return true;
   };
 
-  const supplierOptions = useMemo(() => Array.from(new Set(orders.map(o => o.supplierName).filter(Boolean))).sort(), [orders]);
-  const customerOptions = useMemo(() => Array.from(new Set(orders.map(o => o.customerName).filter(Boolean))).sort(), [orders]);
+  const supplierOptions = useMemo(() => Array.from(new Set([
+    ...companies.filter(c => c.type === '공급업체').map(c => c.name),
+    ...orders.map(o => o.supplierName),
+  ].filter(Boolean))).sort(), [orders, companies]);
+  const customerOptions = useMemo(() => Array.from(new Set([
+    ...companies.filter(c => c.type === '고객사').map(c => c.name),
+    ...orders.map(o => o.customerName),
+  ].filter(Boolean))).sort(), [orders, companies]);
 
   const filtered = useMemo(() => orders.filter(o => {
     if (!matchesPeriod(o.orderDate)) return false;
