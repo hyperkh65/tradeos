@@ -11,6 +11,8 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
     businessId: row.business_id as string,
     supplierId: (row.supplier_id as string) || '',
     supplierName: row.supplier_name as string,
+    customerId: (row.customer_id as string) || undefined,
+    customerName: (row.customer_name as string) || undefined,
     items: JSON.parse(row.items_json as string || '[]'),
     currency: ((row.currency as string) || 'USD').replace(/^RMB$/i, 'CNY'),
     totalAmount: row.total_amount as number,
@@ -38,8 +40,8 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
 
 function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }, id: string, ts: string, notionId?: string | null) {
   db.prepare(`INSERT OR IGNORE INTO purchase_orders
-    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio,customer_id,customer_name)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, po.businessId, po.supplierId || '', po.supplierName,
       JSON.stringify(po.items), po.currency, po.totalAmount,
@@ -48,6 +50,7 @@ function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?:
       po.etd ?? null, po.status || 'confirmed', po.incoterm ?? null, po.remark ?? null,
       po.createdBy || 'ynk-erp', notionId ?? null, po.createdAt || ts, ts,
       (po as any).imagesJson ?? null, (po as any).depositRatio ?? '30',
+      po.customerId ?? null, po.customerName ?? null,
     );
 }
 
@@ -137,6 +140,8 @@ export async function POST(req: NextRequest) {
       id, businessId: bizId,
       supplierId: body.supplierId || '',
       supplierName: body.supplierName || '',
+      customerId: body.customerId || undefined,
+      customerName: body.customerName || undefined,
       items, currency: body.currency || 'USD',
       totalAmount: total,
       depositAmount: body.depositAmount,

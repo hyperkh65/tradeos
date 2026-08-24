@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered,
 } from 'lucide-react';
 
 // Coros 로고마크 — 파란 둥근사각형 + 흰색 굵은 C + 중심 dot
@@ -85,10 +85,11 @@ const navGroups = [
     ],
   },
   {
-    label: '재무',
+    label: '공급관리',
     items: [
       { label: '비용', href: '/expenses', icon: DollarSign },
       { label: 'SCM', href: '/scm', icon: GitMerge },
+      { label: '오더 추적', href: '/scm/orders', icon: ListOrdered },
     ],
   },
   {

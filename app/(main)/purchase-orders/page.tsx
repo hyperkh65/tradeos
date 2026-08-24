@@ -411,6 +411,8 @@ function POModal({
   const [form, setForm] = useState({
     supplierName: item?.supplierName || '',
     supplierId: item?.supplierId || '',
+    customerName: (item as any)?.customerName || '',
+    customerId: (item as any)?.customerId || '',
     currency: item?.currency || 'USD',
     orderDate: item?.orderDate || new Date().toISOString().slice(0, 10),
     etd: item?.etd || '',
@@ -542,7 +544,7 @@ function POModal({
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Row 1: Supplier + Currency + Incoterm */}
+          {/* Row 1: Supplier + Customer + Currency + Incoterm */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">공급업체 *</label>
@@ -551,6 +553,15 @@ function POModal({
                 onChange={v => setForm(f => ({ ...f, supplierName: v, supplierId: '' }))}
                 onSelect={c => setForm(f => ({ ...f, supplierName: c.name, supplierId: c.id }))}
                 companies={companies}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">고객사 (이 발주가 채우는 주문)</label>
+              <SupplierInput
+                value={form.customerName}
+                onChange={v => setForm(f => ({ ...f, customerName: v, customerId: '' }))}
+                onSelect={c => setForm(f => ({ ...f, customerName: c.name, customerId: c.id }))}
+                companies={companies.filter((c: any) => c.type === '고객사')}
               />
             </div>
             <div>
@@ -1092,7 +1103,10 @@ function PurchaseOrdersPageInner() {
                     if (revisions.length === 0) return (
                       <tr key={po.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-3 py-3 font-mono text-xs font-medium whitespace-nowrap">{po.businessId}</td>
-                        <td className="px-3 py-3 text-sm font-medium"><span className="truncate block max-w-[140px]">{po.supplierName}</span></td>
+                        <td className="px-3 py-3 text-sm font-medium">
+                          <span className="truncate block max-w-[140px]">{po.supplierName}</span>
+                          {(po as any).customerName && <span className="truncate block max-w-[140px] text-[10px] text-muted-foreground font-normal">→ {(po as any).customerName}</span>}
+                        </td>
                         <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell"><span className="truncate block max-w-[220px]">{po.items.map(i => `${i.productName}×${i.qty}`).join(', ')}</span></td>
                         <td className="px-3 py-3 text-sm font-semibold whitespace-nowrap">{po.currency} {Number(po.totalAmount).toLocaleString()}</td>
                         <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap hidden xl:table-cell">{depDisplay(po)}</td>

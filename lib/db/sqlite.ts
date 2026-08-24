@@ -504,6 +504,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE purchase_orders ADD COLUMN pi_number TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN pi_file_url TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN pi_stamped_url TEXT`,
+    // 오더 추적: 발주 건이 어느 고객사 주문을 채우기 위한 것인지 (PO 1건 = 고객사 1곳)
+    `ALTER TABLE purchase_orders ADD COLUMN customer_id TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN customer_name TEXT`,
     `ALTER TABLE shipments ADD COLUMN cargo_items_json TEXT DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN container_no TEXT`,
     `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,
@@ -1020,6 +1023,28 @@ function runMigrations(db: Database.Database) {
       created_by_name TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 오더 추적 잔여수량 기준시점(cutover) 조정: 자동추적(판매 연동) 도입 이전 발주 건은
+  // 관리자가 특정 시점 기준 잔여수량을 수동으로 입력해두고, 그 시점 이후 판매분만 자동 차감한다.
+  // 같은 PO+품목에 대해 관리자가 여러 번 재조정할 수 있도록 UPSERT + history_json으로 이력을 남긴다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS po_qty_adjustments (
+      id TEXT PRIMARY KEY,
+      po_id TEXT NOT NULL,
+      po_business_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      cutover_date TEXT NOT NULL,
+      remaining_qty REAL NOT NULL,
+      note TEXT,
+      history_json TEXT NOT NULL DEFAULT '[]',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(po_id, item_id)
     )`);
   } catch { /* already exists */ }
 

@@ -70,6 +70,14 @@ export default function SCMPage() {
     <div className="flex flex-col h-full">
       <AppHeader title="SCM (공급망 관리)" icon={<GitMerge className="w-5 h-5" />} />
       <div className="flex-1 overflow-auto p-4 lg:p-6 space-y-6">
+        <Link href="/scm/orders" className="flex items-center justify-between bg-card border rounded-xl p-4 hover:border-primary/50 transition-colors group">
+          <div>
+            <p className="text-sm font-semibold group-hover:text-primary transition-colors">오더 추적 (고객사별 · 공급업체별 발주 현황)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">발주수량, 입고대비 잔여수량, 단가 변동, 판매 진척률을 오더 단위로 한눈에 확인</p>
+          </div>
+          <span className="text-xs text-primary group-hover:underline whitespace-nowrap">바로가기 →</span>
+        </Link>
+
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-card border rounded-xl p-4">

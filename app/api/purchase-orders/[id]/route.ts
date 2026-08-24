@@ -40,8 +40,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const newPiNumber = body.piNumber !== undefined ? body.piNumber : (row.pi_number ?? null);
     const autoStatus = (status === 'draft' || row.status === 'draft') && newPiNumber ? 'confirmed' : status;
 
-    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=?,images_json=?,deposit_ratio=?,revisions_json=?,pi_number=?,pi_file_url=?,pi_stamped_url=? WHERE id=?`)
-      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, autoStatus, body.incoterm ?? null, body.remark ?? null, ts, body.imagesJson ?? row.images_json ?? null, body.depositRatio ?? row.deposit_ratio ?? '30', revisionsJson, newPiNumber, body.piFileUrl !== undefined ? body.piFileUrl : (row.pi_file_url ?? null), body.piStampedUrl !== undefined ? body.piStampedUrl : (row.pi_stamped_url ?? null), id);
+    const customerId = body.customerId !== undefined ? body.customerId : (row.customer_id ?? null);
+    const customerName = body.customerName !== undefined ? body.customerName : (row.customer_name ?? null);
+
+    db.prepare(`UPDATE purchase_orders SET supplier_name=?,items_json=?,currency=?,total_amount=?,deposit_amount=?,balance_amount=?,payment_terms=?,order_date=?,production_due_date=?,inspection_date=?,etd=?,status=?,incoterm=?,remark=?,updated_at=?,images_json=?,deposit_ratio=?,revisions_json=?,pi_number=?,pi_file_url=?,pi_stamped_url=?,customer_id=?,customer_name=? WHERE id=?`)
+      .run(supplierName, JSON.stringify(items), currency, total, body.depositAmount ?? null, body.balanceAmount ?? null, body.paymentTerms ?? null, orderDate, body.productionDueDate ?? null, body.inspectionDate ?? null, body.etd ?? null, autoStatus, body.incoterm ?? null, body.remark ?? null, ts, body.imagesJson ?? row.images_json ?? null, body.depositRatio ?? row.deposit_ratio ?? '30', revisionsJson, newPiNumber, body.piFileUrl !== undefined ? body.piFileUrl : (row.pi_file_url ?? null), body.piStampedUrl !== undefined ? body.piStampedUrl : (row.pi_stamped_url ?? null), customerId, customerName, id);
 
     // Sync to Notion (ERP)
     await updateNotionPurchaseOrder(businessId, {

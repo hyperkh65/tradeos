@@ -143,6 +143,8 @@ export interface PurchaseOrder {
   businessId: string; // PO-2026-0001
   supplierId: string;
   supplierName: string;
+  customerId?: string;
+  customerName?: string;
   items: POItem[];
   currency: string;
   totalAmount: number;
