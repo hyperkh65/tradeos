@@ -38,6 +38,7 @@
     "cookies-next": "^6.1.1",
     "date-fns": "^4.4.0",
     "exceljs": "^4.4.0",
+    "htmlparser2": "^9.1.0",
     "imapflow": "^1.6.6",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.29.0",

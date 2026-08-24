@@ -4,6 +4,8 @@ import { getCompanySettings, resolveCompanyAssetPath } from './company';
 import { SalesStatementDoc, type SaleItem } from './sales-statement';
 import { PurchaseOrderDoc, type POItem } from './purchase-order';
 import { ProfitAnalysisDoc } from './profit-analysis';
+import { OfficialDocumentDoc } from './official-document';
+import { ImportCostSettlementDoc } from './import-cost-settlement';
 
 export async function generateSalesStatementPdf(saleId: string): Promise<Buffer | null> {
   const db = getDb();
@@ -147,5 +149,53 @@ export async function generateProfitAnalysisPdf(paId: string): Promise<Buffer | 
     effectivePayment,
     paymentIsFromProductCost: pa.paymentAmount === 0 && productTotalKrw > 0,
     actualPayment,
+  }));
+}
+
+export async function generateOfficialDocumentPdf(docId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM documents WHERE id=? AND doc_type='official'").get(docId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    recipient?: string; recipientAddress?: string; sender?: string; issueDate?: string; contentHtml?: string; contact?: string;
+  };
+  const company = getCompanySettings();
+
+  return renderToBuffer(OfficialDocumentDoc({
+    businessId: row.business_id as string,
+    title: row.title as string,
+    issueDate: data.issueDate || '',
+    recipient: data.recipient || '',
+    recipientAddress: data.recipientAddress,
+    sender: data.sender || company.name,
+    contentHtml: data.contentHtml || '',
+    contact: data.contact,
+    company,
+    companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
+    stampPath: resolveCompanyAssetPath(company.stampUrl),
+  }));
+}
+
+export async function generateImportCostSettlementPdf(docId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM documents WHERE id=? AND doc_type='import_cost_settlement'").get(docId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    customerName: string; customerCeo: string; productName: string; deliveryLocation: string;
+    paymentCondition: string; paymentMethod: string;
+    items: { name: string; qty: number; unitPriceCny: number }[];
+    advance: { amountCny: number; exchangeRate: number; note: string };
+    balance: { amountCny: number; exchangeRate: number; note: string };
+  };
+  const company = getCompanySettings();
+
+  return renderToBuffer(ImportCostSettlementDoc({
+    businessId: row.business_id as string,
+    issueDate: (row.created_at as string)?.slice(0, 10) || '',
+    customerName: data.customerName, customerCeo: data.customerCeo, productName: data.productName,
+    deliveryLocation: data.deliveryLocation, paymentCondition: data.paymentCondition, paymentMethod: data.paymentMethod,
+    items: data.items || [], advance: data.advance, balance: data.balance,
+    company,
+    stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }

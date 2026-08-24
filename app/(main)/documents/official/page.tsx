@@ -142,7 +142,7 @@ export default function OfficialDocumentsPage() {
                   <span className="font-semibold text-sm truncate">{selected.title}</span>
                   <div className="ml-auto flex items-center gap-1.5">
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowHistory(true)}><History className="w-3.5 h-3.5" />히스토리</Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => window.print()}><Printer className="w-3.5 h-3.5" />인쇄</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => window.open(`/api/documents/${selected.id}/pdf`, '_blank')}><Printer className="w-3.5 h-3.5" />PDF</Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openEdit(selected)}>편집</Button>
                   </div>
                 </>
