@@ -8,8 +8,9 @@ import {
   Plus, Search, Loader2, Table2, History, X, Save, Send, Printer, Trash2,
 } from 'lucide-react';
 
+type Currency = 'KRW' | 'USD' | 'CNY';
 interface Item { name: string; qty: number; unitPriceCny: number }
-interface PaySide { amountCny: number; exchangeRate: number; note: string }
+interface PaySide { currency: Currency; amount: number; exchangeRate: number; note: string }
 interface SettlementData {
   customerName: string; customerCeo: string; productName: string;
   deliveryLocation: string; paymentCondition: string; paymentMethod: string;
@@ -21,30 +22,64 @@ interface DocRow {
   history?: Array<{ at: string; by: string; action: string }>;
 }
 
+const CURRENCIES: { value: Currency; label: string }[] = [
+  { value: 'CNY', label: 'CNY (위안화)' },
+  { value: 'USD', label: 'USD (달러)' },
+  { value: 'KRW', label: 'KRW (원화)' },
+];
+
 const emptyData = (): SettlementData => ({
   customerName: '', customerCeo: '', productName: '', deliveryLocation: '고객사 지정',
   paymentCondition: '현금, 물품 수령 후 100% 지급', paymentMethod: '내수거래 (원화 결제 조건, 세금계산서 발행 조건)',
   items: [{ name: '', qty: 0, unitPriceCny: 0 }],
-  advance: { amountCny: 0, exchangeRate: 0, note: '' },
-  balance: { amountCny: 0, exchangeRate: 0, note: '발행 예정' },
+  advance: { currency: 'CNY', amount: 0, exchangeRate: 0, note: '' },
+  balance: { currency: 'CNY', amount: 0, exchangeRate: 0, note: '발행 예정' },
 });
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const fmtCny = (n: number) => n.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const noVatOf = (p: PaySide) => p.currency === 'KRW' ? Math.round(p.amount || 0) : Math.round((p.amount || 0) * (p.exchangeRate || 0));
 
 function calc(d: SettlementData) {
   const totalQty = d.items.reduce((s, i) => s + (i.qty || 0), 0);
   const totalCny = d.items.reduce((s, i) => s + (i.qty || 0) * (i.unitPriceCny || 0), 0);
-  const advNoVat = Math.round((d.advance.amountCny || 0) * (d.advance.exchangeRate || 0));
+  const advNoVat = noVatOf(d.advance);
   const advVat = Math.round(advNoVat * 1.1);
-  const balNoVat = Math.round((d.balance.amountCny || 0) * (d.balance.exchangeRate || 0));
+  const balNoVat = noVatOf(d.balance);
   const balVat = Math.round(balNoVat * 1.1);
   return {
     totalQty, totalCny, advNoVat, advVat, balNoVat, balVat,
-    totalCnyPay: (d.advance.amountCny || 0) + (d.balance.amountCny || 0),
     totalKrwNoVat: advNoVat + balNoVat, totalKrwVat: advVat + balVat,
     deposit: advVat, settlement: balVat,
   };
+}
+
+function PaySideEditor({ label, value, onChange, noVat, vat, placeholder }: {
+  label: string; value: PaySide; onChange: (p: PaySide) => void; noVat: number; vat: number; placeholder: string;
+}) {
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2">
+      <div className="text-xs font-semibold">{label}</div>
+      <div className="grid grid-cols-[1fr_100px] gap-2">
+        <div>
+          <label className="text-[11px] text-muted-foreground">금액</label>
+          <Input type="number" value={value.amount || ''} onChange={e => onChange({ ...value, amount: Number(e.target.value) || 0 })} className="h-8 text-xs" />
+        </div>
+        <div>
+          <label className="text-[11px] text-muted-foreground">통화</label>
+          <select value={value.currency} onChange={e => onChange({ ...value, currency: e.target.value as Currency })}
+            className="h-8 w-full text-xs rounded border border-input bg-background px-2">
+            {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.value}</option>)}
+          </select>
+        </div>
+      </div>
+      {value.currency !== 'KRW' && (
+        <div><label className="text-[11px] text-muted-foreground">환율 (1 {value.currency} = ? KRW)</label><Input type="number" value={value.exchangeRate || ''} onChange={e => onChange({ ...value, exchangeRate: Number(e.target.value) || 0 })} className="h-8 text-xs" /></div>
+      )}
+      <div><label className="text-[11px] text-muted-foreground">비고</label><Input value={value.note} onChange={e => onChange({ ...value, note: e.target.value })} className="h-8 text-xs" placeholder={placeholder} /></div>
+      <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">부가세제외 {fmt(noVat)}원 · 부가세포함 <b className="text-foreground">{fmt(vat)}원</b></div>
+    </div>
+  );
 }
 
 export default function ImportCostSettlementPage() {
@@ -207,20 +242,8 @@ export default function ImportCostSettlementPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="border border-border rounded-lg p-3 space-y-2">
-                      <div className="text-xs font-semibold">선금</div>
-                      <div><label className="text-[11px] text-muted-foreground">금액(CNY)</label><Input type="number" value={data.advance.amountCny || ''} onChange={e => setData(d => ({ ...d, advance: { ...d.advance, amountCny: Number(e.target.value) || 0 } }))} className="h-8 text-xs" /></div>
-                      <div><label className="text-[11px] text-muted-foreground">환율</label><Input type="number" value={data.advance.exchangeRate || ''} onChange={e => setData(d => ({ ...d, advance: { ...d.advance, exchangeRate: Number(e.target.value) || 0 } }))} className="h-8 text-xs" /></div>
-                      <div><label className="text-[11px] text-muted-foreground">비고</label><Input value={data.advance.note} onChange={e => setData(d => ({ ...d, advance: { ...d.advance, note: e.target.value } }))} className="h-8 text-xs" placeholder="예: 9월 15일 발행" /></div>
-                      <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">부가세제외 {fmt(c.advNoVat)}원 · 부가세포함 <b className="text-foreground">{fmt(c.advVat)}원</b></div>
-                    </div>
-                    <div className="border border-border rounded-lg p-3 space-y-2">
-                      <div className="text-xs font-semibold">잔금</div>
-                      <div><label className="text-[11px] text-muted-foreground">금액(CNY)</label><Input type="number" value={data.balance.amountCny || ''} onChange={e => setData(d => ({ ...d, balance: { ...d.balance, amountCny: Number(e.target.value) || 0 } }))} className="h-8 text-xs" /></div>
-                      <div><label className="text-[11px] text-muted-foreground">환율</label><Input type="number" value={data.balance.exchangeRate || ''} onChange={e => setData(d => ({ ...d, balance: { ...d.balance, exchangeRate: Number(e.target.value) || 0 } }))} className="h-8 text-xs" /></div>
-                      <div><label className="text-[11px] text-muted-foreground">비고</label><Input value={data.balance.note} onChange={e => setData(d => ({ ...d, balance: { ...d.balance, note: e.target.value } }))} className="h-8 text-xs" placeholder="예: 발행 예정" /></div>
-                      <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">부가세제외 {fmt(c.balNoVat)}원 · 부가세포함 <b className="text-foreground">{fmt(c.balVat)}원</b></div>
-                    </div>
+                    <PaySideEditor label="선금" value={data.advance} onChange={p => setData(d => ({ ...d, advance: p }))} noVat={c.advNoVat} vat={c.advVat} placeholder="예: 9월 15일 발행" />
+                    <PaySideEditor label="잔금" value={data.balance} onChange={p => setData(d => ({ ...d, balance: p }))} noVat={c.balNoVat} vat={c.balVat} placeholder="예: 발행 예정" />
                   </div>
 
                   <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-center justify-between text-sm">
@@ -255,11 +278,11 @@ export default function ImportCostSettlementPage() {
                     </tbody>
                   </table>
                   <table className="w-full text-xs border border-border">
-                    <thead className="bg-muted/50"><tr><th className="p-1.5 border-b border-border text-left">적요</th><th className="p-1.5 border-b border-border text-right">금액(CNY)</th><th className="p-1.5 border-b border-border text-right">환율</th><th className="p-1.5 border-b border-border text-right">부가세제외(KRW)</th><th className="p-1.5 border-b border-border text-right">부가세포함(KRW)</th><th className="p-1.5 border-b border-border text-left">비고</th></tr></thead>
+                    <thead className="bg-muted/50"><tr><th className="p-1.5 border-b border-border text-left">적요</th><th className="p-1.5 border-b border-border text-right">금액</th><th className="p-1.5 border-b border-border text-right">환율</th><th className="p-1.5 border-b border-border text-right">부가세제외(KRW)</th><th className="p-1.5 border-b border-border text-right">부가세포함(KRW)</th><th className="p-1.5 border-b border-border text-left">비고</th></tr></thead>
                     <tbody>
-                      <tr className="border-b border-border/60"><td className="p-1.5">선금</td><td className="p-1.5 text-right">{fmtCny(selected.data.advance.amountCny)}</td><td className="p-1.5 text-right">{selected.data.advance.exchangeRate}</td><td className="p-1.5 text-right">{fmt(viewC.advNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.advVat)}</td><td className="p-1.5">{selected.data.advance.note}</td></tr>
-                      <tr><td className="p-1.5">잔금</td><td className="p-1.5 text-right">{fmtCny(selected.data.balance.amountCny)}</td><td className="p-1.5 text-right">{selected.data.balance.exchangeRate}</td><td className="p-1.5 text-right">{fmt(viewC.balNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.balVat)}</td><td className="p-1.5">{selected.data.balance.note}</td></tr>
-                      <tr className="font-semibold bg-muted/30"><td className="p-1.5">합계</td><td className="p-1.5 text-right">{fmtCny(viewC.totalCnyPay)}</td><td /><td className="p-1.5 text-right">{fmt(viewC.totalKrwNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.totalKrwVat)}</td><td /></tr>
+                      <tr className="border-b border-border/60"><td className="p-1.5">선금</td><td className="p-1.5 text-right">{selected.data.advance.currency} {fmtCny(selected.data.advance.amount)}</td><td className="p-1.5 text-right">{selected.data.advance.currency === 'KRW' ? '-' : selected.data.advance.exchangeRate}</td><td className="p-1.5 text-right">{fmt(viewC.advNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.advVat)}</td><td className="p-1.5">{selected.data.advance.note}</td></tr>
+                      <tr><td className="p-1.5">잔금</td><td className="p-1.5 text-right">{selected.data.balance.currency} {fmtCny(selected.data.balance.amount)}</td><td className="p-1.5 text-right">{selected.data.balance.currency === 'KRW' ? '-' : selected.data.balance.exchangeRate}</td><td className="p-1.5 text-right">{fmt(viewC.balNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.balVat)}</td><td className="p-1.5">{selected.data.balance.note}</td></tr>
+                      <tr className="font-semibold bg-muted/30"><td className="p-1.5" colSpan={3}>합계</td><td className="p-1.5 text-right">{fmt(viewC.totalKrwNoVat)}</td><td className="p-1.5 text-right">{fmt(viewC.totalKrwVat)}</td><td /></tr>
                     </tbody>
                   </table>
                 </div>

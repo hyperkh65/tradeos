@@ -19,8 +19,10 @@ interface OfficialData {
   issueDate?: string; contentHtml?: string; contact?: string;
 }
 
+const DEFAULT_GREETING = '<p>귀사의 무궁한 발전과 번창하심을 진심으로 기원합니다. 평소 당사 제품을 이용해 주시는 데 깊이 감사드립니다.</p><p></p>';
+
 const emptyData = (): OfficialData => ({
-  recipient: '', recipientAddress: '', sender: '', issueDate: new Date().toISOString().slice(0, 10), contentHtml: '', contact: '',
+  recipient: '', recipientAddress: '', sender: '', issueDate: new Date().toISOString().slice(0, 10), contentHtml: DEFAULT_GREETING, contact: '',
 });
 
 export default function OfficialDocumentsPage() {

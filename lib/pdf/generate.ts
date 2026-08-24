@@ -184,18 +184,26 @@ export async function generateImportCostSettlementPdf(docId: string): Promise<Bu
     customerName: string; customerCeo: string; productName: string; deliveryLocation: string;
     paymentCondition: string; paymentMethod: string;
     items: { name: string; qty: number; unitPriceCny: number }[];
-    advance: { amountCny: number; exchangeRate: number; note: string };
-    balance: { amountCny: number; exchangeRate: number; note: string };
+    advance: { currency?: 'KRW' | 'USD' | 'CNY'; amount?: number; amountCny?: number; exchangeRate: number; note: string };
+    balance: { currency?: 'KRW' | 'USD' | 'CNY'; amount?: number; amountCny?: number; exchangeRate: number; note: string };
   };
   const company = getCompanySettings();
+  // 이전 버전 문서(통화 필드 없이 CNY 고정)와도 호환
+  const normalizeSide = (s: typeof data.advance) => ({
+    currency: s.currency || 'CNY',
+    amount: s.amount ?? s.amountCny ?? 0,
+    exchangeRate: s.exchangeRate,
+    note: s.note,
+  });
 
   return renderToBuffer(ImportCostSettlementDoc({
     businessId: row.business_id as string,
     issueDate: (row.created_at as string)?.slice(0, 10) || '',
     customerName: data.customerName, customerCeo: data.customerCeo, productName: data.productName,
     deliveryLocation: data.deliveryLocation, paymentCondition: data.paymentCondition, paymentMethod: data.paymentMethod,
-    items: data.items || [], advance: data.advance, balance: data.balance,
+    items: data.items || [], advance: normalizeSide(data.advance), balance: normalizeSide(data.balance),
     company,
+    companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
     stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }
