@@ -92,31 +92,42 @@ export async function generateProfitAnalysisPdf(paId: string): Promise<Buffer | 
     duty: (row.duty as number) || 0,
     vatImport: (row.vat_import as number) || 0,
     wireFee: (row.wire_fee as number) || 0,
-    productItems: (() => { try { return JSON.parse((row.product_items_json as string) || '[]'); } catch { return []; } })() as { qty: number; unitPriceFx: number; totalKrwManual?: number }[],
+    advancePayment: (row.advance_payment as number) || 0,
+    paymentAmount: (row.payment_amount as number) || 0,
+    productItems: (() => { try { return JSON.parse((row.product_items_json as string) || '[]'); } catch { return []; } })() as { name: string; spec?: string; qty: number; unitPriceFx: number; totalKrwManual?: number }[],
     extraCosts: (() => { try { return JSON.parse((row.extra_costs_json as string) || '[]'); } catch { return []; } })() as { name: string; amount: number }[],
   };
 
   const cex = pa.customsExRate || 1;
   const wex = pa.wireExRate || cex;
-  let productTotal2 = 0;
-  for (const item of pa.productItems) {
-    productTotal2 += item.totalKrwManual ? item.totalKrwManual : Math.round((item.qty || 0) * (item.unitPriceFx || 0) * wex);
-  }
+
+  let productTotalKrw = 0;
+  let productTotalRmb = 0;
+  const dateStr = pa.analysisDate ? `${new Date(pa.analysisDate).getMonth() + 1}/${new Date(pa.analysisDate).getDate()}` : '';
+  const productItems = pa.productItems.map(item => {
+    const krw = item.totalKrwManual ?? Math.round((item.qty || 0) * (item.unitPriceFx || 0) * cex);
+    const rmb = item.totalKrwManual ? null : (item.qty || 0) * (item.unitPriceFx || 0);
+    productTotalKrw += item.totalKrwManual ? item.totalKrwManual : Math.round((item.qty || 0) * (item.unitPriceFx || 0) * wex);
+    if (rmb != null) productTotalRmb += rmb;
+    return { label: `${dateStr}  ${item.name}${item.spec ? ' ' + item.spec : ''}`, qty: item.qty || 0, krw: krw || null, rmb };
+  });
+
   const extraTotal = pa.extraCosts.reduce((s, c) => s + (c.amount || 0), 0);
   const logisticTotal = pa.freightCost + pa.inlandFreight + pa.brokerFee + pa.duty + pa.wireFee + extraTotal;
-  const totalCost = productTotal2 + logisticTotal;
+  const totalCost = productTotalKrw + logisticTotal;
   const profit = pa.saleAmount - totalCost;
   const profitRate = pa.saleAmount > 0 ? (profit / pa.saleAmount) * 100 : 0;
+  const effectivePayment = pa.paymentAmount > 0 ? pa.paymentAmount : productTotalKrw;
+  const actualPayment = effectivePayment - pa.advancePayment;
 
-  const costRows = [
-    { label: '제품원가 (②송금환율 기준)', tag: 'B-1', val: productTotal2 },
-    { label: '포워더 운임 (해상+부대비용)', tag: 'B-2', val: pa.freightCost },
-    { label: '내륙운송료', tag: 'B-3', val: pa.inlandFreight },
-    { label: '통관수수료', tag: 'B-4', val: pa.brokerFee },
-    { label: '관세', tag: 'B-5', val: pa.duty },
-    { label: '기타비용', tag: 'B-6', val: extraTotal },
-    { label: '해외송금수수료', tag: 'B-7', val: pa.wireFee },
-  ].filter(r => r.val > 0);
+  const costDetails = [
+    { label: '포워더운임', val: pa.freightCost },
+    { label: '내륙운송료', val: pa.inlandFreight },
+    { label: '통관수수료', val: pa.brokerFee },
+    { label: '관세', val: pa.duty },
+    { label: '해외송금수수료', val: pa.wireFee },
+    ...pa.extraCosts.filter(c => c.amount > 0).map(c => ({ label: c.name, val: c.amount })),
+  ];
 
   return renderToBuffer(ProfitAnalysisDoc({
     businessId: row.business_id as string,
@@ -126,7 +137,15 @@ export async function generateProfitAnalysisPdf(paId: string): Promise<Buffer | 
     supplierName: pa.supplierName,
     importBusinessId: pa.importBusinessId,
     saleAmount: pa.saleAmount,
-    costRows, totalCost, profit, profitRate,
+    customsExRate: cex,
+    wireExRate: wex,
+    productItems, productTotalKrw, productTotalRmb,
+    logisticTotal, costDetails,
     vatImport: pa.vatImport,
+    profit, profitRate, totalCost,
+    advancePayment: pa.advancePayment,
+    effectivePayment,
+    paymentIsFromProductCost: pa.paymentAmount === 0 && productTotalKrw > 0,
+    actualPayment,
   }));
 }

@@ -18,9 +18,11 @@ export function getCompanySettings(): Record<string, string> {
   }
 }
 
-// company.stampUrl은 "/api/settings/company/upload/stamp.png?t=..." 형태 - 디스크 경로로 변환
+// company.stampUrl/logoUrl은 외부 호스팅(Cloudinary 등) 절대 URL이거나,
+// 예전 방식인 "/api/settings/company/upload/stamp.png?t=..." 로컬 경로일 수 있다.
 export function resolveCompanyAssetPath(url: string | undefined): string | null {
   if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url; // 외부 URL은 그대로 반환 (react-pdf가 직접 fetch)
   const filename = url.split('?')[0].split('/').filter(Boolean).pop();
   if (!filename) return null;
   const full = path.join(COMPANY_UPLOAD_BASE, filename);
