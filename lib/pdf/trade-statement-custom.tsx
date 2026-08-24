@@ -15,7 +15,6 @@ export interface TradeStatementCustomPdfProps {
   supplyAmount: number;
   vatAmount: number;
   totalAmount: number;
-  systemTotalAmount: number | null;
   stampPath?: string | null;
 }
 
@@ -67,8 +66,6 @@ function PartyBlock(p: { title: string; party: TradeStatementParty }) {
 }
 
 export function TradeStatementCustomDoc(p: TradeStatementCustomPdfProps) {
-  const mismatch = p.systemTotalAmount != null && Math.round(p.systemTotalAmount) !== Math.round(p.totalAmount);
-
   return (
     <Document>
       <Page size="A4" style={{ fontFamily: 'NotoSansKR', padding: '14mm', fontSize: 9, color: '#171717' }}>
@@ -141,12 +138,6 @@ export function TradeStatementCustomDoc(p: TradeStatementCustomPdfProps) {
           </View>
         </View>
 
-        <View style={{ borderTop: '1px solid #ddd', paddingTop: 6 }}>
-          <Text style={{ fontSize: 7.5, color: mismatch ? '#dc2626' : '#888' }}>
-            ※ 본 명세표의 합계금액을 당사 전산 매출금액과 반드시 대조 확인하시기 바랍니다.
-            {p.systemTotalAmount != null ? `  (전산 매출금액: ${fmt(p.systemTotalAmount)}원${mismatch ? ' — 본 명세표 금액과 차이가 있습니다' : ''})` : ''}
-          </Text>
-        </View>
       </Page>
     </Document>
   );

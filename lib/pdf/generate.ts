@@ -223,7 +223,6 @@ export async function generateTradeStatementCustomPdf(saleId: string): Promise<B
   const items = data.items || [];
   const { supplyAmount, vatAmount, totalAmount } = calcTradeStatementTotals(items);
 
-  const saleRow = db.prepare('SELECT total_amount FROM sales WHERE id=?').get(saleId) as { total_amount: number } | undefined;
   const company = getCompanySettings();
 
   return renderToBuffer(TradeStatementCustomDoc({
@@ -231,7 +230,6 @@ export async function generateTradeStatementCustomPdf(saleId: string): Promise<B
     supplier: data.supplier, customer: data.customer,
     items: items.map(i => ({ productName: i.productName, specification: i.specification, unit: i.unit, qty: i.qty, unitPrice: i.unitPrice, amount: i.qty * i.unitPrice, remark: i.remark })),
     supplyAmount, vatAmount, totalAmount,
-    systemTotalAmount: saleRow?.total_amount ?? null,
     stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }

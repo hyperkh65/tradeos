@@ -115,12 +115,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   ws.getCell(`F${signRow}`).value = '인수자 :                     (인)';
   ws.getCell(`F${signRow}`).alignment = { horizontal: 'right' };
 
-  const noteRow = signRow + 2;
-  ws.mergeCells(`A${noteRow}:I${noteRow}`);
-  const mismatch = saleRow != null && Math.round(saleRow.total_amount) !== Math.round(totalAmount);
-  ws.getCell(`A${noteRow}`).value = `※ 본 명세표의 합계금액을 당사 전산 매출금액과 반드시 대조 확인하시기 바랍니다.${saleRow ? `  (전산 매출금액: ${saleRow.total_amount.toLocaleString()}원${mismatch ? ' — 본 명세표 금액과 차이가 있습니다' : ''})` : ''}`;
-  ws.getCell(`A${noteRow}`).font = { size: 9, italic: true, color: { argb: mismatch ? 'FFDC2626' : 'FF888888' } };
-
   const buf = await wb.xlsx.writeBuffer();
   const filename = encodeURIComponent(`${saleRow?.business_id || id}_거래명세표(고객양식).xlsx`);
   return new NextResponse(buf, {
