@@ -1,5 +1,5 @@
-import { Document, Page, View, Text } from '@react-pdf/renderer';
-import { styles, fmt, PartyBox } from './styles';
+import { Document, Page, View, Text, Image } from '@react-pdf/renderer';
+import { fmt } from './styles';
 
 export interface SaleItem { product: string; specification?: string; qty: number; unitPrice: number; amount: number; remark?: string }
 
@@ -17,88 +17,134 @@ export interface SalesStatementProps {
   total: number;
   company: Record<string, string>;
   customerCo?: { business_no?: string; ceo?: string; address?: string; phone?: string };
+  stampPath?: string | null;
 }
 
+const MIN_ROWS = 10;
+
 export function SalesStatementDoc(p: SalesStatementProps) {
+  const emptyRows = Math.max(0, MIN_ROWS - p.items.length);
+
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        <View style={styles.titleWrap}>
-          <Text style={styles.title}>거 래 명 세 표</Text>
-          <Text style={styles.subtitle}>TRANSACTION STATEMENT</Text>
+      <Page size="A4" style={{ fontFamily: 'NotoSansKR', padding: '12mm', fontSize: 9, color: '#111' }}>
+        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+          <Text style={{ fontSize: 22, fontWeight: 800, letterSpacing: 12, color: '#222' }}>거 래 명 세 표</Text>
+          <Text style={{ fontSize: 8.5, color: '#888', marginTop: 4, letterSpacing: 1 }}>TRANSACTION STATEMENT</Text>
         </View>
 
-        <View style={styles.docInfoRow}>
-          <View style={styles.docInfoGroup}>
-            <View style={styles.docInfoItem}><Text style={styles.docInfoLabel}>문서번호</Text><Text style={styles.docInfoValue}>{p.businessId}</Text></View>
-            <View style={styles.docInfoItem}><Text style={styles.docInfoLabel}>거래일자</Text><Text style={styles.docInfoValue}>{p.saleDate}</Text></View>
-            <View style={styles.docInfoItem}><Text style={styles.docInfoLabel}>거래유형</Text><Text style={styles.docInfoValue}>{p.saleType}</Text></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, fontSize: 8.5, borderBottom: '1px solid #eee', paddingBottom: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 20 }}>
+            <Text><Text style={{ color: '#888' }}>문서번호 </Text><Text style={{ fontWeight: 700 }}>{p.businessId}</Text></Text>
+            <Text><Text style={{ color: '#888' }}>거래일자 </Text><Text style={{ fontWeight: 700 }}>{p.saleDate}</Text></Text>
+            <Text><Text style={{ color: '#888' }}>거래유형 </Text><Text style={{ fontWeight: 700 }}>{p.saleType}</Text></Text>
           </View>
-          {!!p.poNo && <View style={styles.docInfoItem}><Text style={styles.docInfoLabel}>PO#</Text><Text style={styles.docInfoValue}>{p.poNo}</Text></View>}
+          {!!p.poNo && <Text><Text style={{ color: '#888' }}>PO# </Text><Text style={{ fontWeight: 700 }}>{p.poNo}</Text></Text>}
         </View>
 
-        <View style={styles.partyRow}>
-          <PartyBox label="공 급 자" name={p.company.name} rows={[
-            ['사업자번호', p.company.bizNo], ['대표자', p.company.ceo], ['주소', p.company.address], ['전화', p.company.tel],
-          ]} />
-          <PartyBox label="공 급 받 는 자" name={p.customer} rows={[
-            ['사업자번호', p.customerCo?.business_no], ['대표자', p.customerCo?.ceo],
-            ['주소', p.customerCo?.address], ['전화', p.customerCo?.phone],
-            ['담당자', p.salesperson],
-          ]} />
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+          <View style={{ flex: 1, border: '1px solid #ddd', borderRadius: 6 }}>
+            <Text style={{ textAlign: 'center', fontWeight: 600, fontSize: 8, backgroundColor: '#f5f5f5', padding: 6, borderBottom: '1px solid #ddd', letterSpacing: 4, color: '#444' }}>공 급 자</Text>
+            <View style={{ padding: 10, fontSize: 8 }}>
+              <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>상호</Text><Text style={{ fontWeight: 700, fontSize: 10 }}>{p.company.name}</Text></View>
+              {!!p.company.bizNo && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>사업자번호</Text><Text>{p.company.bizNo}</Text></View>}
+              {!!p.company.ceo && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>대표자</Text><Text>{p.company.ceo}</Text></View>}
+              {!!p.company.address && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>주소</Text><Text style={{ fontSize: 7.5, flex: 1 }}>{p.company.address}</Text></View>}
+              {!!p.company.tel && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>전화</Text><Text>{p.company.tel}</Text></View>}
+            </View>
+          </View>
+          <View style={{ flex: 1, border: '1px solid #ddd', borderRadius: 6 }}>
+            <Text style={{ textAlign: 'center', fontWeight: 600, fontSize: 8, backgroundColor: '#f5f5f5', padding: 6, borderBottom: '1px solid #ddd', letterSpacing: 3, color: '#444' }}>공 급 받 는 자</Text>
+            <View style={{ padding: 10, fontSize: 8 }}>
+              <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>상호</Text><Text style={{ fontWeight: 700, fontSize: 12 }}>{p.customer}</Text></View>
+              {!!p.customerCo?.business_no && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>사업자번호</Text><Text>{p.customerCo.business_no}</Text></View>}
+              {!!p.customerCo?.ceo && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>대표자</Text><Text>{p.customerCo.ceo}</Text></View>}
+              {!!p.customerCo?.address && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>주소</Text><Text style={{ fontSize: 7.5, flex: 1 }}>{p.customerCo.address}</Text></View>}
+              {!!p.customerCo?.phone && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>전화</Text><Text>{p.customerCo.phone}</Text></View>}
+              {!!p.salesperson && <View style={{ flexDirection: 'row', marginBottom: 3 }}><Text style={{ color: '#888', width: 70 }}>담당자</Text><Text>{p.salesperson}</Text></View>}
+            </View>
+          </View>
         </View>
 
-        <View style={styles.table}>
-          <View style={styles.tr} fixed>
-            <Text style={[styles.th, { width: 24, textAlign: 'center' }]}>No</Text>
-            <Text style={[styles.th, { flex: 1 }]}>품목 및 규격</Text>
-            <Text style={[styles.th, { width: 40, textAlign: 'right' }]}>수량</Text>
-            <Text style={[styles.th, { width: 60, textAlign: 'right' }]}>단가</Text>
-            <Text style={[styles.th, { width: 70, textAlign: 'right' }]}>공급가액</Text>
-            <Text style={[styles.th, { width: 60, borderRight: 'none' }]}>비고</Text>
+        <View style={{ borderTop: '1px solid #ddd', borderLeft: '1px solid #ddd', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row' }}>
+            <Text style={{ width: 24, textAlign: 'center', padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>No</Text>
+            <Text style={{ flex: 1, padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>품목 및 규격</Text>
+            <Text style={{ width: 44, textAlign: 'right', padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>수량</Text>
+            <Text style={{ width: 68, textAlign: 'right', padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>단가</Text>
+            <Text style={{ width: 72, textAlign: 'right', padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>공급가액</Text>
+            <Text style={{ width: 68, padding: 8, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600, fontSize: 8.5, borderRight: '1px solid #ddd', borderBottom: '1px solid #ddd' }}>비고</Text>
           </View>
           {p.items.map((item, i) => (
-            <View style={styles.tr} key={i} wrap={false}>
-              <Text style={[styles.td, { width: 24, textAlign: 'center', color: '#888' }]}>{i + 1}</Text>
-              <View style={[styles.td, { flex: 1 }]}>
-                <Text style={{ fontWeight: 700 }}>{item.product}</Text>
-                {!!item.specification && <Text style={{ color: '#666', fontSize: 7, marginTop: 1 }}>{item.specification}</Text>}
+            <View style={{ flexDirection: 'row' }} key={i} wrap={false}>
+              <Text style={{ width: 24, textAlign: 'center', color: '#888', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{i + 1}</Text>
+              <View style={{ flex: 1, padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>
+                <Text style={{ fontWeight: 600 }}>{item.product}</Text>
+                {!!item.specification && <Text style={{ fontSize: 7.5, color: '#666', marginTop: 1 }}>{item.specification}</Text>}
               </View>
-              <Text style={[styles.td, { width: 40, textAlign: 'right' }]}>{fmt(item.qty)}</Text>
-              <Text style={[styles.td, { width: 60, textAlign: 'right' }]}>{fmt(item.unitPrice)}</Text>
-              <Text style={[styles.td, { width: 70, textAlign: 'right', fontWeight: 700 }]}>{fmt(item.amount)}</Text>
-              <Text style={[styles.td, { width: 60, borderRight: 'none', fontSize: 7, color: '#555' }]}>{item.remark || ''}</Text>
+              <Text style={{ width: 44, textAlign: 'right', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{fmt(item.qty)}</Text>
+              <Text style={{ width: 68, textAlign: 'right', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{fmt(item.unitPrice)}</Text>
+              <Text style={{ width: 72, textAlign: 'right', fontWeight: 600, padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{fmt(item.amount)}</Text>
+              <Text style={{ width: 68, fontSize: 7.5, color: '#555', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{item.remark || ''}</Text>
             </View>
           ))}
-          <View style={styles.totalRow}>
-            <Text style={[styles.td, { width: 24 + 60 + 40, textAlign: 'right' }]}> </Text>
-            <Text style={[styles.td, { flex: 1, textAlign: 'right' }]}>합 계</Text>
-            <Text style={[styles.td, { width: 70, textAlign: 'right' }]}>{fmt(p.netAmount)}</Text>
-            <Text style={[styles.td, { width: 60, borderRight: 'none' }]} />
+          {Array.from({ length: emptyRows }).map((_, i) => (
+            <View style={{ flexDirection: 'row' }} key={`e${i}`}>
+              <Text style={{ width: 24, height: 20, textAlign: 'center', color: '#bbb', padding: 6, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>{p.items.length + i + 1}</Text>
+              {[44, 68, 72, 68].map((w, j) => (
+                <Text key={j} style={j === 0 ? { flex: 1, height: 20, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' } : { width: w, height: 20, borderRight: '1px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }} />
+              ))}
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', backgroundColor: '#f5f5f5', borderTop: '2px solid #ccc' }}>
+            <Text style={{ width: 24 + 0, flex: 1, textAlign: 'right', fontWeight: 700, padding: 6, borderRight: '1px solid #e0e0e0' }}>합 계</Text>
+            <Text style={{ width: 44 + 68, borderRight: '1px solid #e0e0e0' }} />
+            <Text style={{ width: 72, textAlign: 'right', fontWeight: 700, padding: 6, borderRight: '1px solid #e0e0e0' }}>{fmt(p.netAmount)}</Text>
+            <Text style={{ width: 68 }} />
           </View>
         </View>
 
-        <View style={styles.totalsBox}>
-          <View style={styles.totalsLine}><Text style={{ color: '#666' }}>공급가액</Text><Text style={{ fontWeight: 700 }}>{fmt(p.netAmount)}원</Text></View>
-          <View style={styles.totalsLine}><Text style={{ color: '#666' }}>부가세 (10%)</Text><Text style={{ fontWeight: 700 }}>{fmt(p.vat)}원</Text></View>
-          <View style={styles.grandTotalLine}><Text>합계금액</Text><Text>{fmt(p.total)}원</Text></View>
+        <View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
+          <View style={{ backgroundColor: '#f9f9f9', padding: 20, borderRadius: 8, minWidth: 260 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, fontSize: 9 }}>
+              <Text style={{ color: '#666' }}>공급가액</Text><Text style={{ fontWeight: 700 }}>{fmt(p.netAmount)}원</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, fontSize: 9 }}>
+              <Text style={{ color: '#666' }}>부가세 (10%)</Text><Text style={{ fontWeight: 700 }}>{fmt(p.vat)}원</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTop: '2px solid #ddd', paddingTop: 12, fontSize: 15, fontWeight: 800 }}>
+              <Text>합계금액</Text><Text>{fmt(p.total)}원</Text>
+            </View>
+          </View>
         </View>
 
         {!!p.misc && (
-          <View style={styles.remarkBox}>
-            <Text style={{ color: '#888', fontSize: 7, marginBottom: 3 }}>기타 사항</Text>
-            <Text>{p.misc}</Text>
+          <View style={{ border: '1px solid #eee', borderRadius: 6, padding: 10, marginBottom: 16 }}>
+            <Text style={{ fontWeight: 600, color: '#888', marginBottom: 4, fontSize: 7.5 }}>기타 사항</Text>
+            <Text style={{ fontSize: 8.5 }}>{p.misc}</Text>
           </View>
         )}
 
-        {!!p.company.bank && (
-          <View style={[styles.remarkBox, { marginTop: 14 }]}>
-            <Text style={{ color: '#888', fontSize: 7, marginBottom: 3 }}>입금 계좌</Text>
-            <Text>{p.company.bank}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20 }}>
+          {p.company.bank ? (
+            <View style={{ border: '1px solid #eee', borderRadius: 6, padding: 10, fontSize: 8, flex: 1, marginRight: 20 }}>
+              <Text style={{ fontWeight: 600, color: '#888', marginBottom: 6, fontSize: 7.5 }}>입금 계좌</Text>
+              <Text>{p.company.bank}</Text>
+            </View>
+          ) : <View style={{ flex: 1 }} />}
+          <View style={{ alignItems: 'center', minWidth: 160 }}>
+            <Text style={{ fontSize: 8, color: '#888', marginBottom: 8 }}>{p.company.name} (인)</Text>
+            {p.stampPath ? (
+              <Image src={p.stampPath} style={{ width: 70, opacity: 0.8, transform: 'rotate(-5deg)' }} />
+            ) : (
+              <View style={{ width: 70, height: 70, border: '2px dashed #ccc', borderRadius: 35, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 7.5, color: '#aaa' }}>도장</Text>
+              </View>
+            )}
           </View>
-        )}
+        </View>
 
-        <View style={styles.footer}>
+        <View style={{ marginTop: 30, flexDirection: 'row', justifyContent: 'space-between', fontSize: 8, color: '#999' }}>
           <Text>발행: {new Date().toLocaleDateString('ko-KR')}</Text>
           <Text>이 문서는 전자 문서입니다.</Text>
         </View>

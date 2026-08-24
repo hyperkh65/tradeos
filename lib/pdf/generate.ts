@@ -1,6 +1,6 @@
 import { renderToBuffer } from '@react-pdf/renderer';
 import { getDb } from '@/lib/db/sqlite';
-import { getCompanySettings } from './company';
+import { getCompanySettings, resolveCompanyAssetPath } from './company';
 import { SalesStatementDoc, type SaleItem } from './sales-statement';
 import { PurchaseOrderDoc, type POItem } from './purchase-order';
 import { ProfitAnalysisDoc } from './profit-analysis';
@@ -27,6 +27,7 @@ export async function generateSalesStatementPdf(saleId: string): Promise<Buffer 
     misc: row.misc as string | undefined,
     items, netAmount, vat, total, company,
     customerCo: customer as { business_no?: string; ceo?: string; address?: string; phone?: string } | undefined,
+    stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
 }
 
