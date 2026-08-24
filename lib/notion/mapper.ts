@@ -1063,3 +1063,62 @@ export async function updateNotionTradeStatement(docNo: string, data: TradeState
   await deleteNotionTradeStatement(docNo);
   await createNotionTradeStatement(data);
 }
+
+// ─── 커미션(해외 수수료) ────────────────────────────────────────────────────
+export interface CommissionNotionInput {
+  businessId: string;
+  foreignCompany: string;
+  date: string;
+  currency: string;
+  amount: number;
+  exchangeRate: number;
+  amountKrw: number;
+  depositDate: string | null;
+  status: string;
+  dataJson: string;
+}
+
+export async function createNotionCommission(data: CommissionNotionInput): Promise<string | null> {
+  if (!DB.commissions || isDemoMode()) return null;
+  try {
+    const notion = getNotionClient();
+    const page = await notion.pages.create({
+      parent: { database_id: DB.commissions },
+      properties: {
+        '번호': titleProp(data.businessId),
+        'ForeignCompany': rich(data.foreignCompany),
+        'Date': dt(data.date),
+        'Currency': rich(data.currency),
+        'Amount': num(data.amount),
+        'ExchangeRate': num(data.exchangeRate),
+        'AmountKrw': num(data.amountKrw),
+        'DepositDate': dt(data.depositDate ?? undefined),
+        'Status': rich(data.status),
+        'DataJson': richLong(data.dataJson),
+      },
+    });
+    return page.id;
+  } catch (e) {
+    console.error('[Notion] create commission error:', e);
+    return null;
+  }
+}
+
+export async function deleteNotionCommission(businessId: string): Promise<void> {
+  if (!DB.commissions || isDemoMode() || !businessId) return;
+  try {
+    const notion = getNotionClient();
+    const res = await notion.databases.query({
+      database_id: DB.commissions,
+      filter: { property: '번호', title: { equals: businessId } },
+    });
+    await Promise.all(res.results.map(p => notion.pages.update({ page_id: p.id, archived: true })));
+  } catch (e) {
+    console.error('[Notion] delete commission error:', e);
+  }
+}
+
+export async function updateNotionCommission(businessId: string, data: CommissionNotionInput): Promise<string | null> {
+  await deleteNotionCommission(businessId);
+  return createNotionCommission(data);
+}

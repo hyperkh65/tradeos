@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen,
 } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
@@ -34,24 +34,26 @@ const navGroups = [
     items: [
       { label: '거래처', href: '/companies', icon: Building2 },
       { label: '제품', href: '/products', icon: Package },
-      { label: '재고', href: '/inventory', icon: Warehouse },
+      { label: '원가계산기', href: '/estimator', icon: Calculator },
       { label: '견적', href: '/quotes', icon: ClipboardList },
       { label: '발주', href: '/purchase-orders', icon: Boxes },
       { label: '계약', href: '/contracts', icon: FileSignature },
       { label: '검품', href: '/inspections', icon: CheckSquare },
-      { label: '선적', href: '/shipments', icon: Ship },
-      { label: '수입통관', href: '/imports', icon: TruckIcon },
+      { label: '재고', href: '/inventory', icon: Warehouse },
+      { label: '매출관리', href: '/crm', icon: ShoppingCart },
+      { label: '거래처원장', href: '/crm/ledger', icon: BookOpen },
       { label: '클레임', href: '/claims', icon: AlertCircle },
     ],
   },
   {
-    label: '영업',
+    label: '수입/회계',
     items: [
-      { label: '매출관리', href: '/crm', icon: ShoppingCart },
+      { label: '선적', href: '/shipments', icon: Ship },
+      { label: '수입통관', href: '/imports', icon: TruckIcon },
+      { label: '커미션', href: '/commissions', icon: Landmark },
       { label: '비용 원장', href: '/costs', icon: DollarSign },
-      { label: '원가계산기', href: '/estimator', icon: Calculator },
       { label: '수익분석', href: '/profit-analysis', icon: TrendingUp },
-      { label: '회계/청구', href: '/accounting', icon: Receipt },
+      { label: '회계전표', href: '/accounting', icon: Receipt },
     ],
   },
   {

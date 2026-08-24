@@ -38,6 +38,7 @@ export const DB = {
   estimatorCases: process.env.NOTION_DB_ESTIMATOR ?? '',
   profitAnalysis: process.env.NOTION_DB_PROFIT_ANALYSIS ?? '',
   tradeStatements: process.env.NOTION_DB_TRADE_STATEMENTS ?? '',
+  commissions: process.env.NOTION_DB_COMMISSIONS ?? '',
 } as const;
 
 export function isDemoMode(): boolean {

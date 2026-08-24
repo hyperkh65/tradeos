@@ -940,6 +940,7 @@ function runMigrations(db: Database.Database) {
       ['ac104','5440','지급수수료','expense','debit','수입원가','포워더·관세사 등 각종 수수료'],
       ['ac105','5450','Demurrage/체화료','expense','debit','수입원가','컨테이너 지체·체화료'],
       ['ac106','5460','내륙운송비','expense','debit','수입원가','항구→창고 내륙 운송비'],
+      ['ac107','4060','수수료수익','revenue','credit','영업외수익','해외 업체로부터 받는 커미션 등 수수료 수익'],
     ];
     db.transaction(() => { extraAccounts.forEach(a => addAcct.run(...a)); })();
   } catch { /* ignore */ }
@@ -1067,6 +1068,47 @@ function runMigrations(db: Database.Database) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(po_id, item_id)
+    )`);
+  } catch { /* already exists */ }
+
+  // 입금 계좌 등록 (커미션 등 해외 입금을 받을 통장 목록 - 통화별로 관리)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS bank_accounts (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'KRW',
+      bank_name TEXT NOT NULL,
+      account_number TEXT NOT NULL,
+      holder_name TEXT,
+      memo TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 해외 커미션(수수료) 수입 관리
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS commissions (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      foreign_company TEXT NOT NULL,
+      date TEXT NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      amount REAL NOT NULL DEFAULT 0,
+      exchange_rate REAL NOT NULL DEFAULT 1,
+      amount_krw REAL NOT NULL DEFAULT 0,
+      account_id TEXT,
+      deposit_date TEXT,
+      invoice_files_json TEXT NOT NULL DEFAULT '[]',
+      deposit_files_json TEXT NOT NULL DEFAULT '[]',
+      memo TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      journal_entry_id TEXT,
+      notion_id TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     )`);
   } catch { /* already exists */ }
 
