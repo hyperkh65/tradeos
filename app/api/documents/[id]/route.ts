@@ -52,6 +52,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
   const { id } = await params;
-  getDb().prepare('DELETE FROM documents WHERE id=?').run(id);
+  const db = getDb();
+  const existing = db.prepare('SELECT created_at FROM documents WHERE id=?').get(id) as { created_at: string } | undefined;
+  if (!existing) return NextResponse.json({ error: '문서를 찾을 수 없습니다' }, { status: 404 });
+
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const isOld = new Date(existing.created_at) < oneMonthAgo;
+  if (isOld && user.role !== 'admin') {
+    return NextResponse.json({ error: '1개월 이상 지난 문서는 관리자만 삭제할 수 있습니다.' }, { status: 403 });
+  }
+
+  db.prepare('DELETE FROM documents WHERE id=?').run(id);
   return NextResponse.json({ ok: true });
 }

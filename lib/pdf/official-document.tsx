@@ -58,7 +58,7 @@ export function OfficialDocumentDoc(p: OfficialDocumentPdfProps) {
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 }}>
           {!!p.contact && <Text style={{ fontSize: 9, color: '#555', marginRight: 16 }}>담당 : {p.contact}</Text>}
-          {p.stampPath && <Image src={p.stampPath} style={{ width: 100, opacity: 0.9, transform: 'rotate(-5deg)' }} />}
+          {p.stampPath && <Image src={p.stampPath} style={{ width: 210, opacity: 0.9, transform: 'rotate(-5deg)' }} />}
         </View>
       </Page>
     </Document>

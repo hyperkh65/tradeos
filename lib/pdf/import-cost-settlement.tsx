@@ -182,7 +182,7 @@ export function ImportCostSettlementDoc(p: SettlementPdfProps) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={{ fontSize: 12, fontWeight: 700, marginRight: 4 }}>{p.company.name}</Text>
-            {p.stampPath && <Image src={p.stampPath} style={{ width: 90, opacity: 0.9, transform: 'rotate(-5deg)' }} />}
+            {p.stampPath && <Image src={p.stampPath} style={{ width: 190, opacity: 0.9, transform: 'rotate(-5deg)' }} />}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={{ fontSize: 8, color: '#888', marginBottom: 4 }}>확인</Text>

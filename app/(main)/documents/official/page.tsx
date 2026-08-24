@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RichEditor } from '@/components/approvals/RichEditor';
+import { DocumentDeleteButton } from '@/components/documents/DocumentDeleteButton';
 import { cn } from '@/lib/utils';
 import {
   Plus, Search, Loader2, FileText, History, X, Save, Send, Printer,
@@ -124,8 +125,13 @@ export default function OfficialDocumentsPage() {
                   </span>
                   <span className="ml-auto text-[10px] text-muted-foreground">{d.data?.issueDate || d.createdAt?.slice(0, 10)}</span>
                 </div>
-                <div className="text-sm font-medium mt-0.5 truncate">{d.title}</div>
-                <div className="text-xs text-muted-foreground mt-0.5 truncate">수신: {d.data?.recipient || '-'}</div>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium mt-0.5 truncate">{d.title}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">수신: {d.data?.recipient || '-'}</div>
+                  </div>
+                  <DocumentDeleteButton id={d.id} createdAt={d.createdAt} onDeleted={() => { if (selected?.id === d.id) setSelected(null); load(); }} />
+                </div>
               </div>
             ))}
           </div>

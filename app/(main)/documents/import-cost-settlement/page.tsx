@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { DocumentDeleteButton } from '@/components/documents/DocumentDeleteButton';
 import {
   Plus, Search, Loader2, Table2, History, X, Save, Send, Printer, Trash2,
 } from 'lucide-react';
@@ -170,7 +171,10 @@ export default function ImportCostSettlementPage() {
                   </span>
                   <span className="ml-auto text-[10px] text-muted-foreground">{d.createdAt?.slice(0, 10)}</span>
                 </div>
-                <div className="text-sm font-medium mt-0.5 truncate">{d.data?.customerName} · {d.data?.productName}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium mt-0.5 truncate flex-1 min-w-0">{d.data?.customerName} · {d.data?.productName}</div>
+                  <DocumentDeleteButton id={d.id} createdAt={d.createdAt} onDeleted={() => { if (selected?.id === d.id) setSelected(null); load(); }} />
+                </div>
               </div>
             ))}
           </div>
