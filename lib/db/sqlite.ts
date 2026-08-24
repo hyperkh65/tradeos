@@ -1005,6 +1005,24 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE calendar_events ADD COLUMN related_id TEXT`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE calendar_events ADD COLUMN created_by_name TEXT`); } catch { /* already exists */ }
 
+  // 문서 양식 테이블 (공문서/수입물품대금비용정산서 등, 앞으로 추가될 양식 전부 포함)
+  // doc_type으로 종류를 구분하고 data_json에 종류별 필드를 자유롭게 담는다 - 새 양식이 추가돼도 스키마 변경 불필요
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      doc_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      data_json TEXT NOT NULL DEFAULT '{}',
+      history_json TEXT NOT NULL DEFAULT '[]',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -1052,6 +1070,7 @@ function ensureIndexes(db: Database.Database) {
     `CREATE INDEX IF NOT EXISTS idx_expenses_related    ON expenses(related_type, related_id)`,
     // 전표번호 중복 방지 (과거 COUNT(*) 기반 채번 버그로 중복 생성된 적 있음)
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_entry_no ON journal_entries(entry_no)`,
+    `CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type, created_at DESC)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }

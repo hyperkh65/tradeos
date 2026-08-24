@@ -8,12 +8,16 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
+import { Table } from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
 import { cn } from '@/lib/utils';
 import {
   Bold, Italic, UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight,
   List, ListOrdered, Heading1, Heading2,
-  Undo, Redo, ImageIcon,
+  Undo, Redo, ImageIcon, Table as TableIcon, Trash2,
 } from 'lucide-react';
 
 interface Props {
@@ -34,6 +38,10 @@ export function RichEditor({ content = '', onChange, editable = true, placeholde
       Image.configure({ inline: false, allowBase64: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Placeholder.configure({ placeholder }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content,
     editable,
@@ -128,6 +136,23 @@ export function RichEditor({ content = '', onChange, editable = true, placeholde
           <ToolBtn onClick={handleImageInsert} title="이미지 URL">
             <span className="text-[10px] font-mono">URL</span>
           </ToolBtn>
+          <div className="w-px h-4 bg-border mx-1" />
+          <ToolBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="표 삽입">
+            <TableIcon className="w-3.5 h-3.5" />
+          </ToolBtn>
+          {editor.isActive('table') && (
+            <>
+              <ToolBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="열 추가">
+                <span className="text-[10px]">열+</span>
+              </ToolBtn>
+              <ToolBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="행 추가">
+                <span className="text-[10px]">행+</span>
+              </ToolBtn>
+              <ToolBtn onClick={() => editor.chain().focus().deleteTable().run()} title="표 삭제">
+                <Trash2 className="w-3.5 h-3.5" />
+              </ToolBtn>
+            </>
+          )}
           <div className="w-px h-4 bg-border mx-1" />
           <input
             type="color"

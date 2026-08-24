@@ -95,13 +95,13 @@ const navGroups = [
     label: '문서',
     items: [
       { label: '파일', href: '/files', icon: FolderOpen },
+      { label: '문서양식', href: '/documents', icon: FileText },
     ],
   },
   {
     label: '회사',
     items: [
       { label: '인사(HR)', href: '/hr', icon: UserCog },
-      { label: '직원', href: '/employees', icon: Users },
     ],
   },
 ];
