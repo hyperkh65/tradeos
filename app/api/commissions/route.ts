@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { createNotionCommission } from '@/lib/notion/mapper';
+import { parseDeposits, summarizeDeposits } from '@/lib/deposits';
 
-function dbToCommission(row: Record<string, unknown>) {
+export function dbToCommission(row: Record<string, unknown>) {
+  const deposits = parseDeposits(row.deposits_json as string);
+  const { totalDeposited, remaining, status: depositStatus } = summarizeDeposits((row.amount as number) || 0, deposits);
   return {
     id: row.id, businessId: row.business_id, foreignCompany: row.foreign_company,
     date: row.date, currency: row.currency, amount: row.amount, exchangeRate: row.exchange_rate,
     amountKrw: row.amount_krw, accountId: row.account_id || undefined,
-    depositDate: row.deposit_date || undefined,
     invoiceFiles: JSON.parse((row.invoice_files_json as string) || '[]'),
-    depositFiles: JSON.parse((row.deposit_files_json as string) || '[]'),
+    deposits, totalDeposited, depositRemaining: remaining, depositStatus,
     memo: row.memo || undefined, status: row.status,
     journalEntryId: row.journal_entry_id || undefined,
     createdAt: row.created_at, updatedAt: row.updated_at,

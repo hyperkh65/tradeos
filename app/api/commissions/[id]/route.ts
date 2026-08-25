@@ -2,20 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { updateNotionCommission, deleteNotionCommission } from '@/lib/notion/mapper';
-
-function dbToCommission(row: Record<string, unknown>) {
-  return {
-    id: row.id, businessId: row.business_id, foreignCompany: row.foreign_company,
-    date: row.date, currency: row.currency, amount: row.amount, exchangeRate: row.exchange_rate,
-    amountKrw: row.amount_krw, accountId: row.account_id || undefined,
-    depositDate: row.deposit_date || undefined,
-    invoiceFiles: JSON.parse((row.invoice_files_json as string) || '[]'),
-    depositFiles: JSON.parse((row.deposit_files_json as string) || '[]'),
-    memo: row.memo || undefined, status: row.status,
-    journalEntryId: row.journal_entry_id || undefined,
-    createdAt: row.created_at, updatedAt: row.updated_at,
-  };
-}
+import { dbToCommission } from '../route';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -44,14 +31,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const exchangeRate = currency === 'KRW' ? 1 : (body.exchangeRate ?? row.exchange_rate);
   const amountKrw = Math.round(Number(amount) * Number(exchangeRate));
 
-  db.prepare(`UPDATE commissions SET foreign_company=?, date=?, currency=?, amount=?, exchange_rate=?, amount_krw=?, account_id=?, deposit_date=?, memo=?, updated_at=? WHERE id=?`)
+  db.prepare(`UPDATE commissions SET foreign_company=?, date=?, currency=?, amount=?, exchange_rate=?, amount_krw=?, account_id=?, memo=?, updated_at=? WHERE id=?`)
     .run(foreignCompany, date, currency, amount, exchangeRate, amountKrw,
-      body.accountId ?? row.account_id, body.depositDate ?? row.deposit_date, body.memo ?? row.memo, ts, id);
+      body.accountId ?? row.account_id, body.memo ?? row.memo, ts, id);
 
   try {
     const notionId = await updateNotionCommission(row.business_id as string, {
       businessId: row.business_id as string, foreignCompany, date, currency, amount: Number(amount),
-      exchangeRate: Number(exchangeRate), amountKrw, depositDate: (body.depositDate ?? row.deposit_date) || null,
+      exchangeRate: Number(exchangeRate), amountKrw, depositDate: null,
       status: row.status as string, dataJson: JSON.stringify({ memo: body.memo ?? row.memo ?? '' }),
     });
     if (notionId) db.prepare('UPDATE commissions SET notion_id=? WHERE id=?').run(notionId, id);

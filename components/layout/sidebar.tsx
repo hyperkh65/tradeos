@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet,
 } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
@@ -51,6 +51,7 @@ const navGroups = [
       { label: '선적', href: '/shipments', icon: Ship },
       { label: '수입통관', href: '/imports', icon: TruckIcon },
       { label: '커미션', href: '/commissions', icon: Landmark },
+      { label: '입출금 현황', href: '/cashflow', icon: Wallet },
       { label: '비용 원장', href: '/costs', icon: DollarSign },
       { label: '수익분석', href: '/profit-analysis', icon: TrendingUp },
       { label: '회계전표', href: '/accounting', icon: Receipt },

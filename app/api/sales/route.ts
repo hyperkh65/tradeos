@@ -3,8 +3,11 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { getSessionUser } from '@/lib/auth/session';
 import { createCalendarEvent } from '@/lib/calendar-events';
+import { parseDeposits, summarizeDeposits } from '@/lib/deposits';
 
-function dbToSale(row: Record<string, unknown>) {
+export function dbToSale(row: Record<string, unknown>) {
+  const deposits = parseDeposits(row.deposits_json as string);
+  const { totalDeposited, remaining, status } = summarizeDeposits((row.total_amount as number) || 0, deposits);
   return {
     id: row.id, businessId: row.business_id,
     saleDate: row.sale_date, customer: row.customer,
@@ -19,6 +22,7 @@ function dbToSale(row: Record<string, unknown>) {
     supplierName: (row.supplier_name as string) || undefined,
     poId: (row.po_id as string) || undefined,
     poBusinessId: (row.po_business_id as string) || undefined,
+    deposits, totalDeposited, depositRemaining: remaining, depositStatus: status,
   };
 }
 

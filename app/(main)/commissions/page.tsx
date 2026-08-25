@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { DepositManager, type DepositEntry } from '@/components/deposits/deposit-manager';
 
 interface BankAccount {
   id: string; businessId: string; currency: string; bankName: string; accountNumber: string; holderName?: string; memo?: string;
@@ -14,8 +15,9 @@ interface CommissionFile { url: string; filename: string; originalName: string; 
 interface Commission {
   id: string; businessId: string; foreignCompany: string; date: string;
   currency: string; amount: number; exchangeRate: number; amountKrw: number;
-  accountId?: string; depositDate?: string;
-  invoiceFiles: CommissionFile[]; depositFiles: CommissionFile[];
+  accountId?: string;
+  invoiceFiles: CommissionFile[];
+  deposits: DepositEntry[]; totalDeposited: number; depositRemaining: number; depositStatus: string;
   memo?: string; status: 'open' | 'closed'; journalEntryId?: string;
 }
 
@@ -39,12 +41,6 @@ export default function CommissionsPage() {
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
-
-  const accountLabel = (id?: string) => {
-    const a = accounts.find(x => x.id === id);
-    if (!a) return '-';
-    return `${a.bankName} ${a.accountNumber} (${a.currency})`;
-  };
 
   const toggleClose = async (item: Commission) => {
     const action = item.status === 'closed' ? 'reopen' : 'close';
@@ -128,8 +124,8 @@ export default function CommissionsPage() {
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">금액</th>
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">환율</th>
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">원화환산</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">입금계좌</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">입금일</th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">입금액</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">입금상태</th>
                     <th className="text-center px-3 py-2 font-medium text-muted-foreground">파일</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">상태</th>
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">작업</th>
@@ -144,9 +140,14 @@ export default function CommissionsPage() {
                       <td className="px-3 py-2 text-right whitespace-nowrap">{c.currency} {c.amount.toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">{c.currency === 'KRW' ? '-' : (c.exchangeRate ? c.exchangeRate.toLocaleString() : <span className="text-muted-foreground">미입력</span>)}</td>
                       <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{c.amountKrw ? `${c.amountKrw.toLocaleString()}원` : <span className="text-muted-foreground font-normal">-</span>}</td>
-                      <td className="px-3 py-2 text-muted-foreground"><span className="truncate block max-w-[160px]">{accountLabel(c.accountId)}</span></td>
-                      <td className="px-3 py-2 whitespace-nowrap">{c.depositDate || '-'}</td>
-                      <td className="px-3 py-2 text-center text-muted-foreground">{c.invoiceFiles.length + c.depositFiles.length}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{c.totalDeposited ? c.totalDeposited.toLocaleString() : '-'}</td>
+                      <td className="px-3 py-2">
+                        <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                          c.depositStatus === 'paid' ? 'bg-green-100 text-green-700' : c.depositStatus === 'partial' ? 'bg-yellow-100 text-yellow-700' : c.depositStatus === 'overpaid' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600')}>
+                          {{ unpaid: '미입금', partial: '부분입금', paid: '완납', overpaid: '초과입금' }[c.depositStatus] || '미입금'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center text-muted-foreground">{c.invoiceFiles.length + c.deposits.reduce((s, d) => s + d.files.length, 0)}</td>
                       <td className="px-3 py-2">
                         <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', c.status === 'closed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
                           {c.status === 'closed' ? '마감' : '진행중'}
@@ -199,15 +200,13 @@ function CommissionModal({ item, accounts, knownCompanies, onClose, onSaved }: {
     currency: item?.currency || 'USD',
     amount: item?.amount ?? 0,
     exchangeRate: item?.exchangeRate ?? 0,
-    accountId: item?.accountId || '',
-    depositDate: item?.depositDate || '',
     memo: item?.memo || '',
   });
   const [saving, setSaving] = useState(false);
   const [invoiceFiles, setInvoiceFiles] = useState<CommissionFile[]>(item?.invoiceFiles || []);
-  const [depositFiles, setDepositFiles] = useState<CommissionFile[]>(item?.depositFiles || []);
+  const [deposits, setDeposits] = useState<DepositEntry[]>(item?.deposits || []);
   const [savedId, setSavedId] = useState(item?.id || '');
-  const [uploading, setUploading] = useState<'invoice' | 'deposit' | null>(null);
+  const [uploading, setUploading] = useState<'invoice' | null>(null);
 
   const amountKrw = form.currency === 'KRW' ? Math.round(form.amount) : Math.round(form.amount * form.exchangeRate);
 
@@ -227,7 +226,7 @@ function CommissionModal({ item, accounts, knownCompanies, onClose, onSaved }: {
     } finally { setSaving(false); }
   };
 
-  const uploadFile = async (file: File, fileType: 'invoice' | 'deposit') => {
+  const uploadFile = async (file: File, fileType: 'invoice') => {
     if (!savedId) { alert('먼저 저장한 뒤 파일을 첨부할 수 있습니다.'); return; }
     setUploading(fileType);
     try {
@@ -236,24 +235,19 @@ function CommissionModal({ item, accounts, knownCompanies, onClose, onSaved }: {
       fd.append('fileType', fileType);
       const res = await fetch(`/api/commissions/${savedId}/upload`, { method: 'POST', body: fd });
       const j = await res.json();
-      if (res.ok) {
-        if (fileType === 'invoice') setInvoiceFiles(f => [...f, j.data]);
-        else setDepositFiles(f => [...f, j.data]);
-      } else alert(j.error || '업로드 실패');
+      if (res.ok) setInvoiceFiles(f => [...f, j.data]);
+      else alert(j.error || '업로드 실패');
     } finally { setUploading(null); }
   };
 
-  const removeFile = async (fileType: 'invoice' | 'deposit', f: CommissionFile) => {
+  const removeFile = async (fileType: 'invoice', f: CommissionFile) => {
     if (!savedId) return;
     const filenameParam = `${fileType}_${f.filename}`;
     const res = await fetch(`/api/commissions/${savedId}/files/${filenameParam}`, { method: 'DELETE' });
-    if (res.ok) {
-      if (fileType === 'invoice') setInvoiceFiles(list => list.filter(x => x.filename !== f.filename));
-      else setDepositFiles(list => list.filter(x => x.filename !== f.filename));
-    }
+    if (res.ok) setInvoiceFiles(list => list.filter(x => x.filename !== f.filename));
   };
 
-  const FileZone = ({ label, files, type }: { label: string; files: CommissionFile[]; type: 'invoice' | 'deposit' }) => (
+  const FileZone = ({ label, files, type }: { label: string; files: CommissionFile[]; type: 'invoice' }) => (
     <div>
       <div className="flex items-center justify-between mb-1">
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
@@ -317,17 +311,6 @@ function CommissionModal({ item, accounts, knownCompanies, onClose, onSaved }: {
               <span className="text-muted-foreground">원화 환산액</span>
               <span className="font-bold">{amountKrw.toLocaleString()}원</span>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">입금계좌</label>
-              <select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="">-- 선택 --</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.bankName} {a.accountNumber} ({a.currency})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">입금받은 날짜</label>
-              <Input type="date" value={form.depositDate} onChange={e => setForm(f => ({ ...f, depositDate: e.target.value }))} />
-            </div>
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">비고</label>
               <Input value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="참고사항" />
@@ -335,12 +318,14 @@ function CommissionModal({ item, accounts, knownCompanies, onClose, onSaved }: {
           </div>
 
           {savedId ? (
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+            <>
               <FileZone label="해외 인보이스" files={invoiceFiles} type="invoice" />
-              <FileZone label="입금내역" files={depositFiles} type="deposit" />
-            </div>
+              <div className="pt-2 border-t">
+                <DepositManager apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} />
+              </div>
+            </>
           ) : (
-            <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">먼저 저장하면 인보이스/입금내역 파일을 첨부할 수 있습니다.</p>
+            <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">먼저 저장하면 인보이스 첨부와 입금 내역을 관리할 수 있습니다.</p>
           )}
         </div>
         <div className="p-4 border-t shrink-0 flex justify-end gap-2">

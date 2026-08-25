@@ -524,6 +524,10 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE purchase_orders ADD COLUMN local_deleted INTEGER NOT NULL DEFAULT 0`,
     // 백업 이력: DB만 백업한 건지, 프로그램 전체를 백업한 건지 구분
     `ALTER TABLE backup_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'db'`,
+    // 입금 관리: 매출/커미션 1건에 여러 번(분할) 입금될 수 있어 리스트로 관리
+    // {id, date, amount, accountId, files:[{url,filename,originalName,size}]}[]
+    `ALTER TABLE sales ADD COLUMN deposits_json TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE commissions ADD COLUMN deposits_json TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN cargo_items_json TEXT DEFAULT '[]'`,
     `ALTER TABLE shipments ADD COLUMN container_no TEXT`,
     `ALTER TABLE shipments ADD COLUMN freight_cost REAL`,

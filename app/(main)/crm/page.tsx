@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
+import { DepositManager, type DepositEntry } from '@/components/deposits/deposit-manager';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
@@ -31,6 +32,7 @@ interface SalesRecord {
   currency: string; exchangeRate?: number; misc?: string;
   supplierId?: string; supplierName?: string;
   poId?: string; poBusinessId?: string;
+  deposits?: DepositEntry[]; totalDeposited?: number; depositRemaining?: number; depositStatus?: string;
 }
 interface Company {
   id: string; businessId: string; name: string; type: string; country: string;
@@ -221,6 +223,12 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
   const [poPreview, setPoPreview] = useState<{ po: any; anchorRect: DOMRect } | null>(null);
   const [customStatementOpen, setCustomStatementOpen] = useState(false);
+  const [deposits, setDeposits] = useState<DepositEntry[]>(sale?.deposits || []);
+  const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bankName: string; accountNumber: string; currency: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/bank-accounts').then(r => r.json()).then(j => setBankAccounts(Array.isArray(j.data) ? j.data : []));
+  }, []);
 
   const showPoPreview = (businessId: string, el: HTMLElement) => {
     const po = purchaseOrders.find(p => p.businessId === businessId);
@@ -536,6 +544,11 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
           )}
           {poPreview && (
             <POPreviewPanel po={poPreview.po} anchorRect={poPreview.anchorRect} onClose={() => setPoPreview(null)} />
+          )}
+          {sale && (
+            <div className="border rounded-lg p-3">
+              <DepositManager apiBase={`/api/sales/${sale.id}`} totalDue={netKRW + vat} deposits={deposits} accounts={bankAccounts} onChange={setDeposits} />
+            </div>
           )}
           {sale && (
             <Button type="button" variant="outline" className="w-full" onClick={() => setCustomStatementOpen(true)}>
