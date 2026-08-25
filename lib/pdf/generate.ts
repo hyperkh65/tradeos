@@ -8,6 +8,8 @@ import { OfficialDocumentDoc } from './official-document';
 import { ImportCostSettlementDoc } from './import-cost-settlement';
 import { TradeStatementCustomDoc } from './trade-statement-custom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
+import { CommissionsListDoc, type CommissionListRow } from './commissions-list';
+import { CompanyLedgerDoc, type LedgerEntryPdf } from './company-ledger';
 
 export async function generateSalesStatementPdf(saleId: string): Promise<Buffer | null> {
   const db = getDb();
@@ -232,4 +234,39 @@ export async function generateTradeStatementCustomPdf(saleId: string): Promise<B
     supplyAmount, vatAmount, totalAmount,
     stampPath: resolveCompanyAssetPath(company.stampUrl),
   }));
+}
+
+export async function generateCommissionsListPdf(): Promise<Buffer> {
+  const db = getDb();
+  const rows = db.prepare(`SELECT business_id, foreign_company, date, currency, amount, exchange_rate, amount_krw, deposit_date, status FROM commissions ORDER BY date DESC, created_at DESC`).all() as Record<string, unknown>[];
+  const data: CommissionListRow[] = rows.map(r => ({
+    businessId: r.business_id as string, foreignCompany: r.foreign_company as string, date: r.date as string,
+    currency: r.currency as string, amount: r.amount as number, exchangeRate: (r.exchange_rate as number) || 0,
+    amountKrw: (r.amount_krw as number) || 0, depositDate: (r.deposit_date as string) || null, status: r.status as string,
+  }));
+  return renderToBuffer(CommissionsListDoc({ rows: data }));
+}
+
+export async function generateCompanyLedgerPdf(companyId: string, start: string, end: string): Promise<Buffer | null> {
+  const db = getDb();
+  const company = db.prepare('SELECT name FROM companies WHERE id=?').get(companyId) as { name: string } | undefined;
+  if (!company) return null;
+
+  const salesRows = db.prepare(`SELECT * FROM sales WHERE customer=? AND sale_date>=? AND sale_date<=? ORDER BY sale_date ASC, created_at ASC`)
+    .all(company.name, start, end) as Record<string, unknown>[];
+
+  const entries: LedgerEntryPdf[] = [];
+  for (const row of salesRows) {
+    let items: Array<{ product?: string; specification?: string; qty?: number; unitPrice?: number; amount?: number }> = [];
+    try { items = JSON.parse((row.items_json as string) || '[]'); } catch { /* ignore */ }
+    for (const it of items) {
+      entries.push({
+        date: row.sale_date as string, saleBusinessId: row.business_id as string,
+        productName: it.product || '', specification: it.specification || '',
+        qty: it.qty || 0, unitPrice: it.unitPrice || 0, amount: it.amount || (it.qty || 0) * (it.unitPrice || 0),
+      });
+    }
+  }
+
+  return renderToBuffer(CompanyLedgerDoc({ companyName: company.name, start, end, entries }));
 }

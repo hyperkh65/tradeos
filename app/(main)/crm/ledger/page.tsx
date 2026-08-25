@@ -1,7 +1,7 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { Loader2, BookOpen } from 'lucide-react';
+import { Loader2, BookOpen, FileSpreadsheet, FileText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -98,6 +98,19 @@ export default function CompanyLedgerPage() {
           <button type="button" onClick={load} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">
             조회
           </button>
+          <div className="flex-1" />
+          {companyId && (
+            <div className="flex gap-2">
+              <a href={`/api/companies/${companyId}/ledger/export?format=excel&start=${start}&end=${end}`}
+                className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4" /> 엑셀
+              </a>
+              <a href={`/api/companies/${companyId}/ledger/export?format=pdf&start=${start}&end=${end}`} target="_blank" rel="noreferrer"
+                className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
+                <FileText className="w-4 h-4" /> PDF
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

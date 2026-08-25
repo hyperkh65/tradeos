@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, CreditCard } from 'lucide-react';
+import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -63,6 +63,14 @@ export default function CommissionsPage() {
   const totalsByCurrency: Record<string, number> = {};
   for (const c of list) totalsByCurrency[c.currency] = (totalsByCurrency[c.currency] || 0) + c.amount;
 
+  // 업체별 통화별 합계
+  const byCompany = new Map<string, Record<string, number>>();
+  for (const c of list) {
+    const m = byCompany.get(c.foreignCompany) || {};
+    m[c.currency] = (m[c.currency] || 0) + c.amount;
+    byCompany.set(c.foreignCompany, m);
+  }
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader title="커미션 (해외 수수료)" icon={<Landmark className="w-5 h-5" />} />
@@ -80,11 +88,29 @@ export default function CommissionsPage() {
             <Button variant="outline" onClick={() => setAccountModalOpen(true)} className="gap-1.5">
               <CreditCard className="w-4 h-4" /> 계좌 관리
             </Button>
+            <a href="/api/commissions/export?format=excel"><Button variant="outline" className="gap-1.5"><FileSpreadsheet className="w-4 h-4" /> 엑셀</Button></a>
+            <a href="/api/commissions/export?format=pdf" target="_blank" rel="noreferrer"><Button variant="outline" className="gap-1.5"><FileText className="w-4 h-4" /> PDF</Button></a>
             <Button onClick={() => setModalOpen({ open: true })} className="gap-1.5">
               <Plus className="w-4 h-4" /> 커미션 등록
             </Button>
           </div>
         </div>
+
+        {byCompany.size > 0 && (
+          <div className="bg-card border rounded-xl p-4">
+            <p className="text-xs font-semibold mb-2">업체별 합계</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Array.from(byCompany.entries()).map(([name, sums]) => (
+                <div key={name} className="border rounded-lg px-3 py-2">
+                  <p className="text-xs font-medium truncate">{name}</p>
+                  {Object.entries(sums).map(([cur, amt]) => (
+                    <p key={cur} className="text-[11px] text-muted-foreground">{cur} {amt.toLocaleString()}</p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-card border rounded-xl overflow-hidden">
           {loading ? (
@@ -116,8 +142,8 @@ export default function CommissionsPage() {
                       <td className="px-3 py-2"><span className="truncate block max-w-[160px]">{c.foreignCompany}</span></td>
                       <td className="px-3 py-2 whitespace-nowrap">{c.date}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">{c.currency} {c.amount.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right">{c.currency === 'KRW' ? '-' : c.exchangeRate.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{c.amountKrw.toLocaleString()}원</td>
+                      <td className="px-3 py-2 text-right">{c.currency === 'KRW' ? '-' : (c.exchangeRate ? c.exchangeRate.toLocaleString() : <span className="text-muted-foreground">미입력</span>)}</td>
+                      <td className="px-3 py-2 text-right font-medium whitespace-nowrap">{c.amountKrw ? `${c.amountKrw.toLocaleString()}원` : <span className="text-muted-foreground font-normal">-</span>}</td>
                       <td className="px-3 py-2 text-muted-foreground"><span className="truncate block max-w-[160px]">{accountLabel(c.accountId)}</span></td>
                       <td className="px-3 py-2 whitespace-nowrap">{c.depositDate || '-'}</td>
                       <td className="px-3 py-2 text-center text-muted-foreground">{c.invoiceFiles.length + c.depositFiles.length}</td>

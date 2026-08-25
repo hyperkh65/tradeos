@@ -41,6 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (row.status === 'closed') return NextResponse.json({ error: '이미 마감된 건입니다.' }, { status: 409 });
+  if (!row.amount_krw || Number(row.amount_krw) <= 0) {
+    return NextResponse.json({ error: '환율이 입력되지 않아 원화 환산액이 없습니다. 먼저 환율을 입력한 뒤 마감해주세요.' }, { status: 400 });
+  }
 
   const ts = now();
   const amountKrw = Math.round(row.amount_krw as number);
