@@ -10,6 +10,7 @@ import { TradeStatementCustomDoc } from './trade-statement-custom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
 import { CommissionsListDoc, type CommissionListRow } from './commissions-list';
 import { CompanyLedgerDoc, type LedgerEntryPdf } from './company-ledger';
+import { RfqDoc, type RfqItem } from './rfq';
 
 export async function generateSalesStatementPdf(saleId: string): Promise<Buffer | null> {
   const db = getDb();
@@ -209,6 +210,29 @@ export async function generateImportCostSettlementPdf(docId: string): Promise<Bu
     company,
     companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
     stampPath: resolveCompanyAssetPath(company.stampUrl),
+  }));
+}
+
+export async function generateRfqPdf(docId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM documents WHERE id=? AND doc_type='rfq'").get(docId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    validUntil?: string;
+    supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
+    items: RfqItem[]; remark?: string;
+  };
+  const company = getCompanySettings();
+
+  return renderToBuffer(RfqDoc({
+    businessId: row.business_id as string,
+    issueDate: (row.created_at as string)?.slice(0, 10) || '',
+    validUntil: data.validUntil,
+    supplierName: data.supplierName, supplierContact: data.supplierContact, supplierEmail: data.supplierEmail,
+    supplierPhone: data.supplierPhone, supplierAddress: data.supplierAddress,
+    items: data.items || [], remark: data.remark,
+    company,
+    companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
   }));
 }
 

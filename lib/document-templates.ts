@@ -22,4 +22,11 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
     href: '/documents/import-cost-settlement',
     kind: 'structured',
   },
+  {
+    id: 'rfq',
+    label: '견적 의뢰서',
+    description: '공급사에 품목별 견적을 요청하는 문서. 품목/규격/수량 입력 후 PDF·Excel로 발송',
+    href: '/documents/rfq',
+    kind: 'structured',
+  },
 ];

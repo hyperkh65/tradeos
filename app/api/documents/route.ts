@@ -6,6 +6,7 @@ import { getSessionUser } from '@/lib/auth/session';
 const PREFIX_MAP: Record<string, string> = {
   official: 'GM',
   import_cost_settlement: 'ICS',
+  rfq: 'RFQ',
 };
 
 export async function GET(req: NextRequest) {
