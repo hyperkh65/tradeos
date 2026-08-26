@@ -29,4 +29,11 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
     href: '/documents/rfq',
     kind: 'structured',
   },
+  {
+    id: 'sample_request',
+    label: '샘플 의뢰서',
+    description: '공급사에 샘플을 요청하는 문서. 품목별 무상/유상 구분과 금액을 함께 기재 (국/영문 병기)',
+    href: '/documents/sample-request',
+    kind: 'structured',
+  },
 ];

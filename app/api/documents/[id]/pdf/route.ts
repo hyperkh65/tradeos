@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
-import { generateOfficialDocumentPdf, generateImportCostSettlementPdf, generateRfqPdf } from '@/lib/pdf/generate';
+import { generateOfficialDocumentPdf, generateImportCostSettlementPdf, generateRfqPdf, generateSampleRequestPdf } from '@/lib/pdf/generate';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -18,7 +18,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       ? await generateImportCostSettlementPdf(id)
       : row.doc_type === 'rfq'
         ? await generateRfqPdf(id)
-        : null;
+        : row.doc_type === 'sample_request'
+          ? await generateSampleRequestPdf(id)
+          : null;
 
   if (!buf) return NextResponse.json({ error: '지원하지 않는 문서 종류입니다' }, { status: 400 });
 

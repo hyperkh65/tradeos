@@ -11,6 +11,7 @@ import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-s
 import { CommissionsListDoc, type CommissionListRow } from './commissions-list';
 import { CompanyLedgerDoc, type LedgerEntryPdf } from './company-ledger';
 import { RfqDoc, type RfqItem } from './rfq';
+import { SampleRequestDoc, type SampleItem } from './sample-request';
 import { resolveItemImagePath } from './resolve-image';
 
 export async function generateSalesStatementPdf(saleId: string): Promise<Buffer | null> {
@@ -239,6 +240,39 @@ export async function generateRfqPdf(docId: string): Promise<Buffer | null> {
     issueDate: data.date || (row.created_at as string)?.slice(0, 10) || '',
     validUntil: data.validUntil,
     currency: data.currency, paymentTerms: data.paymentTerms,
+    supplierName: data.supplierName, supplierContact: data.supplierContact, supplierEmail: data.supplierEmail,
+    supplierPhone: data.supplierPhone, supplierAddress: data.supplierAddress,
+    items, remark: data.remark,
+    company,
+    companyLogoPath: resolveCompanyAssetPath(company.logoUrl),
+  }));
+}
+
+interface SampleItemRaw {
+  name: string; specification?: string; qty: number; unit?: string; remark?: string;
+  chargeType?: 'free' | 'paid'; amount?: number; images?: { url: string }[];
+}
+
+export async function generateSampleRequestPdf(docId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM documents WHERE id=? AND doc_type='sample_request'").get(docId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    date?: string; validUntil?: string; currency?: string;
+    supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
+    items: SampleItemRaw[]; remark?: string;
+  };
+  const company = getCompanySettings();
+  const items: SampleItem[] = (data.items || []).map(it => ({
+    name: it.name, specification: it.specification, qty: it.qty, unit: it.unit, remark: it.remark,
+    chargeType: it.chargeType, amount: it.amount, imagePath: resolveItemImagePath(it.images?.[0]?.url),
+  }));
+
+  return renderToBuffer(SampleRequestDoc({
+    businessId: row.business_id as string,
+    issueDate: data.date || (row.created_at as string)?.slice(0, 10) || '',
+    validUntil: data.validUntil,
+    currency: data.currency,
     supplierName: data.supplierName, supplierContact: data.supplierContact, supplierEmail: data.supplierEmail,
     supplierPhone: data.supplierPhone, supplierAddress: data.supplierAddress,
     items, remark: data.remark,

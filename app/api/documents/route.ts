@@ -7,6 +7,7 @@ const PREFIX_MAP: Record<string, string> = {
   official: 'GM',
   import_cost_settlement: 'ICS',
   rfq: 'RFQ',
+  sample_request: 'SR',
 };
 
 export async function GET(req: NextRequest) {

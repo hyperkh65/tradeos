@@ -14,10 +14,26 @@ interface RfqItem {
   name: string; specification?: string; qty: number; unit?: string; remark?: string;
   unitPrice?: number; images?: { url: string }[];
 }
+interface SampleItem {
+  name: string; specification?: string; qty: number; unit?: string; remark?: string;
+  chargeType?: 'free' | 'paid'; amount?: number; images?: { url: string }[];
+}
 
 function fmtPrice(n: number | undefined, currency: string) {
   if (!n) return '';
   return n.toLocaleString(currency === 'KRW' ? 'ko-KR' : 'en-US', { minimumFractionDigits: currency === 'KRW' ? 0 : 2, maximumFractionDigits: currency === 'KRW' ? 0 : 2 });
+}
+
+function embedImage(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, url: string | undefined, rowIdx: number, col: number) {
+  const localPath = resolveItemImagePath(url);
+  if (!localPath || !fs.existsSync(localPath) || /^https?:\/\//i.test(localPath)) return;
+  try {
+    const ext = path.extname(localPath).toLowerCase().replace('.', '');
+    const extension = (ext === 'jpg' ? 'jpeg' : ext) as 'jpeg' | 'png' | 'gif';
+    if (!['jpeg', 'png', 'gif'].includes(extension)) return;
+    const imageId = wb.addImage({ buffer: fs.readFileSync(localPath) as unknown as ExcelJS.Buffer, extension });
+    ws.addImage(imageId, { tl: { col: col + 0.05, row: rowIdx - 1 + 0.05 }, ext: { width: 50, height: 50 } });
+  } catch { /* 이미지 임베드 실패 시 무시하고 계속 진행 */ }
 }
 
 async function buildRfqExcel(row: Record<string, unknown>): Promise<ExcelJS.Buffer> {
@@ -79,18 +95,7 @@ async function buildRfqExcel(row: Record<string, unknown>): Promise<ExcelJS.Buff
     r.getCell(9).value = it.remark || '';
     r.height = 46;
     r.eachCell(c => { c.border = bAll; c.alignment = { vertical: 'middle' }; });
-
-    const localPath = resolveItemImagePath(it.images?.[0]?.url);
-    if (localPath && fs.existsSync(localPath) && !/^https?:\/\//i.test(localPath)) {
-      try {
-        const ext = path.extname(localPath).toLowerCase().replace('.', '');
-        const extension = (ext === 'jpg' ? 'jpeg' : ext) as 'jpeg' | 'png' | 'gif';
-        if (['jpeg', 'png', 'gif'].includes(extension)) {
-          const imageId = wb.addImage({ buffer: fs.readFileSync(localPath) as unknown as ExcelJS.Buffer, extension });
-          ws.addImage(imageId, { tl: { col: 1.05, row: rowIdx - 1 + 0.05 }, ext: { width: 50, height: 50 } });
-        }
-      } catch { /* 이미지 임베드 실패 시 무시하고 계속 진행 */ }
-    }
+    embedImage(wb, ws, it.images?.[0]?.url, rowIdx, 1);
   });
 
   const totalRowIdx = headerRowIdx + 1 + items.length;
@@ -115,6 +120,89 @@ async function buildRfqExcel(row: Record<string, unknown>): Promise<ExcelJS.Buff
   return wb.xlsx.writeBuffer();
 }
 
+async function buildSampleRequestExcel(row: Record<string, unknown>): Promise<ExcelJS.Buffer> {
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    date?: string; validUntil?: string; currency?: string;
+    supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
+    items: SampleItem[]; remark?: string;
+  };
+  const currency = data.currency || 'USD';
+  const company = getCompanySettings();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = company.name || 'YNK';
+  const ws = wb.addWorksheet('샘플의뢰서');
+
+  ws.mergeCells('A1:H1');
+  ws.getCell('A1').value = '샘플 의뢰서 (SAMPLE REQUEST FORM)';
+  ws.getCell('A1').font = { bold: true, size: 14 };
+  ws.getCell('A1').alignment = { horizontal: 'center' };
+  ws.getRow(1).height = 24;
+
+  ws.getCell('A3').value = '문서번호 No.'; ws.getCell('B3').value = row.business_id as string;
+  ws.getCell('A4').value = '작성일 Date'; ws.getCell('B4').value = data.date || (row.created_at as string)?.slice(0, 10) || '';
+  ws.getCell('A5').value = '유효기한 Valid Until'; ws.getCell('B5').value = data.validUntil || '';
+  ws.getCell('A6').value = '통화 Currency'; ws.getCell('B6').value = currency;
+  ['A3', 'A4', 'A5', 'A6'].forEach(c => { ws.getCell(c).font = { bold: true }; });
+
+  ws.getCell('D3').value = '구매자 FROM'; ws.getCell('D3').font = { bold: true };
+  ws.getCell('E3').value = company.name || '';
+  ws.getCell('D4').value = '공급사 TO'; ws.getCell('D4').font = { bold: true };
+  ws.getCell('E4').value = data.supplierName || '';
+  ws.getCell('D5').value = '공급사 연락처 Contact'; ws.getCell('D5').font = { bold: true };
+  ws.getCell('E5').value = [data.supplierContact, data.supplierPhone, data.supplierEmail].filter(Boolean).join(' / ');
+
+  const headerRowIdx = 8;
+  ws.getRow(headerRowIdx).values = ['NO', '사진 Photo', '품목 Item', '규격 Spec', '단위 Unit', '수량 Qty', '구분 Type', `금액 Amount(${currency})`, '비고 Remark'];
+  ws.getRow(headerRowIdx).font = { bold: true };
+  ws.getRow(headerRowIdx).eachCell(c => { c.border = bAll; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDDDDD' } }; });
+  ws.columns = [
+    { key: 'no', width: 6 }, { key: 'photo', width: 10 }, { key: 'name', width: 24 }, { key: 'spec', width: 18 },
+    { key: 'unit', width: 8 }, { key: 'qty', width: 9 }, { key: 'chargeType', width: 12 }, { key: 'amount', width: 14 }, { key: 'remark', width: 20 },
+  ];
+
+  const items = data.items || [];
+  let totalAmount = 0;
+  items.forEach((it, i) => {
+    const rowIdx = headerRowIdx + 1 + i;
+    const isPaid = it.chargeType === 'paid';
+    if (isPaid) totalAmount += it.amount || 0;
+    const r = ws.getRow(rowIdx);
+    r.getCell(1).value = i + 1;
+    r.getCell(3).value = it.name;
+    r.getCell(4).value = it.specification || '';
+    r.getCell(5).value = it.unit || 'EA';
+    r.getCell(6).value = it.qty || 0;
+    r.getCell(7).value = isPaid ? '유상 Paid' : '무상 Free';
+    r.getCell(7).font = { color: { argb: isPaid ? 'FFA83232' : 'FF0F8A5F' }, bold: true };
+    r.getCell(8).value = isPaid ? fmtPrice(it.amount, currency) : '';
+    r.getCell(9).value = it.remark || '';
+    r.height = 46;
+    r.eachCell(c => { c.border = bAll; c.alignment = { vertical: 'middle' }; });
+    embedImage(wb, ws, it.images?.[0]?.url, rowIdx, 1);
+  });
+
+  const totalRowIdx = headerRowIdx + 1 + items.length;
+  if (totalAmount > 0) {
+    ws.mergeCells(`A${totalRowIdx}:G${totalRowIdx}`);
+    ws.getCell(`A${totalRowIdx}`).value = `유상품목 합계 Paid Total (${currency})`;
+    ws.getCell(`A${totalRowIdx}`).font = { bold: true };
+    ws.getCell(`A${totalRowIdx}`).alignment = { horizontal: 'right' };
+    ws.getCell(`H${totalRowIdx}`).value = fmtPrice(totalAmount, currency);
+    ws.getCell(`H${totalRowIdx}`).font = { bold: true };
+    ws.getRow(totalRowIdx).eachCell(c => { c.border = bAll; });
+  }
+
+  if (data.remark) {
+    const remarkRow = ws.rowCount + 2;
+    ws.getCell(`A${remarkRow}`).value = '요청사항 Note';
+    ws.getCell(`A${remarkRow}`).font = { bold: true };
+    ws.mergeCells(`B${remarkRow}:I${remarkRow}`);
+    ws.getCell(`B${remarkRow}`).value = data.remark;
+  }
+
+  return wb.xlsx.writeBuffer();
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
@@ -123,9 +211,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const row = getDb().prepare('SELECT * FROM documents WHERE id=?').get(id) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: '문서를 찾을 수 없습니다' }, { status: 404 });
 
-  if (row.doc_type !== 'rfq') return NextResponse.json({ error: '지원하지 않는 문서 종류입니다' }, { status: 400 });
+  const buf = row.doc_type === 'rfq' ? await buildRfqExcel(row)
+    : row.doc_type === 'sample_request' ? await buildSampleRequestExcel(row)
+      : null;
+  if (!buf) return NextResponse.json({ error: '지원하지 않는 문서 종류입니다' }, { status: 400 });
 
-  const buf = await buildRfqExcel(row);
   const filename = `${row.business_id}_${row.title}.xlsx`;
   return new NextResponse(buf, {
     headers: {
