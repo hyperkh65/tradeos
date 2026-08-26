@@ -1130,6 +1130,161 @@ function runMigrations(db: Database.Database) {
     )`);
   } catch { /* already exists */ }
 
+  // ── 중국 공급업체 자료 요청 및 제출 시스템 (고효율 인증 자료) ──────────────────
+  // 그룹웨어 로그인 없이 랜덤 토큰 링크로만 접근하는 외부 작성 화면 + 내부 프로젝트 관리.
+  // 인증/알림/DB/파일저장은 기존 시스템을 그대로 재사용하고, 이 모듈은 데이터만 새로 추가한다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_request_projects (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      product_name TEXT NOT NULL,
+      internal_ref_no TEXT,
+      supplier_name TEXT NOT NULL,
+      contact_person TEXT,
+      requested_at TEXT,
+      due_date TEXT,
+      memo TEXT,
+      default_language TEXT NOT NULL DEFAULT 'ko',
+      status TEXT NOT NULL DEFAULT 'draft',
+      template_version TEXT NOT NULL DEFAULT 'v1',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_request_links (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoked_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 프로젝트당 "현재 작성중인 원본" 1행. 원문/한국어값/번역상태/검토여부는 data_json 안에
+  // 필드키별로 {original, lang, korean, translationStatus, reviewed, updatedAt} 구조로 저장.
+  // hidden_data_json: 컨버터 사용여부 변경 시 즉시 삭제하지 않고 숨겨서 보존해야 하는 이전 입력값.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_form_responses (
+      id TEXT PRIMARY KEY,
+      project_id TEXT UNIQUE NOT NULL,
+      converter_type TEXT,
+      test_categories_json TEXT NOT NULL DEFAULT '[]',
+      derived_change_checks_json TEXT NOT NULL DEFAULT '{}',
+      data_json TEXT NOT NULL DEFAULT '{}',
+      hidden_data_json TEXT NOT NULL DEFAULT '{}',
+      version INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 등기구 부품 리스트 / 컨버터 내부 부품 리스트 / 복수부품 - 세 반복 목록을 공통 구조로 관리.
+  // row_key: 원본 표의 고정 행(예: converter/led_package/led_pcb/...)이면 그 키, 사용자가
+  // 추가한 행이면 null (DOCX 출력 시 고정 행은 그대로, 초과분은 마지막 행 서식을 복제해 추가).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_component_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      list_type TEXT NOT NULL,
+      row_key TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      part_name TEXT,
+      model_name TEXT,
+      spec_text TEXT,
+      material TEXT,
+      width_mm TEXT,
+      depth_mm TEXT,
+      height_mm TEXT,
+      qty TEXT,
+      manufacturer TEXT,
+      remark TEXT,
+      original_json TEXT NOT NULL DEFAULT '{}',
+      korean_json TEXT NOT NULL DEFAULT '{}',
+      deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_attachments (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      category_key TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT,
+      description TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      is_current INTEGER NOT NULL DEFAULT 1,
+      uploaded_by TEXT NOT NULL,
+      uploaded_by_name TEXT,
+      submission_version INTEGER NOT NULL DEFAULT 0,
+      image_page_selection INTEGER,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_submission_versions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      version_no INTEGER NOT NULL,
+      submitted_at TEXT NOT NULL,
+      submitted_by_name TEXT,
+      status_at_submission TEXT,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_closure_snapshots (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      closed_by_user_id TEXT NOT NULL,
+      closed_by_user_name TEXT,
+      closed_at TEXT NOT NULL,
+      submission_version_at_closure INTEGER,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      reason_memo TEXT,
+      reopened_at TEXT,
+      reopened_by_user_id TEXT,
+      reopened_by_user_name TEXT,
+      reopen_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS supplier_audit_logs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_type TEXT NOT NULL,
+      actor_user_id TEXT,
+      actor_user_name TEXT,
+      actor_token_hash TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      submission_version INTEGER,
+      related_attachment_id TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  // ── 중국 공급업체 자료 요청 시스템 끝 ─────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -1190,6 +1345,15 @@ function ensureIndexes(db: Database.Database) {
     // 전표번호 중복 방지 (과거 COUNT(*) 기반 채번 버그로 중복 생성된 적 있음)
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_entry_no ON journal_entries(entry_no)`,
     `CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type, created_at DESC)`,
+    // 공급업체 자료요청 시스템 - 토큰 조회는 요청마다 발생하므로 필수, 나머지는 project_id 조회 최적화
+    `CREATE INDEX IF NOT EXISTS idx_supplier_links_token       ON supplier_request_links(token_hash, is_active)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_links_project     ON supplier_request_links(project_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_components_project ON supplier_component_items(project_id, list_type, sort_order)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_attachments_project ON supplier_attachments(project_id, category_key, is_current)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_versions_project   ON supplier_submission_versions(project_id, version_no DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_closures_project   ON supplier_closure_snapshots(project_id, closed_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_audit_project      ON supplier_audit_logs(project_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_supplier_projects_status    ON supplier_request_projects(status, created_at DESC)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }
