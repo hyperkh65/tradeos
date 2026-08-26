@@ -11,7 +11,7 @@ interface RfqItem { name: string; specification?: string; qty: number; unit?: st
 
 async function buildRfqExcel(row: Record<string, unknown>): Promise<ExcelJS.Buffer> {
   const data = JSON.parse((row.data_json as string) || '{}') as {
-    validUntil?: string;
+    date?: string; validUntil?: string;
     supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
     items: RfqItem[]; remark?: string;
   };
@@ -27,7 +27,7 @@ async function buildRfqExcel(row: Record<string, unknown>): Promise<ExcelJS.Buff
   ws.getRow(1).height = 24;
 
   ws.getCell('A3').value = '문서번호'; ws.getCell('B3').value = row.business_id as string;
-  ws.getCell('A4').value = '작성일'; ws.getCell('B4').value = (row.created_at as string)?.slice(0, 10) || '';
+  ws.getCell('A4').value = '작성일'; ws.getCell('B4').value = data.date || (row.created_at as string)?.slice(0, 10) || '';
   ws.getCell('A5').value = '유효기한'; ws.getCell('B5').value = data.validUntil || '';
   ['A3', 'A4', 'A5'].forEach(c => { ws.getCell(c).font = { bold: true }; });
 

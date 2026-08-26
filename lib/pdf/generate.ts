@@ -218,7 +218,7 @@ export async function generateRfqPdf(docId: string): Promise<Buffer | null> {
   const row = db.prepare("SELECT * FROM documents WHERE id=? AND doc_type='rfq'").get(docId) as Record<string, unknown> | undefined;
   if (!row) return null;
   const data = JSON.parse((row.data_json as string) || '{}') as {
-    validUntil?: string;
+    date?: string; validUntil?: string;
     supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
     items: RfqItem[]; remark?: string;
   };
@@ -226,7 +226,7 @@ export async function generateRfqPdf(docId: string): Promise<Buffer | null> {
 
   return renderToBuffer(RfqDoc({
     businessId: row.business_id as string,
-    issueDate: (row.created_at as string)?.slice(0, 10) || '',
+    issueDate: data.date || (row.created_at as string)?.slice(0, 10) || '',
     validUntil: data.validUntil,
     supplierName: data.supplierName, supplierContact: data.supplierContact, supplierEmail: data.supplierEmail,
     supplierPhone: data.supplierPhone, supplierAddress: data.supplierAddress,
