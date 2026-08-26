@@ -1,18 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Upload, Trash2, Loader2, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { AccountManageModal } from '@/components/deposits/account-manage-modal';
 
 interface DepositFile { url: string; filename: string; originalName: string; size: number }
 export interface DepositEntry { id: string; date: string; amount: number; accountId?: string; memo?: string; files: DepositFile[] }
 interface BankAccount { id: string; bankName: string; accountNumber: string; currency: string }
 
-export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange }: {
+export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange, onAccountsRefresh }: {
   apiBase: string; totalDue: number; deposits: DepositEntry[]; accounts: BankAccount[];
   onChange: (deposits: DepositEntry[]) => void;
+  onAccountsRefresh: () => void;
 }) {
+  const [manageAccountsOpen, setManageAccountsOpen] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: 0, accountId: '' });
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -112,7 +115,12 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
           <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
         </div>
         <div className="flex-1">
-          <label className="text-[10px] text-muted-foreground block mb-0.5">계좌</label>
+          <div className="flex items-center justify-between mb-0.5">
+            <label className="text-[10px] text-muted-foreground">계좌</label>
+            <button type="button" onClick={() => setManageAccountsOpen(true)} className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+              <CreditCard className="w-2.5 h-2.5" /> 계좌 등록
+            </button>
+          </div>
           <select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
             <option value="">-</option>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.bankName} {a.accountNumber}</option>)}
@@ -122,6 +130,17 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
         </Button>
       </div>
+      {accounts.length === 0 && (
+        <p className="text-[10px] text-muted-foreground">등록된 입금 계좌가 없습니다. 위 &quot;계좌 등록&quot;을 눌러 먼저 계좌를 등록하세요.</p>
+      )}
+
+      {manageAccountsOpen && (
+        <AccountManageModal
+          accounts={accounts}
+          onClose={() => setManageAccountsOpen(false)}
+          onChanged={onAccountsRefresh}
+        />
+      )}
     </div>
   );
 }

@@ -1000,6 +1000,11 @@ function CostModal({ record, onClose, onSave }: {
         form.disposition, linkedSales, billTotalForStatus, createdInvoiceId, form.billStatus, offsetItems, effectiveCostAmount,
       );
 
+      // 매출연결 등으로 자동 수금완료 처리된 경우, 정산일이 비어있으면 오늘 날짜로 기록 (입출금현황 반영용)
+      if (body.billStatus === 'collected' && !body.settledAt) {
+        body.settledAt = new Date().toISOString().slice(0, 10);
+      }
+
       // 매입상계 — offsetItems 합계로 offsetStatus 자동 결정
       if (form.disposition === 'offset_purchase') {
         const offTotal = offsetItems.reduce((s, i) => s + (i.amount || 0), 0);

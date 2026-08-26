@@ -42,11 +42,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 지출 — 비용원장 중 실제 지급 완료(정산)된 건
-  const costs = db.prepare(`SELECT business_id, description, cost_type, client_name, cost_amount, cost_amount_krw, settled_at FROM cost_records WHERE settled_at IS NOT NULL AND settled_at != ''`).all() as Record<string, unknown>[];
+  // 지출 — 비용원장 중 실제 지급/수금 완료된 건 (자동 판관비 처리 등 settled_at 미기록 건도 incurred_date로 포함)
+  const costs = db.prepare(`SELECT business_id, description, cost_type, client_name, cost_amount, cost_amount_krw, settled_at, incurred_date FROM cost_records WHERE bill_status='collected'`).all() as Record<string, unknown>[];
   for (const c of costs) {
-    const date = c.settled_at as string;
-    if (date < start || date > end) continue;
+    const date = (c.settled_at as string) || (c.incurred_date as string);
+    if (!date || date < start || date > end) continue;
     entries.push({
       date, type: 'out', source: 'cost', refBusinessId: c.business_id as string,
       refName: (c.description as string) || (c.client_name as string) || (c.cost_type as string) || '비용',

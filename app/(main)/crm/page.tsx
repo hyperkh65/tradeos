@@ -9,9 +9,16 @@ import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
 import { DepositManager, type DepositEntry } from '@/components/deposits/deposit-manager';
+import { cn } from '@/lib/utils';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
+
+const DEPOSIT_STATUS_LABEL: Record<string, string> = { unpaid: '미입금', partial: '부분입금', paid: '완납', overpaid: '초과입금' };
+const DEPOSIT_STATUS_COLOR: Record<string, string> = {
+  unpaid: 'bg-gray-100 text-gray-600', partial: 'bg-yellow-100 text-yellow-700',
+  paid: 'bg-green-100 text-green-700', overpaid: 'bg-red-100 text-red-700',
+};
 
 function isPrevMonth(d?: string) {
   if (!d) return false;
@@ -226,9 +233,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
   const [deposits, setDeposits] = useState<DepositEntry[]>(sale?.deposits || []);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bankName: string; accountNumber: string; currency: string }>>([]);
 
-  useEffect(() => {
+  const loadBankAccounts = () => {
     fetch('/api/bank-accounts').then(r => r.json()).then(j => setBankAccounts(Array.isArray(j.data) ? j.data : []));
-  }, []);
+  };
+  useEffect(loadBankAccounts, []);
 
   const showPoPreview = (businessId: string, el: HTMLElement) => {
     const po = purchaseOrders.find(p => p.businessId === businessId);
@@ -547,7 +555,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
           )}
           {sale && (
             <div className="border rounded-lg p-3">
-              <DepositManager apiBase={`/api/sales/${sale.id}`} totalDue={netKRW + vat} deposits={deposits} accounts={bankAccounts} onChange={setDeposits} />
+              <DepositManager apiBase={`/api/sales/${sale.id}`} totalDue={netKRW + vat} deposits={deposits} accounts={bankAccounts} onChange={setDeposits} onAccountsRefresh={loadBankAccounts} />
             </div>
           )}
           {sale && (
@@ -1047,6 +1055,8 @@ function CRMPageInner() {
 
   const totalNet = filtered.reduce((s, r) => s + r.netAmount, 0);
   const totalVat = filtered.reduce((s, r) => s + r.vat, 0);
+  const totalDeposited = filtered.reduce((s, r) => s + (r.totalDeposited ?? 0), 0);
+  const totalUndeposited = filtered.reduce((s, r) => s + Math.max(0, r.depositRemaining ?? r.totalAmount), 0);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1065,10 +1075,12 @@ function CRMPageInner() {
               <Button variant="outline" size="sm" className="h-9 text-xs px-2" onClick={() => { setFilterStartDate(`${curYear}-01-01`); setFilterEndDate(`${curYear}-12-31`); }}>올해</Button>
               <Button variant="ghost" size="sm" className="h-9 text-xs px-2 text-muted-foreground" onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}>전체</Button>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-1.5">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-1.5 flex-wrap">
               <span>공급가: <strong className="text-foreground">{totalNet.toLocaleString()}원</strong></span>
               <span>부가세: <strong className="text-foreground">{totalVat.toLocaleString()}원</strong></span>
               <span>합계: <strong className="text-foreground">{(totalNet + totalVat).toLocaleString()}원</strong></span>
+              <span className="text-green-700">입금: <strong>{totalDeposited.toLocaleString()}원</strong></span>
+              <span className="text-red-600">미입금: <strong>{totalUndeposited.toLocaleString()}원</strong></span>
             </div>
             <Button size="sm" className="h-9 gap-1 shrink-0" onClick={() => setModal({ open: true, sale: null })}>
               <Plus className="w-4 h-4" /><span className="hidden sm:inline">매출 등록</span>
@@ -1087,7 +1099,7 @@ function CRMPageInner() {
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">일자</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground">거래처</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">유형</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">담당자</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">입금상태</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">공급가액</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">부가세</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground">합계</th>
@@ -1112,7 +1124,11 @@ function CRMPageInner() {
                       <td className="px-3 py-3 hidden md:table-cell">
                         <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs border border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">{s.saleType}</span>
                       </td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground hidden lg:table-cell">{s.salesperson || '-'}</td>
+                      <td className="px-3 py-3 hidden lg:table-cell">
+                        <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', DEPOSIT_STATUS_COLOR[s.depositStatus || 'unpaid'])}>
+                          {DEPOSIT_STATUS_LABEL[s.depositStatus || 'unpaid']}
+                        </span>
+                      </td>
                       <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{s.netAmount.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground hidden lg:table-cell whitespace-nowrap">{s.vat.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right font-bold whitespace-nowrap">{s.totalAmount.toLocaleString()}</td>
@@ -1141,7 +1157,7 @@ function CRMPageInner() {
       {modal.open && (
         <SaleModal sale={modal.sale} companies={companies} products={products}
           purchaseOrders={purchaseOrders} sales={sales}
-          onClose={() => setModal({ open: false })}
+          onClose={() => { setModal({ open: false }); load(); }}
           onSave={() => { setModal({ open: false }); load(); }} />
       )}
       {printModal.open && printModal.sale && company && (
