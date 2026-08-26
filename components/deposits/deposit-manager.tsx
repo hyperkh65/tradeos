@@ -19,6 +19,8 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: 0, accountId: '' });
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const totalDeposited = deposits.reduce((s, d) => s + d.amount, 0);
   const remaining = Math.round((totalDue - totalDeposited) * 100) / 100;
@@ -34,17 +36,27 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
     setSaving(true);
     try {
       const res = await fetch(`${apiBase}/deposits`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (res.ok) { onChange(j.data.deposits); setForm({ date: new Date().toISOString().slice(0, 10), amount: 0, accountId: '' }); }
-      else alert(j.error || '추가 실패');
+      else alert(j.error || `추가 실패 (HTTP ${res.status})`);
+    } catch (err) {
+      alert('입금 등록 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.\n' + (err instanceof Error ? err.message : String(err)));
     } finally { setSaving(false); }
   };
 
   const removeEntry = async (depositId: string) => {
-    if (!confirm('이 입금 기록을 삭제할까요?')) return;
-    const res = await fetch(`${apiBase}/deposits/${depositId}`, { method: 'DELETE' });
-    const j = await res.json();
-    if (res.ok) onChange(j.data.deposits);
+    setConfirmingId(null);
+    setDeletingId(depositId);
+    try {
+      const res = await fetch(`${apiBase}/deposits/${depositId}`, { method: 'DELETE' });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) onChange(j.data?.deposits ?? deposits.filter(d => d.id !== depositId));
+      else alert(j.error || `삭제 실패 (HTTP ${res.status})`);
+    } catch (err) {
+      alert('삭제 요청 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.\n' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const uploadFile = async (depositId: string, file: File) => {
@@ -53,9 +65,11 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`${apiBase}/deposits/${depositId}/upload`, { method: 'POST', body: fd });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (res.ok) onChange(deposits.map(d => d.id === depositId ? { ...d, files: [...d.files, j.data] } : d));
-      else alert(j.error || '업로드 실패');
+      else alert(j.error || `업로드 실패 (HTTP ${res.status})`);
+    } catch (err) {
+      alert('업로드 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.\n' + (err instanceof Error ? err.message : String(err)));
     } finally { setUploadingId(null); }
   };
 
@@ -90,7 +104,17 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
                     {uploadingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
                     <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(d.id, f); e.target.value = ''; }} />
                   </label>
-                  <button type="button" onClick={() => removeEntry(d.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                  {confirmingId === d.id ? (
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => removeEntry(d.id)} disabled={deletingId === d.id}
+                        className="text-[10px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded px-1.5 py-0.5 flex items-center gap-1">
+                        {deletingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '삭제확정'}
+                      </button>
+                      <button type="button" onClick={() => setConfirmingId(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-1">취소</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmingId(d.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                  )}
                 </div>
               </div>
               {d.files.length > 0 && (
