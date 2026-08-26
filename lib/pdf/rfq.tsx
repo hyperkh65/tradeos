@@ -1,11 +1,16 @@
 import { Document, Page, View, Text, Image } from '@react-pdf/renderer';
 
-export interface RfqItem { name: string; specification?: string; qty: number; unit?: string; remark?: string }
+export interface RfqItem {
+  name: string; specification?: string; qty: number; unit?: string; remark?: string;
+  unitPrice?: number; imagePath?: string | null;
+}
 
 export interface RfqPdfProps {
   businessId: string;
   issueDate: string;
   validUntil?: string;
+  currency?: string;
+  paymentTerms?: string;
   supplierName: string;
   supplierContact?: string;
   supplierEmail?: string;
@@ -17,8 +22,13 @@ export interface RfqPdfProps {
   companyLogoPath?: string | null;
 }
 
+const fmtPrice = (n: number | undefined, currency: string) =>
+  n ? n.toLocaleString(currency === 'KRW' ? 'ko-KR' : 'en-US', { minimumFractionDigits: currency === 'KRW' ? 0 : 2, maximumFractionDigits: currency === 'KRW' ? 0 : 2 }) : '-';
+
 export function RfqDoc(p: RfqPdfProps) {
-  const emptyRows = Math.max(0, 8 - p.items.length);
+  const emptyRows = Math.max(0, 6 - p.items.length);
+  const currency = p.currency || 'USD';
+  const totalAmount = p.items.reduce((s, it) => s + (it.qty || 0) * (it.unitPrice || 0), 0);
 
   return (
     <Document>
@@ -47,18 +57,22 @@ export function RfqDoc(p: RfqPdfProps) {
                 <Text style={{ fontSize: 9 }}>{p.issueDate}</Text>
               </View>
               {!!p.validUntil && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
                   <Text style={{ fontSize: 8, color: '#888' }}>Valid Until</Text>
                   <Text style={{ fontSize: 9 }}>{p.validUntil}</Text>
                 </View>
               )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 8, color: '#888' }}>Currency</Text>
+                <Text style={{ fontSize: 9, fontWeight: 700 }}>{currency}</Text>
+              </View>
             </View>
           </View>
         </View>
         <View style={{ height: 2, backgroundColor: '#1a50a0', marginBottom: 18 }} />
 
         {/* FROM / TO */}
-        <View style={{ flexDirection: 'row', gap: 16, marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
           <View style={{ flex: 1, backgroundColor: '#f0f6ff', borderRadius: 6, padding: 12 }}>
             <Text style={{ fontSize: 8, fontWeight: 700, color: '#1a50a0', letterSpacing: 1, marginBottom: 6 }}>FROM (구매자)</Text>
             <Text style={{ fontSize: 11, fontWeight: 800, marginBottom: 4 }}>{p.company.name}</Text>
@@ -77,40 +91,69 @@ export function RfqDoc(p: RfqPdfProps) {
           </View>
         </View>
 
+        {!!p.paymentTerms && (
+          <View style={{ backgroundColor: '#fafafa', borderRadius: 6, padding: '8px 12px', marginBottom: 16, flexDirection: 'row' }}>
+            <Text style={{ fontSize: 8, fontWeight: 700, color: '#888', marginRight: 8 }}>지급조건 / PAYMENT TERMS</Text>
+            <Text style={{ fontSize: 9, color: '#333' }}>{p.paymentTerms}</Text>
+          </View>
+        )}
+
         {/* Item table */}
         <View style={{ borderTop: '2px solid #171717' }}>
           <View style={{ flexDirection: 'row', backgroundColor: '#f9f9f9', borderBottom: '1px solid #171717' }}>
-            <Text style={{ width: '6%', textAlign: 'center', padding: 7, fontSize: 8, fontWeight: 700 }}>NO</Text>
-            <Text style={{ flex: 1, textAlign: 'left', padding: 7, fontSize: 8, fontWeight: 700 }}>품목 / DESCRIPTION</Text>
-            <Text style={{ width: '18%', textAlign: 'center', padding: 7, fontSize: 8, fontWeight: 700 }}>규격 / SPEC</Text>
-            <Text style={{ width: '10%', textAlign: 'center', padding: 7, fontSize: 8, fontWeight: 700 }}>단위</Text>
-            <Text style={{ width: '10%', textAlign: 'center', padding: 7, fontSize: 8, fontWeight: 700 }}>수량</Text>
-            <Text style={{ width: '20%', textAlign: 'left', padding: 7, fontSize: 8, fontWeight: 700 }}>비고</Text>
+            <Text style={{ width: '5%', textAlign: 'center', padding: 6, fontSize: 7, fontWeight: 700 }}>NO</Text>
+            <Text style={{ width: '11%', textAlign: 'center', padding: 6, fontSize: 7, fontWeight: 700 }}>사진</Text>
+            <Text style={{ flex: 1, textAlign: 'left', padding: 6, fontSize: 7, fontWeight: 700 }}>품목 / 규격</Text>
+            <Text style={{ width: '8%', textAlign: 'center', padding: 6, fontSize: 7, fontWeight: 700 }}>단위</Text>
+            <Text style={{ width: '9%', textAlign: 'center', padding: 6, fontSize: 7, fontWeight: 700 }}>수량</Text>
+            <Text style={{ width: '13%', textAlign: 'right', padding: 6, fontSize: 7, fontWeight: 700 }}>희망단가</Text>
+            <Text style={{ width: '13%', textAlign: 'right', padding: 6, fontSize: 7, fontWeight: 700 }}>금액</Text>
+            <Text style={{ width: '16%', textAlign: 'left', padding: 6, fontSize: 7, fontWeight: 700 }}>비고</Text>
           </View>
           {p.items.map((it, i) => {
             const last = i === p.items.length - 1 && emptyRows === 0;
             const bStyle = last ? '1px solid #171717' : '1px solid #e5e5e5';
+            const amount = (it.qty || 0) * (it.unitPrice || 0);
             return (
-              <View style={{ flexDirection: 'row' }} key={i} wrap={false}>
-                <Text style={{ width: '6%', textAlign: 'center', color: '#888', padding: 7, borderBottom: bStyle }}>{i + 1}</Text>
-                <Text style={{ flex: 1, padding: 7, fontWeight: 600, borderBottom: bStyle }}>{it.name}</Text>
-                <Text style={{ width: '18%', textAlign: 'center', fontSize: 8, color: '#555', padding: 7, borderBottom: bStyle }}>{it.specification || '-'}</Text>
-                <Text style={{ width: '10%', textAlign: 'center', padding: 7, borderBottom: bStyle }}>{it.unit || 'EA'}</Text>
-                <Text style={{ width: '10%', textAlign: 'center', fontWeight: 600, padding: 7, borderBottom: bStyle }}>{(it.qty || 0).toLocaleString()}</Text>
-                <Text style={{ width: '20%', fontSize: 8, color: '#555', padding: 7, borderBottom: bStyle }}>{it.remark || ''}</Text>
+              <View style={{ flexDirection: 'row', minHeight: 40 }} key={i} wrap={false}>
+                <Text style={{ width: '5%', textAlign: 'center', color: '#888', padding: 6, borderBottom: bStyle }}>{i + 1}</Text>
+                <View style={{ width: '11%', padding: 4, borderBottom: bStyle, alignItems: 'center', justifyContent: 'center' }}>
+                  {it.imagePath
+                    ? <Image src={it.imagePath} style={{ width: 30, height: 30, objectFit: 'cover', borderRadius: 3 }} />
+                    : <Text style={{ fontSize: 6, color: '#ccc' }}>-</Text>}
+                </View>
+                <View style={{ flex: 1, padding: 6, borderBottom: bStyle }}>
+                  <Text style={{ fontWeight: 600 }}>{it.name}</Text>
+                  {!!it.specification && <Text style={{ fontSize: 7, color: '#888', marginTop: 1 }}>{it.specification}</Text>}
+                </View>
+                <Text style={{ width: '8%', textAlign: 'center', padding: 6, borderBottom: bStyle }}>{it.unit || 'EA'}</Text>
+                <Text style={{ width: '9%', textAlign: 'center', fontWeight: 600, padding: 6, borderBottom: bStyle }}>{(it.qty || 0).toLocaleString()}</Text>
+                <Text style={{ width: '13%', textAlign: 'right', padding: 6, borderBottom: bStyle }}>{fmtPrice(it.unitPrice, currency)}</Text>
+                <Text style={{ width: '13%', textAlign: 'right', fontWeight: 700, padding: 6, borderBottom: bStyle }}>{amount ? fmtPrice(amount, currency) : '-'}</Text>
+                <Text style={{ width: '16%', fontSize: 7, color: '#555', padding: 6, borderBottom: bStyle }}>{it.remark || ''}</Text>
               </View>
             );
           })}
           {Array.from({ length: emptyRows }).map((_, i) => (
             <View style={{ flexDirection: 'row' }} key={`e${i}`}>
-              <Text style={{ width: '6%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '5%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '11%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
               <Text style={{ flex: 1, height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
-              <Text style={{ width: '18%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
-              <Text style={{ width: '10%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
-              <Text style={{ width: '10%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
-              <Text style={{ width: '20%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '8%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '9%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '13%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '13%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
+              <Text style={{ width: '16%', height: 22, borderBottom: i === emptyRows - 1 ? '1px solid #171717' : '1px solid #e5e5e5' }} />
             </View>
           ))}
+          {totalAmount > 0 && (
+            <View style={{ flexDirection: 'row', backgroundColor: '#f5f5f5' }}>
+              <Text style={{ width: '46%', textAlign: 'right', padding: 6, fontSize: 8, fontWeight: 700, color: '#666' }}>합계 ({currency})</Text>
+              <Text style={{ width: '13%' }} />
+              <Text style={{ width: '13%', textAlign: 'right', padding: 6, fontSize: 9, fontWeight: 900 }}>{fmtPrice(totalAmount, currency)}</Text>
+              <Text style={{ width: '16%' }} />
+            </View>
+          )}
         </View>
 
         {/* Remark */}

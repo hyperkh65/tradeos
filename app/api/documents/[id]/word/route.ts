@@ -3,20 +3,31 @@ import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { getCompanySettings } from '@/lib/pdf/company';
 
-interface RfqItem { name: string; specification?: string; qty: number; unit?: string; remark?: string }
+interface RfqItem {
+  name: string; specification?: string; qty: number; unit?: string; remark?: string;
+  unitPrice?: number; images?: { url: string }[];
+}
 
 function esc(s: string | number | undefined | null): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildRfqWordHtml(row: Record<string, unknown>): string {
+function fmtPrice(n: number | undefined, currency: string) {
+  if (!n) return '';
+  return n.toLocaleString(currency === 'KRW' ? 'ko-KR' : 'en-US', { minimumFractionDigits: currency === 'KRW' ? 0 : 2, maximumFractionDigits: currency === 'KRW' ? 0 : 2 });
+}
+
+function buildRfqWordHtml(row: Record<string, unknown>, origin: string): string {
   const data = JSON.parse((row.data_json as string) || '{}') as {
-    date?: string; validUntil?: string;
+    date?: string; validUntil?: string; currency?: string; paymentTerms?: string;
     supplierName: string; supplierContact?: string; supplierEmail?: string; supplierPhone?: string; supplierAddress?: string;
     items: RfqItem[]; remark?: string;
   };
+  const currency = data.currency || 'USD';
   const company = getCompanySettings();
   const items = data.items || [];
+  const totalAmount = items.reduce((s, it) => s + (it.qty || 0) * (it.unitPrice || 0), 0);
+  const absUrl = (u: string) => u.startsWith('http') ? u : `${origin}${u}`;
 
   return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -49,6 +60,7 @@ function buildRfqWordHtml(row: Record<string, unknown>): string {
       <div style="margin-top:8px; font-size:10pt;">Quote No. <b>${esc(row.business_id as string)}</b></div>
       <div style="font-size:10pt;">Date ${esc(data.date || (row.created_at as string)?.slice(0, 10))}</div>
       ${data.validUntil ? `<div style="font-size:10pt;">Valid Until ${esc(data.validUntil)}</div>` : ''}
+      <div style="font-size:10pt;">Currency <b>${esc(currency)}</b></div>
     </td>
   </tr></table>
 
@@ -71,16 +83,37 @@ function buildRfqWordHtml(row: Record<string, unknown>): string {
     </td>
   </tr></table>
 
+  ${data.paymentTerms ? `<div style="background:#fafafa; border:1px solid #eee; padding:8px 12px; margin-bottom:16px;">
+    <span style="font-size:9pt; font-weight:bold; color:#888;">지급조건 / PAYMENT TERMS</span>
+    <span style="font-size:10pt;"> ${esc(data.paymentTerms)}</span>
+  </div>` : ''}
+
   <table class="item-table">
-    <tr><th style="width:6%;">NO</th><th>품목</th><th style="width:20%;">규격</th><th style="width:10%;">단위</th><th style="width:10%;">수량</th><th style="width:22%;">비고</th></tr>
-    ${items.map((it, i) => `<tr>
+    <tr>
+      <th style="width:5%;">NO</th><th style="width:12%;">사진</th><th>품목</th><th style="width:16%;">규격</th>
+      <th style="width:8%;">단위</th><th style="width:8%;">수량</th><th style="width:12%;">단가(${esc(currency)})</th>
+      <th style="width:12%;">금액(${esc(currency)})</th><th style="width:16%;">비고</th>
+    </tr>
+    ${items.map((it, i) => {
+      const amount = (it.qty || 0) * (it.unitPrice || 0);
+      const imgUrl = it.images?.[0]?.url;
+      return `<tr>
       <td style="text-align:center;">${i + 1}</td>
+      <td style="text-align:center;">${imgUrl ? `<img src="${esc(absUrl(imgUrl))}" style="width:40px; height:40px; object-fit:cover;" />` : '-'}</td>
       <td>${esc(it.name)}</td>
       <td>${esc(it.specification)}</td>
       <td style="text-align:center;">${esc(it.unit || 'EA')}</td>
       <td style="text-align:right;">${esc((it.qty || 0).toLocaleString())}</td>
+      <td style="text-align:right;">${esc(fmtPrice(it.unitPrice, currency))}</td>
+      <td style="text-align:right;">${esc(amount ? fmtPrice(amount, currency) : '')}</td>
       <td>${esc(it.remark)}</td>
-    </tr>`).join('')}
+    </tr>`;
+    }).join('')}
+    ${totalAmount > 0 ? `<tr>
+      <td colspan="7" style="text-align:right; font-weight:bold; background:#f5f5f5;">합계 (${esc(currency)})</td>
+      <td style="text-align:right; font-weight:bold; background:#f5f5f5;">${esc(fmtPrice(totalAmount, currency))}</td>
+      <td style="background:#f5f5f5;"></td>
+    </tr>` : ''}
   </table>
 
   ${data.remark ? `<div style="margin-top:16px;">
@@ -93,7 +126,7 @@ function buildRfqWordHtml(row: Record<string, unknown>): string {
 </html>`;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
 
@@ -102,7 +135,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!row) return NextResponse.json({ error: '문서를 찾을 수 없습니다' }, { status: 404 });
   if (row.doc_type !== 'rfq') return NextResponse.json({ error: '지원하지 않는 문서 종류입니다' }, { status: 400 });
 
-  const html = buildRfqWordHtml(row);
+  const html = buildRfqWordHtml(row, req.nextUrl.origin);
   const filename = `${row.business_id}_${row.title}.doc`;
   return new NextResponse(html, {
     headers: {

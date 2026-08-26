@@ -6,11 +6,13 @@ const SECRET = new TextEncoder().encode(
 );
 
 const PUBLIC_PATHS = ['/login', '/signup', '/api/auth/login', '/api/auth/signup', '/api/settings/brand'];
+// 다운로드된 문서(Word 등)가 세션 쿠키 없이도 첨부 이미지를 불러올 수 있도록 개별 파일 서빙 경로만 공개
+const PUBLIC_PATTERNS = [/^\/api\/documents\/[^/]+\/files\/[^/]+\/[^/]+$/];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_PATTERNS.some((re) => re.test(pathname))) {
     return NextResponse.next();
   }
 
