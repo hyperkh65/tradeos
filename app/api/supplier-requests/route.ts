@@ -35,12 +35,13 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   const businessId = nextBizId('SRP');
+  const internalRefNo = nextBizId('REF'); // 사용자가 직접 입력하지 않고 항상 자동 채번
   const ts = now();
   db.prepare(`INSERT INTO supplier_request_projects
     (id, business_id, product_name, internal_ref_no, supplier_name, contact_person, requested_at, due_date, memo,
      default_language, status, template_version, created_by, created_by_name, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'v1', ?, ?, ?, ?)`).run(
-    id, businessId, body.productName, body.internalRefNo ?? null, body.supplierName, body.contactPerson ?? null,
+    id, businessId, body.productName, internalRefNo, body.supplierName, body.contactPerson ?? null,
     body.requestedAt ?? null, body.dueDate ?? null, body.memo ?? null, defaultLanguage,
     user.id, user.name, ts, ts,
   );

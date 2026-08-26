@@ -21,6 +21,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         status: project.status, templateVersion: project.template_version,
       },
       converterType: response?.converter_type ?? null,
+      testCategories: response ? JSON.parse((response.test_categories_json as string) || '[]') : [],
+      derivedChangeChecks: response ? JSON.parse((response.derived_change_checks_json as string) || '{}') : {},
       formData: response ? JSON.parse((response.data_json as string) || '{}') : {},
       componentItems: componentItems.map(c => ({
         id: c.id, listType: c.list_type, rowKey: c.row_key, sortOrder: c.sort_order,

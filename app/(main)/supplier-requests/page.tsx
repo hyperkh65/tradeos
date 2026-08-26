@@ -20,12 +20,24 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   closed: { label: '마감됨', color: 'bg-red-100 text-red-700' },
 };
 
+interface CompanyOption { id: string; name: string; type: string; ceo?: string; contactPerson?: string }
+
 function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({
-    productName: '', internalRefNo: '', supplierName: '', contactPerson: '',
+    productName: '', supplierName: '', contactPerson: '',
     requestedAt: new Date().toISOString().slice(0, 10), dueDate: '', memo: '', defaultLanguage: 'zh',
   });
   const [saving, setSaving] = useState(false);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+
+  useEffect(() => {
+    fetch('/api/companies').then(r => r.json()).then(j => setCompanies(Array.isArray(j.data) ? j.data : [])).catch(() => {});
+  }, []);
+
+  const applySupplier = (name: string) => {
+    const co = companies.find(c => c.name === name);
+    setForm(f => ({ ...f, supplierName: name, contactPerson: co?.contactPerson || f.contactPerson }));
+  };
 
   const submit = async () => {
     if (!form.productName.trim() || !form.supplierName.trim()) { alert('제품명과 공급업체명은 필수입니다.'); return; }
@@ -47,8 +59,17 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div><label className="text-xs text-muted-foreground mb-1 block">프로젝트 제품명 *</label><Input value={form.productName} onChange={e => setForm(f => ({ ...f, productName: e.target.value }))} placeholder="예: Parking Lot Light PIR Type" /></div>
-          <div><label className="text-xs text-muted-foreground mb-1 block">내부 관리번호</label><Input value={form.internalRefNo} onChange={e => setForm(f => ({ ...f, internalRefNo: e.target.value }))} /></div>
-          <div><label className="text-xs text-muted-foreground mb-1 block">공급업체명 *</label><Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="예: Kumho" /></div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">내부 관리번호</label>
+            <div className="h-9 rounded-md border border-dashed border-input bg-muted/40 px-3 flex items-center text-xs text-muted-foreground">저장 시 자동으로 채번됩니다 (예: REF-2026-0001)</div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">공급업체명 *</label>
+            <Input list="srp-suppliers" value={form.supplierName} onChange={e => applySupplier(e.target.value)} placeholder="입력 또는 목록에서 선택 (예: Kumho)" />
+            <datalist id="srp-suppliers">
+              {companies.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
+          </div>
           <div><label className="text-xs text-muted-foreground mb-1 block">담당자</label><Input value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-muted-foreground mb-1 block">제출 요청일</label><Input type="date" value={form.requestedAt} onChange={e => setForm(f => ({ ...f, requestedAt: e.target.value }))} /></div>

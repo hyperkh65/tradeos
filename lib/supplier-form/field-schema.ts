@@ -23,6 +23,14 @@ export const TEMPLATE_VERSION = 'v1';
 export type Lang = 'ko' | 'zh' | 'en';
 export type I18nText = Record<Lang, string>;
 
+/** 외부 작성 화면 맨 위에 항상 표시되는 안내문 — 외국 공급업체는 이게 무슨 인증인지 모를 수 있어
+ * "고효율 인증을 받기 위한 자료 요청"이라는 목적과, 제품에 맞게 작성하라는 안내를 명확히 한다. */
+export const INTRO_TEXT: I18nText = {
+  ko: '이 양식은 한국 고효율에너지기자재(고효율) 인증을 받기 위해 필요한 제품 자료를 요청하는 문서입니다. 아래 항목을 귀사의 실제 제품 사양에 맞게 정확하게 작성해 주세요. 모델명·인증번호·수치·단위 등은 원문 그대로 입력하시면 됩니다(번역 불필요).',
+  zh: '本表格用于收集申请韩国高效节能设备（高效）认证所需的产品资料。请根据贵公司实际产品规格准确填写以下内容。型号、认证编号、数值、单位等请直接填写原文（无需翻译成韩文）。',
+  en: 'This form collects the product information required to obtain Korea\'s High-Efficiency Energy Equipment (HEE) certification. Please fill in the items below accurately according to your actual product specifications. Model names, certificate numbers, values, and units may be entered in their original form (no translation needed).',
+};
+
 export type ConverterType = 'has_converter' | 'no_converter' | 'integrated' | 'na';
 
 export const CONVERTER_TYPE_LABELS: Record<ConverterType, I18nText> = {
@@ -48,11 +56,43 @@ export interface TranslatableValue {
 // ─────────────────────────────────────────────────────────────────────────
 export type TestCategory = 'base' | 'derived' | 'part_change' | 'multi_component';
 
-export const TEST_CATEGORY_OPTIONS: { key: TestCategory; label: I18nText; docx: { table: 1; col: number } }[] = [
-  { key: 'base', label: { ko: '기본모델', zh: '基本型号', en: 'Base Model' }, docx: { table: 1, col: 0 } },
-  { key: 'derived', label: { ko: '파생모델', zh: '派生型号', en: 'Derived Model' }, docx: { table: 1, col: 1 } },
-  { key: 'part_change', label: { ko: '부품변경', zh: '部件变更', en: 'Component Change' }, docx: { table: 1, col: 2 } },
-  { key: 'multi_component', label: { ko: '복수부품', zh: '多组件登记', en: 'Multiple Components' }, docx: { table: 1, col: 3 } },
+export const TEST_CATEGORY_OPTIONS: { key: TestCategory; label: I18nText; help: I18nText; docx: { table: 1; col: number } }[] = [
+  {
+    key: 'base', label: { ko: '기본모델', zh: '基本型号', en: 'Base Model' },
+    help: {
+      ko: '처음으로 인증 시험을 신청하는 신규 제품인 경우 선택하세요.',
+      zh: '如果是首次申请认证检测的全新产品，请选择此项。',
+      en: 'Select this if it is a new product being submitted for certification testing for the first time.',
+    },
+    docx: { table: 1, col: 0 },
+  },
+  {
+    key: 'derived', label: { ko: '파생모델', zh: '派生型号', en: 'Derived Model' },
+    help: {
+      ko: '이미 인증받은 기본모델을 바탕으로 일부 사양(색온도, 광속 등)만 다른 파생 제품인 경우 선택하세요. 기본모델 정보를 함께 입력해야 합니다.',
+      zh: '如果是基于已认证的基本型号、仅部分规格（色温、光通量等）不同的派生产品，请选择此项。需同时填写基本型号信息。',
+      en: 'Select this if the product is derived from an already-certified base model with only some specifications (CCT, luminous flux, etc.) changed. Base model information must also be provided.',
+    },
+    docx: { table: 1, col: 1 },
+  },
+  {
+    key: 'part_change', label: { ko: '부품변경', zh: '部件变更', en: 'Component Change' },
+    help: {
+      ko: '이미 인증받은 제품에서 부품(컨버터, LED Package 등)만 변경된 경우 선택하세요.',
+      zh: '如果只是已认证产品中的部件（驱动电源、LED封装等）发生变更，请选择此项。',
+      en: 'Select this if only a component (converter, LED Package, etc.) has changed from an already-certified product.',
+    },
+    docx: { table: 1, col: 2 },
+  },
+  {
+    key: 'multi_component', label: { ko: '복수부품', zh: '多组件登记', en: 'Multiple Components' },
+    help: {
+      ko: '동일한 성능을 가진 부품 여러 개를 함께 등록하려는 경우 선택하세요. (아래 "복수부품 등재"에 입력)',
+      zh: '如果要同时登记多个性能相同的部件，请选择此项。（请填写下方"多组件登记"）',
+      en: 'Select this if you want to register multiple components with identical performance together (fill in "Multiple Component Registration" below).',
+    },
+    docx: { table: 1, col: 3 },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -61,15 +101,17 @@ export const TEST_CATEGORY_OPTIONS: { key: TestCategory; label: I18nText; docx: 
 //    DOCX 치환은 표 셀이 아니라 "해당 텍스트를 포함하는 문단"을 찾아 콜론 뒤 텍스트를 교체.
 // ─────────────────────────────────────────────────────────────────────────
 export const BASE_MODEL_INFO_FIELDS: {
-  key: string; label: I18nText; required: boolean;
+  key: string; label: I18nText; help?: I18nText; example?: string; required: boolean;
   docx: { kind: 'paragraph'; matchPrefix: string };
 }[] = [
-  { key: 'baseModelIssuer', label: { ko: '기본모델 발행기관', zh: '基本型号发证机构', en: 'Base Model Issuing Body' }, required: false,
-    docx: { kind: 'paragraph', matchPrefix: '⦁기본모델 발행기관' } },
-  { key: 'baseModelReportDate', label: { ko: '시험성적서 발행일', zh: '检测报告签发日期', en: 'Test Report Issue Date' }, required: false,
-    docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 발행일' } },
-  { key: 'baseModelReportNo', label: { ko: '시험성적서 번호', zh: '检测报告编号', en: 'Test Report No.' }, required: false,
-    docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 번호' } },
+  { key: 'baseModelIssuer', label: { ko: '기본모델 발행기관', zh: '基本型号发证机构', en: 'Base Model Issuing Body' },
+    help: { ko: '기본모델의 고효율 인증서를 발행한 시험기관명입니다.', zh: '为基本型号发放高效认证证书的检测机构名称。', en: 'The name of the testing body that issued the HEE certificate for the base model.' },
+    example: 'KTC 한국기계전기전자시험연구원', required: false, docx: { kind: 'paragraph', matchPrefix: '⦁기본모델 발행기관' } },
+  { key: 'baseModelReportDate', label: { ko: '시험성적서 발행일', zh: '检测报告签发日期', en: 'Test Report Issue Date' },
+    example: '2026.01.15', required: false, docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 발행일' } },
+  { key: 'baseModelReportNo', label: { ko: '시험성적서 번호', zh: '检测报告编号', en: 'Test Report No.' },
+    help: { ko: '아직 시험이 진행 중이면 KTR 접수번호를 기재하세요.', zh: '如检测仍在进行中，请填写KTR受理编号。', en: 'If testing is still in progress, enter the KTR receipt number instead.' },
+    example: 'HEE2026-0000', required: false, docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 번호' } },
 ];
 // 위 3개는 "변경이나 파생일 경우에만" 필수 — 검증 규칙에서 testCategory에 derived/part_change 포함 시 required 처리.
 
@@ -97,6 +139,8 @@ export interface DisplayField {
   key: string;
   label: I18nText;
   help?: I18nText;
+  /** 화면에 회색 placeholder처럼 보여줄 예시값 (언어 무관 — 수치/모델명 형식이므로 공통) */
+  example?: string;
   required: boolean;
   /** 원문 보존이 필요한 값(번역 금지 대상: 모델명/회사명/인증번호/수치/단위 등) */
   preserveOriginal: boolean;
@@ -105,22 +149,50 @@ export interface DisplayField {
 }
 
 export const DISPLAY_FIELDS: DisplayField[] = [
-  { key: 'itemNameModelName', label: { ko: '품목명 및 모델명', zh: '品名及型号', en: 'Item Name & Model Name' }, required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 1, col: 1 } },
-  { key: 'ratedVoltage', label: { ko: '정격 전압', zh: '额定电压', en: 'Rated Voltage' }, required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 2, col: 1 } },
-  { key: 'ratedPower', label: { ko: '정격 전력', zh: '额定功率', en: 'Rated Power' }, required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 3, col: 1 } },
-  { key: 'ratedCurrent', label: { ko: '정격 전류', zh: '额定电流', en: 'Rated Current' }, required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 4, col: 1 } },
-  { key: 'ratedLuminousFlux', label: { ko: '정격 광속', zh: '额定光通量', en: 'Rated Luminous Flux' }, required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 5, col: 1 } },
-  { key: 'luminousEfficacy', label: { ko: '광효율', zh: '光效', en: 'Luminous Efficacy' }, required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 6, col: 1 } },
-  { key: 'correlatedColorTemp', label: { ko: '상관색온도', zh: '相关色温', en: 'CCT' }, required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 7, col: 1 } },
-  { key: 'cri', label: { ko: '연색지수', zh: '显色指数', en: 'CRI' }, required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 8, col: 1 } },
+  { key: 'itemNameModelName', label: { ko: '품목명 및 모델명', zh: '品名及型号', en: 'Item Name & Model Name' },
+    help: { ko: '제품의 품목명과 전체 모델명을 정확하게 입력하세요. 모델명은 축약하지 말고 전체를 기재해야 합니다.', zh: '请准确填写产品的品名及完整型号。型号请勿缩写，需填写完整型号。', en: 'Enter the product item name and the full model name accurately. Do not abbreviate the model name.' },
+    example: '실내용LED등기구 / ABC-1234-XY', required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 1, col: 1 } },
+  { key: 'ratedVoltage', label: { ko: '정격 전압', zh: '额定电压', en: 'Rated Voltage' },
+    help: { ko: '제품 사양서(spec)에 기재된 정격 전압을 단위와 함께 입력하세요.', zh: '请填写产品规格书上标注的额定电压，并注明单位。', en: 'Enter the rated voltage from the product datasheet, including the unit.' },
+    example: '220V~240V', required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 2, col: 1 } },
+  { key: 'ratedPower', label: { ko: '정격 전력', zh: '额定功率', en: 'Rated Power' },
+    help: { ko: '제품의 정격 소비전력을 단위(W)와 함께 입력하세요.', zh: '请填写产品的额定功率，并注明单位（W）。', en: 'Enter the rated power consumption with the unit (W).' },
+    example: '40W', required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 3, col: 1 } },
+  { key: 'ratedCurrent', label: { ko: '정격 전류', zh: '额定电流', en: 'Rated Current' },
+    help: { ko: '알 수 없으면 비워두어도 됩니다(시험 시 측정값으로 발급될 수 있습니다).', zh: '如不清楚可留空（可能以检测实测值发放证书）。', en: 'You may leave this blank if unknown (the certificate may be issued using the measured test value).' },
+    example: '0.2A', required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 4, col: 1 } },
+  { key: 'ratedLuminousFlux', label: { ko: '정격 광속', zh: '额定光通量', en: 'Rated Luminous Flux' },
+    help: { ko: '알 수 없으면 비워두어도 됩니다(시험 시 측정값으로 발급될 수 있습니다).', zh: '如不清楚可留空（可能以检测实测值发放证书）。', en: 'You may leave this blank if unknown (the certificate may be issued using the measured test value).' },
+    example: '4400lm', required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 5, col: 1 } },
+  { key: 'luminousEfficacy', label: { ko: '광효율', zh: '光效', en: 'Luminous Efficacy' },
+    help: { ko: '정격광속 ÷ 정격전력으로 계산된 광효율을 lm/W 단위로 입력하세요.', zh: '请填写额定光通量除以额定功率计算出的光效，单位为 lm/W。', en: 'Enter the luminous efficacy (rated flux ÷ rated power) in lm/W.' },
+    example: '110lm/W', required: false, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 6, col: 1 } },
+  { key: 'correlatedColorTemp', label: { ko: '상관색온도', zh: '相关色温', en: 'CCT' },
+    help: { ko: 'K(켈빈) 단위의 색온도입니다. LED Package 사양서에서 확인 가능합니다.', zh: '色温单位为 K（开尔文），可在 LED 封装规格书中确认。', en: 'Color temperature in Kelvin (K). Can be found on the LED Package datasheet.' },
+    example: '6500K', required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 7, col: 1 } },
+  { key: 'cri', label: { ko: '연색지수', zh: '显色指数', en: 'CRI' },
+    help: { ko: 'Ra 값입니다. LED Package 사양서에서 확인 가능합니다.', zh: '即显色指数 Ra 值，可在 LED 封装规格书中确认。', en: 'The Ra (CRI) value. Can be found on the LED Package datasheet.' },
+    example: '80', required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 8, col: 1 } },
   // 9번: 원산지/상표/제조자명/공급자명 — 4개 하위값을 한 셀에 결합
-  { key: 'originMarking', label: { ko: '원산지표시(상표,제조자명,공급자명)', zh: '原产地标识(商标、制造商、供应商)', en: 'Origin Marking (Trademark/Manufacturer/Supplier)' }, required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 9, col: 1 } },
-  { key: 'asContact', label: { ko: 'A/S연락처', zh: '售后服务电话', en: 'A/S Contact' }, required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 10, col: 1 } },
-  { key: 'manufactureDate', label: { ko: '제조연월', zh: '制造年月', en: 'Manufacture Date' }, required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 11, col: 1 } },
-  { key: 'fixtureKsKcNo', label: { ko: '등기구 KS 또는 KC 인증번호', zh: '灯具 KS 或 KC 认证编号', en: 'Fixture KS/KC Cert No.' }, required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 12, col: 1 } },
-  { key: 'converterKsKcNo', label: { ko: '컨버터 KS 또는 KC 인증번호', zh: '驱动电源 KS 或 KC 认证编号', en: 'Converter KS/KC Cert No.' }, required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 13, col: 1 } },
+  { key: 'originMarking', label: { ko: '원산지표시(상표,제조자명,공급자명)', zh: '原产地标识(商标、制造商、供应商)', en: 'Origin Marking (Trademark/Manufacturer/Supplier)' },
+    help: { ko: '아래 4개 항목(원산지/상표/제조자명/공급자명)을 각각 입력하면 자동으로 합쳐집니다.', zh: '请分别填写下方4个项目（原产地/商标/制造商/供应商），系统会自动合并。', en: 'Fill in the 4 sub-items below (origin/trademark/manufacturer/supplier) — they will be combined automatically.' },
+    required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 9, col: 1 } },
+  { key: 'asContact', label: { ko: 'A/S연락처', zh: '售后服务电话', en: 'A/S Contact' },
+    help: { ko: '소비자가 문의할 수 있는 A/S 전화번호입니다. 라벨에 표시됩니다.', zh: '消费者可咨询的售后服务电话，将标示在产品标签上。', en: 'The A/S contact number consumers can call. This will be printed on the product label.' },
+    example: '1566-2718', required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 10, col: 1 } },
+  { key: 'manufactureDate', label: { ko: '제조연월', zh: '制造年月', en: 'Manufacture Date' },
+    help: { ko: '예시 형식을 참고해 연도.월 형식으로 입력하세요.', zh: '请参考示例格式，按"年.月"格式填写。', en: 'Please use the year.month format shown in the example.' },
+    example: '2026.08', required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 11, col: 1 } },
+  { key: 'fixtureKsKcNo', label: { ko: '등기구 KS 또는 KC 인증번호', zh: '灯具 KS 或 KC 认证编号', en: 'Fixture KS/KC Cert No.' },
+    help: { ko: '실내용 LED등기구는 필수입니다. 아직 인증이 진행 중이면 KTR 접수번호를 기재하세요.', zh: '室内用LED灯具为必填项。如认证仍在进行中，请填写KTR受理编号。', en: 'Required for indoor LED fixtures. If certification is still in progress, enter the KTR receipt number.' },
+    example: 'KS C 7653 제12-1718호', required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 12, col: 1 } },
+  { key: 'converterKsKcNo', label: { ko: '컨버터 KS 또는 KC 인증번호', zh: '驱动电源 KS 或 KC 认证编号', en: 'Converter KS/KC Cert No.' },
+    help: { ko: '컨버터가 없는 제품이면 "-"로 입력하세요.', zh: '如产品无驱动电源，请填写"-"。', en: 'If the product has no converter, enter "-".' },
+    example: '-', required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 13, col: 1 } },
   // 15번: 직렬/병렬/총수량 — 3개 하위값을 한 셀에 결합
-  { key: 'ledPackageArrayTotal', label: { ko: '등기구 전체 LED Package 배열', zh: '灯具整体 LED 封装排列', en: 'Total LED Package Array' }, required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 14, col: 1 } },
+  { key: 'ledPackageArrayTotal', label: { ko: '등기구 전체 LED Package 배열', zh: '灯具整体 LED 封装排列', en: 'Total LED Package Array' },
+    help: { ko: '아래 직렬수×병렬수=총수량 3개 항목을 입력하면 자동으로 합쳐집니다. 예: 12직렬 × 10병렬 = 총 120개.', zh: '请分别填写下方"直列数×并列数=总数量"3个项目，系统会自动合并。例：12串 × 10并 = 共120个。', en: 'Fill in the series count × parallel count = total count below — they will be combined automatically. Example: 12 in series × 10 in parallel = 120 total.' },
+    required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 14, col: 1 } },
 ];
 
 // 9번 항목의 하위 구조 (웹 폼에서는 분리 입력 → DOCX 저장 시 결합)
@@ -128,6 +200,16 @@ export const ORIGIN_MARKING_SUBFIELDS = ['originCountry', 'trademark', 'manufact
 // 15번 항목의 하위 구조
 export const LED_ARRAY_SUBFIELDS = ['ledSeriesCount', 'ledParallelCount', 'ledTotalCount'] as const;
 // (원본 예시 값 "직렬: 1S병렬:P", "중국(금호조명등구(상숙)유한공사)" 형식을 그대로 따름)
+
+export const SUBFIELD_META: Record<string, { label: I18nText; help?: I18nText; example?: string }> = {
+  originCountry: { label: { ko: '원산지', zh: '原产地', en: 'Country of Origin' }, example: '중국(China)' },
+  trademark: { label: { ko: '상표', zh: '商标', en: 'Trademark' }, help: { ko: '없으면 비워두세요.', zh: '如无可留空。', en: 'Leave blank if none.' }, example: 'ABC' },
+  manufacturerName: { label: { ko: '제조자명', zh: '制造商名称', en: 'Manufacturer Name' }, example: 'ABC Lighting Co., Ltd.' },
+  supplierName: { label: { ko: '공급자명', zh: '供应商名称', en: 'Supplier Name' }, help: { ko: '보통 이 제품을 한국에 공급하는 귀사명입니다.', zh: '通常为向韩国供应本产品的贵公司名称。', en: 'Usually your company name as the supplier of this product to Korea.' }, example: 'ABC Lighting Co., Ltd.' },
+  ledSeriesCount: { label: { ko: '직렬 수', zh: '直列数（串联）', en: 'Series Count' }, help: { ko: 'LED 회로도에서 직렬로 연결된 LED Package 개수입니다.', zh: 'LED电路图中串联连接的LED封装数量。', en: 'The number of LED Packages connected in series on the circuit.' }, example: '12' },
+  ledParallelCount: { label: { ko: '병렬 수', zh: '并列数（并联）', en: 'Parallel Count' }, help: { ko: 'LED 회로도에서 병렬로 연결된 줄(라인) 수입니다.', zh: 'LED电路图中并联连接的支路数量。', en: 'The number of parallel lines/branches on the circuit.' }, example: '10' },
+  ledTotalCount: { label: { ko: '총 수량', zh: '总数量', en: 'Total Count' }, help: { ko: '직렬 수 × 병렬 수와 반드시 일치해야 합니다.', zh: '必须等于"直列数 × 并列数"。', en: 'Must equal Series Count × Parallel Count.' }, example: '120' },
+};
 
 /**
  * originMarking/ledPackageArrayTotal은 하위 필드를 결합해서만 존재하는 "계산된" 값이라
@@ -186,8 +268,20 @@ export const FIXTURE_PART_FIXED_ROWS: {
 //    제공하되 전부 사용자가 자유롭게 수정/삭제/추가 가능한 반복 리스트로 취급)
 //    열: [부품, 형명, 명세, 수량, 제조회사, 비고]
 // ─────────────────────────────────────────────────────────────────────────
-export const CONVERTER_PART_SUGGESTED_ROWS: string[] = [
-  '컨버터PCB', 'FUSE', 'X-CAPACITOR', 'Y-CAPACITOR', 'Varistor', 'Transformer', 'Input wire', 'Line Filter',
+/**
+ * 일체형 컨버터를 처음 선택했을 때 화면에 자동으로 채워지는 "예시" 행들 — 흔히 쓰이는
+ * 컨버터 내부 부품 구성을 미리 보여줘서 작성자가 참고하여 수정하거나, 필요 없으면
+ * 그대로 지울 수 있게 한다. (요청사항: "기본적으로 쓰는 것을 몇 개 넣어주고 예시라고
+ * 표시, 지우거나 삭제할 수 있도록")
+ */
+export interface ConverterPartExample { partName: string; modelName: string; specText: string; qty: string; manufacturer: string }
+export const CONVERTER_PART_EXAMPLES: ConverterPartExample[] = [
+  { partName: '컨버터PCB', modelName: '(예시) 작성 필요', specText: 'CEM-3, 1.0mm', qty: '1', manufacturer: '(예시) 제조사명 입력' },
+  { partName: 'FUSE', modelName: '(예시) 작성 필요', specText: '2A 250V', qty: '1', manufacturer: '(예시) 제조사명 입력' },
+  { partName: 'X-CAPACITOR', modelName: '(예시) 작성 필요', specText: '0.1uF 275V-AC', qty: '1', manufacturer: '(예시) 제조사명 입력' },
+  { partName: 'Y-CAPACITOR', modelName: '(예시) 작성 필요', specText: '222M/400V', qty: '2', manufacturer: '(예시) 제조사명 입력' },
+  { partName: 'Varistor', modelName: '(예시) 작성 필요', specText: '471_VAC:300V', qty: '1', manufacturer: '(예시) 제조사명 입력' },
+  { partName: 'Transformer', modelName: '(예시) 작성 필요', specText: 'EFD25', qty: '1', manufacturer: '(예시) 제조사명 입력' },
 ];
 export const CONVERTER_PART_TABLE_DOCX = { table: 5 as const, headerRow: 0, firstDataRow: 1 };
 
@@ -204,11 +298,23 @@ export const MULTI_COMPONENT_TABLE_DOCX = { table: 6 as const, headerRow: 0, fir
 export interface AttachmentCategoryDef {
   key: string;
   label: I18nText;
+  help?: I18nText;
   required: boolean | 'conditional';
   visibleWhen: ConverterType[] | 'always';
   accept: 'pdf';
   isImageInsertTarget?: { table: 7 | 8 | 9 | 10 };
 }
+
+const CIRCUIT_DIAGRAM_HELP: I18nText = {
+  ko: 'LED가 직렬·병렬로 연결된 형태와 개수가 명확히 보이는 회로도를 첨부하세요. (예: 3직렬×2병렬 구조가 표시된 도면)',
+  zh: '请上传能清楚显示LED串联·并联连接方式及数量的电路图。（例：显示3串×2并结构的图纸）',
+  en: 'Attach a circuit diagram that clearly shows how the LEDs are connected in series/parallel and their quantity (e.g., a drawing showing a 3-series × 2-parallel layout).',
+};
+const PCB_PATTERN_HELP: I18nText = {
+  ko: '실제 PCB 기판의 배치(패턴) 도면을 첨부하세요. 부품 위치와 배선을 확인할 수 있어야 합니다.',
+  zh: '请上传实际PCB电路板的布局（版图）图纸，需能确认元件位置及走线。',
+  en: 'Attach the actual PCB layout drawing. Component positions and traces should be identifiable.',
+};
 
 export const ATTACHMENT_CATEGORIES: AttachmentCategoryDef[] = [
   // 공통 필수/해당시 필수
@@ -222,27 +328,27 @@ export const ATTACHMENT_CATEGORIES: AttachmentCategoryDef[] = [
   // 컨버터 있음
   { key: 'converter_ks_kc_cert', label: { ko: '컨버터 KS 또는 KC 인증서', zh: '驱动电源 KS 或 KC 认证证书', en: 'Converter KS/KC Certificate' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf' },
   { key: 'converter_spec', label: { ko: '컨버터 사양서', zh: '驱动电源规格书', en: 'Converter Datasheet' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf' },
-  { key: 'led_module_circuit_a', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
-  { key: 'led_module_pcb_a', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
-  { key: 'converter_circuit', label: { ko: '컨버터 회로도', zh: '驱动电源电路图', en: 'Converter Circuit Diagram' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
-  { key: 'converter_pcb', label: { ko: '컨버터 PCB 패턴도', zh: '驱动电源PCB版图', en: 'Converter PCB Pattern' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
+  { key: 'led_module_circuit_a', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
+  { key: 'led_module_pcb_a', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
+  { key: 'converter_circuit', label: { ko: '컨버터 회로도', zh: '驱动电源电路图', en: 'Converter Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
+  { key: 'converter_pcb', label: { ko: '컨버터 PCB 패턴도', zh: '驱动电源PCB版图', en: 'Converter PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
   { key: 'converter_parts_list_pdf', label: { ko: '컨버터 부품 리스트', zh: '驱动电源部件清单', en: 'Converter Parts List' }, required: false, visibleWhen: ['has_converter'], accept: 'pdf' },
   { key: 'etc_converter', label: { ko: '기타 컨버터 관련 자료', zh: '其他驱动电源相关资料', en: 'Other Converter Documents' }, required: false, visibleWhen: ['has_converter'], accept: 'pdf' },
 
   // 컨버터 없음
-  { key: 'fixture_circuit', label: { ko: '등기구 전체 회로도', zh: '灯具整体电路图', en: 'Fixture Overall Circuit Diagram' }, required: true, visibleWhen: ['no_converter'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
-  { key: 'fixture_pcb', label: { ko: '등기구 전체 PCB 패턴도', zh: '灯具整体PCB版图', en: 'Fixture Overall PCB Pattern' }, required: true, visibleWhen: ['no_converter'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
-  { key: 'led_module_circuit_b', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, required: true, visibleWhen: ['no_converter'], accept: 'pdf' },
-  { key: 'led_module_pcb_b', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, required: true, visibleWhen: ['no_converter'], accept: 'pdf' },
+  { key: 'fixture_circuit', label: { ko: '등기구 전체 회로도', zh: '灯具整体电路图', en: 'Fixture Overall Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['no_converter'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
+  { key: 'fixture_pcb', label: { ko: '등기구 전체 PCB 패턴도', zh: '灯具整体PCB版图', en: 'Fixture Overall PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['no_converter'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
+  { key: 'led_module_circuit_b', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['no_converter'], accept: 'pdf' },
+  { key: 'led_module_pcb_b', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['no_converter'], accept: 'pdf' },
   { key: 'etc_fixture_no_conv', label: { ko: '기타 등기구 관련 자료', zh: '其他灯具相关资料', en: 'Other Fixture Documents' }, required: false, visibleWhen: ['no_converter'], accept: 'pdf' },
 
   // 일체형 컨버터
-  { key: 'fixture_circuit_int', label: { ko: '등기구 전체 회로도', zh: '灯具整体电路图', en: 'Fixture Overall Circuit Diagram' }, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
-  { key: 'fixture_pcb_int', label: { ko: '등기구 전체 PCB 패턴도', zh: '灯具整体PCB版图', en: 'Fixture Overall PCB Pattern' }, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
-  { key: 'led_module_circuit_int', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, required: true, visibleWhen: ['integrated'], accept: 'pdf' },
-  { key: 'led_module_pcb_int', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, required: true, visibleWhen: ['integrated'], accept: 'pdf' },
-  { key: 'converter_circuit_int', label: { ko: '컨버터 회로도', zh: '驱动电源电路图', en: 'Converter Circuit Diagram' }, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
-  { key: 'converter_pcb_int', label: { ko: '컨버터 PCB 패턴도', zh: '驱动电源PCB版图', en: 'Converter PCB Pattern' }, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
+  { key: 'fixture_circuit_int', label: { ko: '등기구 전체 회로도', zh: '灯具整体电路图', en: 'Fixture Overall Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
+  { key: 'fixture_pcb_int', label: { ko: '등기구 전체 PCB 패턴도', zh: '灯具整体PCB版图', en: 'Fixture Overall PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
+  { key: 'led_module_circuit_int', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf' },
+  { key: 'led_module_pcb_int', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf' },
+  { key: 'converter_circuit_int', label: { ko: '컨버터 회로도', zh: '驱动电源电路图', en: 'Converter Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
+  { key: 'converter_pcb_int', label: { ko: '컨버터 PCB 패턴도', zh: '驱动电源PCB版图', en: 'Converter PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['integrated'], accept: 'pdf', isImageInsertTarget: { table: 10 } },
   { key: 'integrated_converter_parts_list', label: { ko: '일체형 컨버터 부품 리스트', zh: '一体式驱动电源部件清单', en: 'Integrated Converter Parts List' }, required: false, visibleWhen: ['integrated'], accept: 'pdf' },
 ];
 

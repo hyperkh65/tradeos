@@ -6,8 +6,8 @@ import { Loader2, Plus, Trash2, Upload, Check, AlertCircle, Lock, FileText } fro
 import { cn } from '@/lib/utils';
 import {
   DISPLAY_FIELDS, BASE_MODEL_INFO_FIELDS, TEST_CATEGORY_OPTIONS, DERIVED_CHANGE_ITEMS,
-  ORIGIN_MARKING_SUBFIELDS, LED_ARRAY_SUBFIELDS, FIXTURE_PART_FIXED_ROWS, CONVERTER_TYPE_LABELS,
-  getVisibleAttachmentCategories, type Lang, type ConverterType, type I18nText,
+  ORIGIN_MARKING_SUBFIELDS, LED_ARRAY_SUBFIELDS, SUBFIELD_META, FIXTURE_PART_FIXED_ROWS, CONVERTER_TYPE_LABELS,
+  CONVERTER_PART_EXAMPLES, INTRO_TEXT, getVisibleAttachmentCategories, type Lang, type ConverterType, type I18nText,
 } from '@/lib/supplier-form/field-schema';
 
 const UI: Record<Lang, Record<string, string>> = {
@@ -26,6 +26,8 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: '형명', spec: '명세', material: '재질', width: '가로(mm)', depth: '세로(mm)', height: '높이/두께(mm)',
     qty: '수량', manufacturer: '제조회사', remarkCol: '비고', unit: '단위',
     reasonRequired: '필수', reasonFormat: '형식이 올바르지 않습니다', reasonMismatch: '값이 일치하지 않습니다', reasonNoKorean: '한국어 확정값이 필요합니다',
+    ledDiagramCaption: '직렬·병렬 연결 예시 (3직렬 × 2병렬 = 총 6개)', exampleAdded: '자주 쓰는 부품 예시가 자동으로 채워졌습니다. 필요 없는 항목은 삭제하거나 값을 수정하세요.',
+    exampleBadge: '예시',
   },
   zh: {
     loading: '加载中...', notFound: '无效的链接。',
@@ -42,6 +44,8 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: '型号', spec: '规格', material: '材质', width: '宽(mm)', depth: '长(mm)', height: '高/厚(mm)',
     qty: '数量', manufacturer: '制造商', remarkCol: '备注', unit: '单位',
     reasonRequired: '必填', reasonFormat: '格式不正确', reasonMismatch: '数值不一致', reasonNoKorean: '需要韩语确认值',
+    ledDiagramCaption: '串联·并联示例（3串 × 2并 = 共6个）', exampleAdded: '已自动填入常用部件示例。不需要的项目可删除或修改数值。',
+    exampleBadge: '示例',
   },
   en: {
     loading: 'Loading...', notFound: 'Invalid link.',
@@ -58,6 +62,8 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: 'Model No.', spec: 'Spec', material: 'Material', width: 'Width(mm)', depth: 'Depth(mm)', height: 'Height/Thk(mm)',
     qty: 'Qty', manufacturer: 'Manufacturer', remarkCol: 'Remark', unit: 'Unit',
     reasonRequired: 'Required', reasonFormat: 'Invalid format', reasonMismatch: 'Values do not match', reasonNoKorean: 'Korean confirmed value needed',
+    ledDiagramCaption: 'Series/Parallel Example (3 in series × 2 in parallel = 6 total)', exampleAdded: 'Commonly used component examples were filled in automatically. Delete or edit any items you don\'t need.',
+    exampleBadge: 'Example',
   },
 };
 
@@ -75,14 +81,39 @@ const REASON_LABEL_KEY: Record<string, string> = {
   required: 'reasonRequired', format: 'reasonFormat', mismatch: 'reasonMismatch', no_korean_value: 'reasonNoKorean',
 };
 
-function LabeledInput({ label, required, value, onChange, onBlur, error, placeholder }: {
-  label: string; required?: boolean; value: string; onChange: (v: string) => void; onBlur?: () => void; error?: boolean; placeholder?: string;
+function LabeledInput({ label, required, value, onChange, onBlur, error, placeholder, help }: {
+  label: string; required?: boolean; value: string; onChange: (v: string) => void; onBlur?: () => void; error?: boolean; placeholder?: string; help?: string;
 }) {
   return (
     <div>
       <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
       <input value={value} onChange={e => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder}
         className={cn('w-full h-9 rounded-md border bg-background px-3 text-sm', error ? 'border-red-400 ring-1 ring-red-300' : 'border-input')} />
+      {help && <p className="text-[10px] text-muted-foreground mt-1 leading-snug">💡 {help}</p>}
+    </div>
+  );
+}
+
+/** 회로 직렬/병렬 개념을 글자 설명만으로는 이해하기 어려운 외국 작성자를 위한 예시 다이어그램 —
+ * 특정 제품의 실제 회로도가 아니라 개념 설명용으로 직접 그린 일반적인 예시 이미지다. */
+function LedArraySampleDiagram({ caption }: { caption: string }) {
+  return (
+    <div className="mt-2 bg-muted/30 rounded-lg p-3 flex flex-col items-center gap-1.5">
+      <svg viewBox="0 0 300 130" className="w-full max-w-[260px]">
+        {[0, 1].map(row => (
+          <g key={row}>
+            <line x1="15" y1={35 + row * 55} x2="285" y2={35 + row * 55} stroke="#94a3b8" strokeWidth="2" />
+            {[0, 1, 2].map(col => (
+              <circle key={col} cx={60 + col * 90} cy={35 + row * 55} r="11" fill="#fbbf24" stroke="#b45309" strokeWidth="1.5" />
+            ))}
+          </g>
+        ))}
+        <line x1="15" y1="35" x2="15" y2="90" stroke="#94a3b8" strokeWidth="2" />
+        <line x1="285" y1="35" x2="285" y2="90" stroke="#94a3b8" strokeWidth="2" />
+        <text x="150" y="16" textAnchor="middle" fontSize="11" fill="#64748b">Series →</text>
+        <text x="8" y="66" fontSize="11" fill="#64748b" transform="rotate(-90 8 66)">Parallel</text>
+      </svg>
+      <p className="text-[10px] text-muted-foreground text-center">{caption}</p>
     </div>
   );
 }
@@ -119,6 +150,9 @@ export default function SupplierFormPage() {
       setProjectMeta(d.project);
       setLang((d.project.defaultLanguage as Lang) || 'zh');
       setConverterType(d.converterType || '');
+      // 저장된 시험구분이 없는 새 프로젝트는 "기본모델"을 기본 선택값으로 보여준다(요청사항: Test Category는 기본으로)
+      setTestCategories(d.testCategories?.length ? d.testCategories : ['base']);
+      setDerivedChecks(d.derivedChangeChecks || {});
       setValues(Object.fromEntries(Object.entries(d.formData || {}).map(([k, v]: [string, any]) => [k, v.original || ''])));
       setComponentItems((d.componentItems || []).map((c: any) => ({
         id: c.id, listType: c.listType, rowKey: c.rowKey, partName: c.partName || '', modelName: c.modelName || '',
@@ -171,6 +205,23 @@ export default function SupplierFormPage() {
   const addComponent = async (listType: string) => {
     const r = await fetch(`/api/supplier-form/${token}/components`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ listType }) });
     if (r.ok) load();
+  };
+
+  /** 일체형 컨버터를 처음 선택했을 때, 자주 쓰는 부품 예시를 자동으로 채워준다 (요청사항).
+   * 실제 DB 행으로 생성되므로 필요 없으면 그대로 삭제하거나 값을 수정할 수 있다. */
+  const populateConverterExamples = async () => {
+    for (const ex of CONVERTER_PART_EXAMPLES) {
+      const add = await fetch(`/api/supplier-form/${token}/components`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ listType: 'converter_part' }) });
+      const j = await add.json().catch(() => null);
+      const newId = j?.data?.id;
+      if (newId) {
+        await fetch(`/api/supplier-form/${token}/components/${newId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partName: ex.partName, modelName: ex.modelName, specText: ex.specText, qty: ex.qty, manufacturer: ex.manufacturer }),
+        });
+      }
+    }
+    load();
   };
   const updateComponent = (id: string, patch: Partial<ComponentItemUI>) => {
     setComponentItems(items => items.map(it => it.id === id ? { ...it, ...patch } : it));
@@ -228,6 +279,10 @@ export default function SupplierFormPage() {
         </div>
       </div>
 
+      <div className="bg-blue-50 border-b border-blue-200 text-blue-900 text-xs sm:text-sm px-4 py-3 leading-relaxed">
+        {t(INTRO_TEXT, lang)}
+      </div>
+
       {closed && (
         <div className="bg-red-50 border-b border-red-200 text-red-700 text-sm px-4 py-3 flex items-center gap-2">
           <Lock className="w-4 h-4 shrink-0" />{ui.closedBanner}
@@ -247,12 +302,15 @@ export default function SupplierFormPage() {
         {/* 시험 구분 */}
         <section className="bg-white border rounded-xl p-4">
           <h3 className="text-sm font-bold mb-3">{ui.testCategory}</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {TEST_CATEGORY_OPTIONS.map(opt => (
-              <label key={opt.key} className="flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 cursor-pointer">
-                <input type="checkbox" disabled={closed} checked={testCategories.includes(opt.key)}
+              <label key={opt.key} className="flex items-start gap-1.5 text-sm border rounded-lg px-3 py-2 cursor-pointer">
+                <input type="checkbox" className="mt-0.5" disabled={closed} checked={testCategories.includes(opt.key)}
                   onChange={e => setTestCategories(prev => e.target.checked ? [...prev, opt.key] : prev.filter(k => k !== opt.key))} />
-                {t(opt.label, lang)}
+                <span>
+                  <span className="block">{t(opt.label, lang)}</span>
+                  <span className="block text-[10px] text-muted-foreground font-normal leading-snug mt-0.5">{t(opt.help, lang)}</span>
+                </span>
               </label>
             ))}
           </div>
@@ -264,7 +322,8 @@ export default function SupplierFormPage() {
             <h3 className="text-sm font-bold mb-3">{ui.baseModelInfo}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {BASE_MODEL_INFO_FIELDS.map(f => (
-                <LabeledInput key={f.key} label={t(f.label, lang)} required value={values[f.key] || ''} onChange={v => setValue(f.key, v)} onBlur={() => saveDraft(true)} error={hasIssue(f.key)} />
+                <LabeledInput key={f.key} label={t(f.label, lang)} required value={values[f.key] || ''} onChange={v => setValue(f.key, v)} onBlur={() => saveDraft(true)} error={hasIssue(f.key)}
+                  placeholder={f.example} help={f.help ? t(f.help, lang) : undefined} />
               ))}
             </div>
           </section>
@@ -292,14 +351,16 @@ export default function SupplierFormPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {DISPLAY_FIELDS.filter(f => f.key !== 'originMarking' && f.key !== 'ledPackageArrayTotal').map(f => (
               <LabeledInput key={f.key} label={t(f.label, lang)} required={f.required} value={values[f.key] || ''}
-                onChange={v => setValue(f.key, v)} onBlur={() => saveDraft(true)} error={hasIssue(f.key)} />
+                onChange={v => setValue(f.key, v)} onBlur={() => saveDraft(true)} error={hasIssue(f.key)}
+                placeholder={f.example} help={f.help ? t(f.help, lang) : undefined} />
             ))}
           </div>
           <div className="mt-3 pt-3 border-t border-border">
             <p className="text-xs font-semibold text-muted-foreground mb-2">{t(DISPLAY_FIELDS.find(f => f.key === 'originMarking')!.label, lang)}</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {ORIGIN_MARKING_SUBFIELDS.map(k => (
-                <LabeledInput key={k} label={k} required value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)} />
+                <LabeledInput key={k} label={t(SUBFIELD_META[k].label, lang)} required value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)}
+                  placeholder={SUBFIELD_META[k].example} help={SUBFIELD_META[k].help ? t(SUBFIELD_META[k].help!, lang) : undefined} />
               ))}
             </div>
           </div>
@@ -307,9 +368,11 @@ export default function SupplierFormPage() {
             <p className="text-xs font-semibold text-muted-foreground mb-2">{t(DISPLAY_FIELDS.find(f => f.key === 'ledPackageArrayTotal')!.label, lang)}</p>
             <div className="grid grid-cols-3 gap-3">
               {LED_ARRAY_SUBFIELDS.map(k => (
-                <LabeledInput key={k} label={k} required value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)} />
+                <LabeledInput key={k} label={t(SUBFIELD_META[k].label, lang)} required value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)}
+                  placeholder={SUBFIELD_META[k].example} help={SUBFIELD_META[k].help ? t(SUBFIELD_META[k].help!, lang) : undefined} />
               ))}
             </div>
+            <LedArraySampleDiagram caption={ui.ledDiagramCaption} />
           </div>
         </section>
 
@@ -319,7 +382,10 @@ export default function SupplierFormPage() {
           <div ref={hasIssue('converterType') ? firstErrorRef : undefined} className={cn('flex flex-wrap gap-2', hasIssue('converterType') && 'ring-1 ring-red-300 rounded-lg p-1')}>
             {(Object.keys(CONVERTER_TYPE_LABELS) as ConverterType[]).map(ct => (
               <label key={ct} className={cn('flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 cursor-pointer', converterType === ct && 'border-primary bg-primary/5')}>
-                <input type="radio" name="converterType" disabled={closed} checked={converterType === ct} onChange={() => { setConverterType(ct); }} />
+                <input type="radio" name="converterType" disabled={closed} checked={converterType === ct} onChange={() => {
+                  setConverterType(ct);
+                  if (ct === 'integrated' && converterRows.length === 0) populateConverterExamples();
+                }} />
                 {t(CONVERTER_TYPE_LABELS[ct], lang)}
               </label>
             ))}
@@ -339,10 +405,11 @@ export default function SupplierFormPage() {
         {/* 컨버터 내부 부품 (일체형만) */}
         {converterType === 'integrated' && (
           <section className="bg-white border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold">{ui.converterParts}</h3>
               <Button size="sm" variant="outline" disabled={closed} onClick={() => addComponent('converter_part')} className="gap-1 h-7 text-xs"><Plus className="w-3 h-3" />{ui.addRow}</Button>
             </div>
+            <p className="text-[10px] text-muted-foreground mb-2">💡 {ui.exampleAdded}</p>
             <ComponentTable items={converterRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent} />
           </section>
         )}
