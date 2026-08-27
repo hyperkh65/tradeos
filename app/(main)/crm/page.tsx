@@ -220,7 +220,11 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   // 통관 신고번호까지 한 번에 묶어서, 넷 중 무엇을 입력해도 나머지가 자동으로 채워지게 한다
   // (요청사항: "선적번호와 통관번호로도 등록할 수 있게, 4개를 한번에").
   const linkChains = useMemo(() => purchaseOrders.map((po: any) => {
-    const ship = shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.linkedPoBusinessId === po.businessId));
+    // linkedPoBusinessId(내부 PO DB 연결로 수동 확정된 값)를 우선으로 찾되, 아직 그렇게 연결
+    // 안 된 선적 건이 대부분이라(패킹리스트 파싱만 된 상태) poBusinessId(원본 파싱값)로도
+    // 한번 더 찾는다 — 안 그러면 선적번호/통관번호 목록이 대부분 비어 보이는 문제가 있었음.
+    const ship = shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.linkedPoBusinessId === po.businessId))
+      || shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.poBusinessId === po.businessId));
     const imp = ship ? importList.find((i: any) => i.shipmentBusinessId === ship.businessId) : undefined;
     return {
       poBusinessId: po.businessId as string, poId: po.id as string, supplierName: po.supplierName as string,
@@ -302,6 +306,21 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
 
   const applyBatchToAll = () => {
     const po = purchaseOrders.find(p => p.businessId === batchPo);
+    const poItems: any[] = po?.items || [];
+    // PO/PI/선적번호/통관번호 중 무엇으로 골랐든 연결된 PO의 실제 품목이 있으면 그대로
+    // 매출 품목 리스트에 가져와 채운다(요청사항: "모두 적용 누르면 제품 리스트가 아래 나와야해").
+    if (poItems.length > 0) {
+      const imported: SalesItem[] = poItems.map((pi: any, i: number) => ({
+        id: Date.now().toString() + i,
+        product: pi.productName || '', specification: pi.specification || '',
+        qty: pi.qty || 1, unitPrice: pi.unitPrice || 0, amount: (pi.qty || 1) * (pi.unitPrice || 0),
+        remark: '', supplierName: batchSupplier, poId: po?.id || '', poBusinessId: batchPo,
+        piNumber: po?.piNumber || batchPi, shipmentBusinessId: batchShipment, declarationNo: batchDeclaration,
+        inventoryDeducted: false,
+      }));
+      setForm(f => ({ ...f, items: [...f.items.filter(item => item.product !== ''), ...imported] }));
+      return;
+    }
     setForm(f => ({
       ...f,
       items: f.items.map(item => ({
