@@ -909,17 +909,17 @@ function ImportModal({
                     {(form.freightHandling || []).length > 0 && (
                       <div className="rounded border border-border overflow-hidden text-xs">
                         <div className="grid bg-muted/50 font-medium text-muted-foreground text-[10px]" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
-                          {['항목명','통화','공급가(외화)','환율','공급가(KRW)','부가세(KRW)','CIF산입',''].map(h => <div key={h} className="px-1.5 py-1.5">{h}</div>)}
+                          {['항목명','통화','공급가(외화)','환율','공급가(KRW)','부가세(KRW)','CIF산입',''].map(h => <div key={h} className="px-1.5 py-1.5 min-w-0 truncate">{h}</div>)}
                         </div>
                         {(form.freightHandling || []).map((h: FreightItem, idx: number) => {
                           const autoKrw = h.currency === 'KRW' ? (h.amtCur || 0) : Math.round((h.amtCur || 0) * (h.exRate || 1));
                           const inCif = h.includedInCif !== false;
                           return (
                             <div key={idx} className={`grid border-t border-border ${!inCif ? 'bg-orange-50/40' : ''}`} style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
-                              <input className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input className="w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.name} placeholder="항목명" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, name: e.target.value} : x) }))} />
-                              <select className="px-1 text-[10px] bg-transparent border-r border-border focus:outline-none"
+                              <select className="w-full min-w-0 px-1 text-[10px] bg-transparent border-r border-border focus:outline-none"
                                 value={h.currency||'KRW'} disabled={!canEdit}
                                 onChange={e => {
                                   const cur = e.target.value;
@@ -928,39 +928,39 @@ function ImportModal({
                                 }}>
                                 <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
                               </select>
-                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.amtCur||''} placeholder="0" disabled={!canEdit}
                                 onChange={e => {
                                   const v = Number(e.target.value)||0;
                                   const krw = h.currency==='KRW' ? v : Math.round(v*(h.exRate||1));
                                   setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtCur: v, amtKrw: krw} : x) }));
                                 }} />
-                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.currency==='KRW' ? '' : (h.exRate||'')} placeholder={h.currency==='KRW'?'1':''} disabled={!canEdit||h.currency==='KRW'}
                                 onChange={e => {
                                   const rate = Number(e.target.value)||1;
                                   setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, exRate: rate, amtKrw: Math.round(x.amtCur*rate)} : x) }));
                                 }} />
-                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.amtKrw||autoKrw||''} placeholder="자동" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtKrw: Number(e.target.value)||0} : x) }))} />
-                              <input type="number" className="px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.vat||''} placeholder="0" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, vat: Number(e.target.value)||0} : x) }))} />
-                              <div className="flex items-center justify-center border-r border-border" title={inCif ? 'CIF 과세가격에 포함 (수입항 이전 비용)' : '과세가격 제외 (수입항 이후 국내비용)'}>
-                                <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer" checked={inCif} disabled={!canEdit}
+                              <div className="flex items-center justify-center border-r border-border min-w-0" title={inCif ? 'CIF 과세가격에 포함 (수입항 이전 비용)' : '과세가격 제외 (수입항 이후 국내비용)'}>
+                                <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer shrink-0" checked={inCif} disabled={!canEdit}
                                   onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, includedInCif: e.target.checked} : x) }))} />
                               </div>
-                              {canEdit && <button type="button" className="flex items-center justify-center text-muted-foreground hover:text-red-500"
+                              {canEdit && <button type="button" className="flex items-center justify-center text-muted-foreground hover:text-red-500 min-w-0"
                                 onClick={() => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).filter((_: unknown, i: number) => i!==idx) }))}>
-                                <X className="w-3 h-3" /></button>}
+                                <X className="w-3 h-3 shrink-0" /></button>}
                             </div>
                           );
                         })}
                         <div className="grid border-t-2 border-border bg-muted/30 font-semibold text-xs" style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
-                          <div className="px-1.5 py-1.5 col-span-4 text-muted-foreground">소계 (CIF산입: {freightHandlingTotal.toLocaleString()}원)</div>
-                          <div className="px-1.5 py-1.5">{freightHandlingTotalAll.toLocaleString()}원</div>
-                          <div className="px-1.5 py-1.5 text-orange-600">{freightHandlingVat > 0 ? `VAT ${freightHandlingVat.toLocaleString()}` : '-'}</div>
+                          <div className="px-1.5 py-1.5 col-span-4 min-w-0 truncate text-muted-foreground">소계 (CIF산입: {freightHandlingTotal.toLocaleString()}원)</div>
+                          <div className="px-1.5 py-1.5 min-w-0 truncate">{freightHandlingTotalAll.toLocaleString()}원</div>
+                          <div className="px-1.5 py-1.5 min-w-0 truncate text-orange-600">{freightHandlingVat > 0 ? `VAT ${freightHandlingVat.toLocaleString()}` : '-'}</div>
                           <div /><div />
                         </div>
                       </div>
