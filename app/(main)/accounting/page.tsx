@@ -353,9 +353,9 @@ function JournalEntryModal({
     inlandFreight?: number; warehouseFee?: number; inspectionFee?: number;
     status: string;
   }>>([]);
-  const [quotes, setQuotes] = useState<Array<{
-    id: string; businessId: string; companyName: string;
-    totalAmount: number; currency: string; docType: string; status: string; quoteDate?: string;
+  const [salesForLink, setSalesForLink] = useState<Array<{
+    id: string; businessId: string; customer: string;
+    totalAmount: number; currency: string; saleType: string; depositStatus?: string; saleDate?: string;
   }>>([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -371,10 +371,10 @@ function JournalEntryModal({
     setDataLoading(true);
     Promise.all([
       fetch('/api/imports').then(r => r.json()),
-      fetch('/api/quotes').then(r => r.json()),
-    ]).then(([imp, qt]) => {
+      fetch('/api/sales').then(r => r.json()),
+    ]).then(([imp, sl]) => {
       setImports(Array.isArray(imp.data) ? imp.data : []);
-      setQuotes(Array.isArray(qt.data) ? qt.data.filter((q: { type: string }) => q.type === 'customer') : []);
+      setSalesForLink(Array.isArray(sl.data) ? sl.data : []);
       setDataLoaded(true);
     }).finally(() => setDataLoading(false));
   }, [showLinkPanel, dataLoaded]);
@@ -389,14 +389,14 @@ function JournalEntryModal({
     ).slice(0, 10);
   }, [imports, linkSearch]);
 
-  const filteredQuotes = useMemo(() => {
+  const filteredSalesForLink = useMemo(() => {
     const q = linkSearch.toLowerCase();
-    if (!q) return quotes.slice(0, 10);
-    return quotes.filter(qt =>
-      qt.companyName.toLowerCase().includes(q) ||
-      (qt.businessId || '').toLowerCase().includes(q)
+    if (!q) return salesForLink.slice(0, 10);
+    return salesForLink.filter(sl =>
+      sl.customer.toLowerCase().includes(q) ||
+      (sl.businessId || '').toLowerCase().includes(q)
     ).slice(0, 10);
-  }, [quotes, linkSearch]);
+  }, [salesForLink, linkSearch]);
 
   const handleTypeChange = (type: string) => {
     setForm(f => ({ ...f, entry_type: type }));
@@ -471,24 +471,24 @@ function JournalEntryModal({
     setShowLinkPanel(false);
   };
 
-  // 매출 자동분개
-  const generateSaleLines = (qt: typeof quotes[0]) => {
-    const fx = 1430;
-    const totalKrw = qt.currency === 'KRW' ? Math.round(qt.totalAmount) : Math.round(qt.totalAmount * fx);
-    const accountCode = qt.currency === 'USD' ? '4020' : '4010';
-    const accountName = qt.currency === 'USD' ? '수출매출' : '국내매출';
+  // 매출 자동분개 — 매출관리(Sales)의 totalAmount는 아이템별 환율이 이미 반영된
+  // 원화 확정금액이라(2026-08-27 수정) 여기서 또 환율을 곱하지 않는다.
+  const generateSaleLines = (sl: typeof salesForLink[0]) => {
+    const totalKrw = Math.round(sl.totalAmount);
+    const accountCode = sl.currency === 'USD' ? '4020' : '4010';
+    const accountName = sl.currency === 'USD' ? '수출매출' : '국내매출';
 
     const newLines: JournalLine[] = [
-      { account_code: '1040', account_name: '외상매출금', debit: totalKrw, credit: 0, currency: 'KRW', fx_rate: 1, memo: `${qt.companyName} 매출채권` },
-      { account_code: accountCode, account_name: accountName, debit: 0, credit: totalKrw, currency: 'KRW', fx_rate: 1, memo: qt.businessId },
+      { account_code: '1040', account_name: '외상매출금', debit: totalKrw, credit: 0, currency: 'KRW', fx_rate: 1, memo: `${sl.customer} 매출채권` },
+      { account_code: accountCode, account_name: accountName, debit: 0, credit: totalKrw, currency: 'KRW', fx_rate: 1, memo: sl.businessId },
     ];
     setLines(newLines);
     setSides(['debit', 'credit']);
     setForm(f => ({
       ...f, entry_type: 'revenue',
-      description: f.description || `${qt.companyName} 매출발생 (${qt.businessId})`,
-      related_ref: f.related_ref || qt.id || qt.businessId,
-      doc_no: f.doc_no || qt.businessId,
+      description: f.description || `${sl.customer} 매출발생 (${sl.businessId})`,
+      related_ref: f.related_ref || sl.id || sl.businessId,
+      doc_no: f.doc_no || sl.businessId,
     }));
     setShowLinkPanel(false);
   };
@@ -629,30 +629,36 @@ function JournalEntryModal({
                     ) : (
                       /* 매출 리스트 */
                       <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {filteredQuotes.map(qt => (
-                          <button key={qt.id} type="button" onClick={() => generateSaleLines(qt)}
-                            className="w-full text-left px-3 py-2 rounded-md border border-transparent hover:bg-green-50 hover:border-green-200 transition-colors">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-mono font-semibold text-green-700 shrink-0">{qt.businessId}</span>
-                              <span className="text-xs font-medium truncate flex-1">{qt.companyName}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">{qt.quoteDate || ''}</span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-0.5">
-                              <span className="text-xs tabular-nums font-medium">
-                                {qt.currency} {qt.totalAmount.toLocaleString()}
-                              </span>
-                              <span className="text-xs text-muted-foreground">{qt.docType}</span>
-                              <span className={cn('text-xs ml-auto px-1.5 py-0.5 rounded',
-                                qt.status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                                qt.status === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>
-                                {qt.status === 'confirmed' ? '확정' : qt.status === 'sent' ? '발송' : qt.status === 'draft' ? '임시' : qt.status}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                        {filteredQuotes.length === 0 && (
+                        {filteredSalesForLink.map(sl => {
+                          const depositLabel: Record<string, string> = { unpaid: '미입금', partial: '부분입금', paid: '완납', overpaid: '초과입금' };
+                          const depositColor: Record<string, string> = {
+                            unpaid: 'bg-gray-100 text-gray-600', partial: 'bg-yellow-100 text-yellow-700',
+                            paid: 'bg-green-100 text-green-700', overpaid: 'bg-red-100 text-red-700',
+                          };
+                          const ds = sl.depositStatus || 'unpaid';
+                          return (
+                            <button key={sl.id} type="button" onClick={() => generateSaleLines(sl)}
+                              className="w-full text-left px-3 py-2 rounded-md border border-transparent hover:bg-green-50 hover:border-green-200 transition-colors">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono font-semibold text-green-700 shrink-0">{sl.businessId}</span>
+                                <span className="text-xs font-medium truncate flex-1">{sl.customer}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">{sl.saleDate || ''}</span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-0.5">
+                                <span className="text-xs tabular-nums font-medium">
+                                  {sl.currency} {sl.totalAmount.toLocaleString()}
+                                </span>
+                                <span className="text-xs text-muted-foreground">{sl.saleType}</span>
+                                <span className={cn('text-xs ml-auto px-1.5 py-0.5 rounded', depositColor[ds])}>
+                                  {depositLabel[ds] || ds}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {filteredSalesForLink.length === 0 && (
                           <p className="text-xs text-muted-foreground text-center py-4">
-                            {quotes.length === 0 ? '매출 데이터가 없습니다. 매출·견적 관리에서 등록해주세요.' : '검색 결과 없음'}
+                            {salesForLink.length === 0 ? '매출 데이터가 없습니다. 매출관리에서 등록해주세요.' : '검색 결과 없음'}
                           </p>
                         )}
                       </div>
