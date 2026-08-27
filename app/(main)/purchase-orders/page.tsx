@@ -59,6 +59,7 @@ interface PriceHint {
   voltage?: string; watts?: string; cct?: string;
   specification?: string;
   luminousEff?: string; lumenOutput?: string;
+  images?: string[];
 }
 
 /* ─── 규격 확장 입력 모달 ─────────────────────────────────────────────────────── */
@@ -127,6 +128,7 @@ function POProductInput({
       voltage: ex.voltage, watts: ex.watts, cct: ex.cct,
       luminousEff: ex.luminousEff, lumenOutput: ex.lumenOutput,
       specification: ex.detail || ex.sizeSpec || [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || '',
+      images: (ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : undefined),
     };
   });
 
@@ -504,6 +506,17 @@ function POModal({
     };
     items[idx].amount = items[idx].qty * items[idx].unitPrice;
     setForm(f => ({ ...f, items }));
+    // 제품에 등록된 사진이 있으면 첨부 사진에 자동으로 추가 (요청사항) — 이미 들어있거나
+    // 최대 장수를 넘으면 건너뛴다. 필요 없으면 첨부 사진 목록에서 수동으로 삭제 가능.
+    if (h.images?.length) {
+      setImages(prev => {
+        const next = [...prev];
+        for (const url of h.images!) {
+          if (!next.includes(url) && next.length < 10) next.push(url);
+        }
+        return next;
+      });
+    }
   };
 
   const totalAmount = form.items.reduce((s, i) => s + i.amount, 0);
@@ -964,12 +977,12 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
             </div>
 
             {attachImages.length > 0 && (
-              <div style={{ pageBreakBefore: 'always', marginTop: '50px', padding: '10px' }}>
+              <div style={{ marginTop: '50px', padding: '10px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '20px', borderBottom: '2px solid #171717', paddingBottom: '10px' }}>ATTACHMENTS</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
                   {attachImages.map((url, i) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i} src={url} alt={`attachment-${i + 1}`} style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} />
+                    <img key={i} src={url} alt={`attachment-${i + 1}`} style={{ maxWidth: '100%', maxHeight: '120mm', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', border: '1px solid #e5e5e5', borderRadius: '4px', breakInside: 'avoid', pageBreakInside: 'avoid' }} />
                   ))}
                 </div>
               </div>
