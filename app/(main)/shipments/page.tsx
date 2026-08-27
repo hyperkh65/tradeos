@@ -1019,7 +1019,7 @@ function ShipmentsPageInner() {
   };
 
   const filtered = shipments.filter(s =>
-    s.businessId.includes(search) ||
+    s.businessId.toLowerCase().includes(search.toLowerCase()) ||
     (s.blNo ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (s.vessel ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (s.forwarderName ?? '').toLowerCase().includes(search.toLowerCase()) ||

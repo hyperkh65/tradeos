@@ -999,8 +999,9 @@ function QuotesPageInner() {
     load();
   };
 
+  const searchQ = search.toLowerCase();
   const filtered = quotes.filter(q => {
-    const ms = q.businessId.includes(search) || q.companyName.includes(search) || q.items.some(i => i.productName.includes(search));
+    const ms = q.businessId.toLowerCase().includes(searchQ) || q.companyName.toLowerCase().includes(searchQ) || q.items.some(i => i.productName.toLowerCase().includes(searchQ));
     const mf = statusFilter === '전체' || q.status === statusFilter;
     return ms && mf;
   });

@@ -1054,8 +1054,9 @@ function PurchaseOrdersPageInner() {
   };
 
   const statuses = ['전체', ...Object.keys(statusLabel).filter(s => pos.some(p => p.status === s))];
+  const searchQ = search.toLowerCase();
   const filtered = pos.filter(p => {
-    const ms = p.businessId.includes(search) || p.supplierName.includes(search) || p.items.some(i => i.productName.includes(search));
+    const ms = p.businessId.toLowerCase().includes(searchQ) || p.supplierName.toLowerCase().includes(searchQ) || p.items.some(i => i.productName.toLowerCase().includes(searchQ));
     const mf = statusFilter === '전체' || p.status === statusFilter;
     return ms && mf;
   });

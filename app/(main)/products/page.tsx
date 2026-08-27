@@ -906,8 +906,9 @@ export default function ProductsPage() {
   // Categories from loaded products
   const allCats = ['전체', ...Array.from(new Set(products.map(p => p.category).filter(Boolean) as string[])).sort()];
 
+  const searchQ = search.toLowerCase();
   const filtered = products.filter(p => {
-    const ms = p.nameKo.includes(search) || (p.nameEn ?? '').includes(search) || p.code.includes(search) || ((p as any).maker ?? '').includes(search) || (p.supplierName ?? '').includes(search);
+    const ms = p.nameKo.toLowerCase().includes(searchQ) || (p.nameEn ?? '').toLowerCase().includes(searchQ) || p.code.toLowerCase().includes(searchQ) || ((p as any).maker ?? '').toLowerCase().includes(searchQ) || (p.supplierName ?? '').toLowerCase().includes(searchQ);
     const mc = catFilter === '전체' || p.category === catFilter;
     return ms && mc;
   });

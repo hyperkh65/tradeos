@@ -14,6 +14,7 @@ interface LedgerEntry {
 export default function CompanyLedgerPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState('');
+  const [companySearch, setCompanySearch] = useState('');
   const now = new Date();
   const [start, setStart] = useState(`${now.getFullYear()}-01-01`);
   const [end, setEnd] = useState(now.toISOString().slice(0, 10));
@@ -25,10 +26,19 @@ export default function CompanyLedgerPage() {
     fetch('/api/companies').then(r => r.json()).then(j => {
       const list: Company[] = Array.isArray(j.data) ? j.data : [];
       setCompanies(list);
-      if (!companyId && list.length > 0) setCompanyId(list[0].id);
+      if (!companyId && list.length > 0) { setCompanyId(list[0].id); setCompanySearch(list[0].name); }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 거래처명을 직접 입력하면(자동완성 목록에서 고르든 타이핑하든) 이름이 정확히 일치하는
+  // 회사를 찾아 조회 대상으로 연결한다 — 대소문자 구분 없이.
+  const selectCompanyByName = (name: string) => {
+    setCompanySearch(name);
+    const q = name.trim().toLowerCase();
+    const c = companies.find(c => c.name.toLowerCase() === q);
+    if (c) setCompanyId(c.id);
+  };
 
   const load = () => {
     if (!companyId) return;
@@ -83,9 +93,12 @@ export default function CompanyLedgerPage() {
         <div className="bg-card border rounded-xl p-4 flex flex-wrap items-end gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">거래처</label>
-            <select value={companyId} onChange={e => setCompanyId(e.target.value)} className="h-9 min-w-[200px] rounded-md border border-input bg-background px-3 text-sm">
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <input list="ledger-company-list" value={companySearch} onChange={e => selectCompanyByName(e.target.value)}
+              placeholder="거래처명 검색..." autoComplete="off"
+              className="h-9 min-w-[200px] rounded-md border border-input bg-background px-3 text-sm" />
+            <datalist id="ledger-company-list">
+              {companies.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">시작일</label>

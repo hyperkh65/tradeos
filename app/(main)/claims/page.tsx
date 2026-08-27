@@ -465,8 +465,9 @@ function ClaimsPageInner() {
 
   const statuses = ['전체', ...STATUS_OPTIONS.filter(s => claims.some(c => c.status === s))];
 
+  const searchQ = search.toLowerCase();
   const filtered = claims.filter(c => {
-    const ms = c.businessId.includes(search) || (c.customerName ?? '').includes(search) || (c.productName ?? '').includes(search) || (c.supplierName ?? '').includes(search);
+    const ms = c.businessId.toLowerCase().includes(searchQ) || (c.customerName ?? '').toLowerCase().includes(searchQ) || (c.productName ?? '').toLowerCase().includes(searchQ) || (c.supplierName ?? '').toLowerCase().includes(searchQ);
     const mf = statusFilter === '전체' || c.status === statusFilter;
     return ms && mf;
   });
