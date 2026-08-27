@@ -98,6 +98,10 @@ export default function ContractsPage() {
 
   const uploadPiFile = async (po: PurchaseOrder, file: File) => {
     const piNumber = piInputs[po.id] || po.piNumber || '';
+    if (!piNumber.trim()) {
+      alert('공급사 PI 번호를 먼저 입력하고 저장한 뒤 업로드해주세요.');
+      return;
+    }
     setUploading(u => ({ ...u, [po.id]: true }));
     try {
       const fd = new FormData();
@@ -283,15 +287,16 @@ export default function ContractsPage() {
                     </label>
                     <div className="flex flex-wrap gap-2 items-center">
                       <label
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm border cursor-pointer transition-colors
-                          ${uploading[po.id] ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                        title={!piNum.trim() ? '공급사 PI 번호를 먼저 입력하고 저장해주세요' : undefined}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm border transition-colors
+                          ${uploading[po.id] || !piNum.trim() ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer'}`}
                       >
                         <input
                           type="file"
                           className="hidden"
                           accept=".xlsx,.xls,.pdf"
                           ref={el => { fileRefs.current[po.id] = el; }}
-                          disabled={uploading[po.id]}
+                          disabled={uploading[po.id] || !piNum.trim()}
                           onChange={e => {
                             const f = e.target.files?.[0];
                             if (f) uploadPiFile(po, f);
@@ -303,6 +308,7 @@ export default function ContractsPage() {
                           : <><Upload className="w-4 h-4" /> PI 파일 업로드</>
                         }
                       </label>
+                      {!piNum.trim() && <span className="text-xs text-amber-600">먼저 공급사 PI 번호를 입력하고 저장하세요.</span>}
 
                       {po.piFileUrl && (
                         <a
