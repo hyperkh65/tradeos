@@ -111,12 +111,22 @@ function ShipmentModal({
     return [];
   };
 
-  // 내부 PO 선택 시 미리보기 + cargoItem 업데이트
+  // 내부 PO 선택 시 미리보기 + cargoItem 업데이트 — 계약관리(PI)에서 그 PO에 PI번호가
+  // 이미 연결되어 있으면 내부 PI도 자동으로 같이 채운다(요청사항: PO/PI 중 하나만 입력해도
+  // 쌍으로 연결되어 있으면 자동 입력).
   const handleLinkedPoSelect = (idx: number, supplierName: string, linkedPoBusinessId: string) => {
-    updateCargoItem(idx, { linkedPoBusinessId });
     const pos = posBySupplier[supplierName] || [];
     const found = pos.find(p => p.businessId === linkedPoBusinessId);
+    updateCargoItem(idx, { linkedPoBusinessId, linkedPiNumber: found?.piNumber || undefined });
     setPoPreview(found || null);
+  };
+
+  // 내부 PI 선택 시 — 같은 공급사의 PO 중 해당 PI번호와 연결된 PO가 있으면 내부 PO도 자동 연결.
+  const handleLinkedPiSelect = (idx: number, supplierName: string, linkedPiNumber: string) => {
+    const pos = posBySupplier[supplierName] || [];
+    const found = pos.find(p => p.piNumber === linkedPiNumber);
+    updateCargoItem(idx, { linkedPiNumber, ...(found ? { linkedPoBusinessId: found.businessId } : {}) });
+    if (found) setPoPreview(found);
   };
 
   const [form, setForm] = useState<ShipForm>({
@@ -647,14 +657,18 @@ function ShipmentModal({
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[22%]">제품명 *</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[14%]">공급사</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[11%]">PO 번호</th>
-                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[12%]">
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[18%]">제품명 *</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[12%]">공급사</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[9%]">PO 번호</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[10%]">
                       <span>내부 PO</span>
                       <span className="ml-1 text-[10px] text-blue-500 font-normal">DB 연결</span>
                     </th>
-                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[7%]">수량</th>
+                    <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[10%]">
+                      <span>내부 PI</span>
+                      <span className="ml-1 text-[10px] text-blue-500 font-normal">DB 연결</span>
+                    </th>
+                    <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[6%]">수량</th>
                     <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[9%]">중량(kg)</th>
                     <th className="px-2 py-2 text-right text-muted-foreground font-medium w-[7%]">CBM</th>
                     <th className="px-2 py-2 text-left text-muted-foreground font-medium w-[10%]">비고</th>
@@ -709,6 +723,22 @@ function ShipmentModal({
                         <datalist id={`po-list-${idx}`}>
                           {(posBySupplier[ci.supplierName || ''] || []).map(p => (
                             <option key={p.id} value={p.businessId}>{p.businessId} — {p.supplierName}</option>
+                          ))}
+                        </datalist>
+                      </td>
+                      <td className="px-1 py-1">
+                        <input
+                          list={`pi-list-${idx}`}
+                          className={`w-full px-2 py-1 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring ${ci.linkedPiNumber ? 'border-blue-400 bg-blue-50' : 'border-input'}`}
+                          placeholder="내부 PI 선택..."
+                          value={ci.linkedPiNumber || ''}
+                          onChange={e => handleLinkedPiSelect(idx, ci.supplierName || '', e.target.value)}
+                          onBlur={e => handleLinkedPiSelect(idx, ci.supplierName || '', e.target.value)}
+                          onFocus={() => loadPOsForSupplier(ci.supplierName || '')}
+                        />
+                        <datalist id={`pi-list-${idx}`}>
+                          {(posBySupplier[ci.supplierName || ''] || []).filter(p => p.piNumber).map(p => (
+                            <option key={p.id} value={p.piNumber}>{p.piNumber} — {p.businessId}</option>
                           ))}
                         </datalist>
                       </td>

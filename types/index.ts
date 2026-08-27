@@ -237,6 +237,7 @@ export interface CargoItem {
   poId?: string;
   poBusinessId?: string;        // 패킹리스트에서 파싱된 원본 PO 번호
   linkedPoBusinessId?: string;  // 내부 발주 DB와 연결된 PO 번호
+  linkedPiNumber?: string;      // 내부 발주 DB와 연결된 공급사 PI 번호 (PO와 쌍으로 자동 연동)
   qty?: number;
   grossWeight?: number;
   netWeight?: number;

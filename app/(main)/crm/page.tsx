@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ShoppingCart, Plus, Search, X, Pencil, Trash2, Loader2, Printer, Lock, Maximize2, PackageMinus } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
@@ -26,10 +26,23 @@ function isPrevMonth(d?: string) {
   return t.getFullYear() < n.getFullYear() || (t.getFullYear() === n.getFullYear() && t.getMonth() < n.getMonth());
 }
 
+/** 선적(ETD) 기준으로 최근 2달 이내에 들어온 PO/PI인지 — 발주번호/PI번호 선택 목록에서
+ * 최근 것을 빨간색으로 강조 표시하기 위해 사용(요청사항). ETD가 없으면 발주일로 대신 판단. */
+function isRecentPo(po: { etd?: string; orderDate?: string }, months = 2) {
+  const dateStr = po.etd || po.orderDate;
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return d >= cutoff;
+}
+
 interface SalesItem {
   id: string; product: string; specification: string;
   qty: number; unitPrice: number; amount: number; remark: string;
-  supplierName?: string; poId?: string; poBusinessId?: string;
+  supplierName?: string; poId?: string; poBusinessId?: string; piNumber?: string;
+  shipmentBusinessId?: string; declarationNo?: string;
   inventoryDeducted?: boolean;
 }
 interface SalesRecord {
@@ -38,7 +51,7 @@ interface SalesRecord {
   items: SalesItem[]; netAmount: number; vat: number; totalAmount: number;
   currency: string; exchangeRate?: number; misc?: string;
   supplierId?: string; supplierName?: string;
-  poId?: string; poBusinessId?: string;
+  poId?: string; poBusinessId?: string; piNumber?: string;
   deposits?: DepositEntry[]; totalDeposited?: number; depositRemaining?: number; depositStatus?: string;
 }
 interface Company {
@@ -50,7 +63,8 @@ interface CompanySettings { name: string; ceo: string; bizNo: string; bizType: s
 const emptyItem = (): SalesItem => ({
   id: Date.now().toString() + Math.random(),
   product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '',
-  supplierName: '', poId: '', poBusinessId: '', inventoryDeducted: false,
+  supplierName: '', poId: '', poBusinessId: '', piNumber: '', shipmentBusinessId: '', declarationNo: '',
+  inventoryDeducted: false,
 });
 
 function AdminPasswordModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
@@ -198,10 +212,25 @@ function POPreviewPanel({ po, anchorRect, onClose }: { po: any; anchorRect: DOMR
   );
 }
 
-function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales, onClose, onSave }: {
+function SaleModal({ sale, companies, products, purchaseOrders, shipments, imports: importList, sales: allSales, onClose, onSave }: {
   sale?: SalesRecord | null; companies: Company[]; products: any[];
-  purchaseOrders: any[]; sales: SalesRecord[]; onClose: () => void; onSave: () => void;
+  purchaseOrders: any[]; shipments: any[]; imports: any[]; sales: SalesRecord[]; onClose: () => void; onSave: () => void;
 }) {
+  // PO/PI/선적번호/통관번호 통합 연결표 — 발주(PO)에 연결된 PI, 그 PO를 실은 선적, 그 선적의
+  // 통관 신고번호까지 한 번에 묶어서, 넷 중 무엇을 입력해도 나머지가 자동으로 채워지게 한다
+  // (요청사항: "선적번호와 통관번호로도 등록할 수 있게, 4개를 한번에").
+  const linkChains = useMemo(() => purchaseOrders.map((po: any) => {
+    const ship = shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.linkedPoBusinessId === po.businessId));
+    const imp = ship ? importList.find((i: any) => i.shipmentBusinessId === ship.businessId) : undefined;
+    return {
+      poBusinessId: po.businessId as string, poId: po.id as string, supplierName: po.supplierName as string,
+      piNumber: (po.piNumber || undefined) as string | undefined,
+      shipmentBusinessId: (ship?.businessId || undefined) as string | undefined,
+      declarationNo: (imp?.declarationNo || undefined) as string | undefined,
+      etd: po.etd as string | undefined, orderDate: po.orderDate as string | undefined,
+    };
+  }), [purchaseOrders, shipments, importList]);
+
   const [form, setForm] = useState({
     saleDate: sale?.saleDate || new Date().toISOString().slice(0, 10),
     customer: sale?.customer || '',
@@ -217,14 +246,41 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
           supplierName: (i as any).supplierName || sale.supplierName || '',
           poId: (i as any).poId || sale.poId || '',
           poBusinessId: (i as any).poBusinessId || sale.poBusinessId || '',
+          piNumber: (i as any).piNumber || sale.piNumber || '',
+          shipmentBusinessId: (i as any).shipmentBusinessId || '',
+          declarationNo: (i as any).declarationNo || '',
           inventoryDeducted: (i as any).inventoryDeducted ?? false,
         }))
       : [emptyItem()],
   });
 
+  // 발주(PO)/PI/선적번호/통관번호 넷 중 무엇을 골라도 나머지가 연결되어 있으면 자동으로
+  // 같이 채운다(요청사항: "선적번호와 통관번호로도 등록할 수 있게, 4개를 한번에").
+  type LinkKind = 'po' | 'pi' | 'shipment' | 'declaration';
+  const findChain = (kind: LinkKind, value: string) => {
+    if (!value) return undefined;
+    if (kind === 'po') return linkChains.find(c => c.poBusinessId === value);
+    if (kind === 'pi') return linkChains.find(c => c.piNumber === value);
+    if (kind === 'shipment') return linkChains.find(c => c.shipmentBusinessId === value);
+    return linkChains.find(c => c.declarationNo === value);
+  };
+
   // Batch-apply state (not saved directly — only for applying to all items)
   const [batchSupplier, setBatchSupplier] = useState(sale?.supplierName || '');
   const [batchPo, setBatchPo] = useState(sale?.poBusinessId || '');
+  const [batchPi, setBatchPi] = useState(sale?.piNumber || '');
+  const [batchShipment, setBatchShipment] = useState('');
+  const [batchDeclaration, setBatchDeclaration] = useState('');
+
+  const selectBatchLink = (kind: LinkKind, value: string, el?: HTMLElement) => {
+    const chain = findChain(kind, value);
+    setBatchPo(chain?.poBusinessId || (kind === 'po' ? value : ''));
+    setBatchPi(chain?.piNumber || (kind === 'pi' ? value : ''));
+    setBatchShipment(chain?.shipmentBusinessId || (kind === 'shipment' ? value : ''));
+    setBatchDeclaration(chain?.declarationNo || (kind === 'declaration' ? value : ''));
+    if (chain?.poBusinessId && el) showPoPreview(chain.poBusinessId, el);
+    else if (!value) setPoPreview(null);
+  };
 
   const [saving, setSaving] = useState(false);
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
@@ -253,8 +309,29 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
         supplierName: batchSupplier,
         poId: po?.id || '',
         poBusinessId: batchPo,
+        piNumber: po?.piNumber || batchPi,
+        shipmentBusinessId: batchShipment,
+        declarationNo: batchDeclaration,
       })),
     }));
+  };
+
+  // 아이템별 PO/PI/선적번호/통관번호 선택 — 위 selectBatchLink와 동일하게 넷 중 하나만 골라도
+  // 계약관리~선적~통관까지 연결되어 있으면 나머지가 자동으로 채워진다.
+  const selectItemLink = (idx: number, kind: LinkKind, value: string, el?: HTMLElement) => {
+    const chain = findChain(kind, value);
+    const items = [...form.items];
+    items[idx] = {
+      ...items[idx],
+      poBusinessId: chain?.poBusinessId || (kind === 'po' ? value : ''),
+      poId: chain?.poId || '',
+      piNumber: chain?.piNumber || (kind === 'pi' ? value : ''),
+      shipmentBusinessId: chain?.shipmentBusinessId || (kind === 'shipment' ? value : ''),
+      declarationNo: chain?.declarationNo || (kind === 'declaration' ? value : ''),
+    };
+    setForm(f => ({ ...f, items }));
+    if (chain?.poBusinessId && el) showPoPreview(chain.poBusinessId, el);
+    else if (!value) setPoPreview(null);
   };
 
   const updateItem = (idx: number, field: string, val: string | number | boolean) => {
@@ -356,29 +433,77 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
             </div>
           </div>
 
-          {/* 일괄 적용 (공급사 + 발주번호 → 모든 아이템에 적용) */}
-          <div className="flex items-end gap-2 p-3 bg-muted/30 rounded-lg border border-dashed">
-            <div className="text-xs font-medium text-muted-foreground shrink-0 pb-1">일괄 적용</div>
-            <div className="flex-1">
+          {/* 일괄 적용 (공급사 + PO/PI/선적번호/통관번호 → 모든 아이템에 적용) */}
+          <div className="flex flex-wrap items-end gap-2 p-3 bg-muted/30 rounded-lg border border-dashed">
+            <div className="text-xs font-medium text-muted-foreground shrink-0 pb-1 w-full sm:w-auto flex items-center gap-2">
+              일괄 적용
+              <span className="text-red-500 font-normal" title="최근 2개월 이내 선적(ETD) 예정/완료된 PO·PI·선적·통관건은 빨간색으로 표시됩니다">● 최근 2달 이내</span>
+            </div>
+            <div className="flex-1 min-w-[140px]">
               <label className="text-[10px] text-muted-foreground mb-1 block">공급사</label>
-              <Input value={batchSupplier} onChange={e => { setBatchSupplier(e.target.value); setBatchPo(''); setPoPreview(null); }}
+              <Input value={batchSupplier} onChange={e => { setBatchSupplier(e.target.value); setBatchPo(''); setBatchPi(''); setBatchShipment(''); setBatchDeclaration(''); setPoPreview(null); }}
                 list="batch-supplier-list" placeholder="공급사 선택..." className="h-8 text-xs" />
               <datalist id="batch-supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-[150px]">
               <label className="text-[10px] text-muted-foreground mb-1 block">
-                내부 발주번호
-                {batchSupplier && <span className="text-blue-500 ml-1">({purchaseOrders.filter(p => p.supplierName === batchSupplier).length}건)</span>}
+                내부 발주번호(PO)
+                {batchSupplier && <span className="text-blue-500 ml-1">({linkChains.filter(c => c.supplierName === batchSupplier).length}건)</span>}
               </label>
               <select value={batchPo}
-                onChange={e => { setBatchPo(e.target.value); if (e.target.value) showPoPreview(e.target.value, e.currentTarget); else setPoPreview(null); }}
+                onChange={e => selectBatchLink('po', e.target.value, e.currentTarget)}
                 className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
                 <option value="">-- 선택 --</option>
-                {purchaseOrders
-                  .filter(po => !batchSupplier || po.supplierName === batchSupplier)
-                  .map(po => (
-                    <option key={po.id} value={po.businessId}>
-                      {po.businessId} | {po.supplierName} | {po.orderDate}
+                {linkChains
+                  .filter(c => !batchSupplier || c.supplierName === batchSupplier)
+                  .map(c => (
+                    <option key={c.poId} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                      {isRecentPo(c) ? '● ' : ''}{c.poBusinessId} | {c.supplierName} | {c.orderDate}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-[10px] text-muted-foreground mb-1 block">공급사 PI번호</label>
+              <select value={batchPi}
+                onChange={e => selectBatchLink('pi', e.target.value, e.currentTarget)}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="">-- 선택 --</option>
+                {linkChains
+                  .filter(c => c.piNumber && (!batchSupplier || c.supplierName === batchSupplier))
+                  .map(c => (
+                    <option key={c.poId} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                      {isRecentPo(c) ? '● ' : ''}{c.piNumber} | {c.poBusinessId} | {c.supplierName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-[10px] text-muted-foreground mb-1 block">선적번호</label>
+              <select value={batchShipment}
+                onChange={e => selectBatchLink('shipment', e.target.value, e.currentTarget)}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="">-- 선택 --</option>
+                {linkChains
+                  .filter(c => c.shipmentBusinessId && (!batchSupplier || c.supplierName === batchSupplier))
+                  .map(c => (
+                    <option key={c.poId} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                      {isRecentPo(c) ? '● ' : ''}{c.shipmentBusinessId} | {c.poBusinessId} | {c.supplierName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <label className="text-[10px] text-muted-foreground mb-1 block">통관번호</label>
+              <select value={batchDeclaration}
+                onChange={e => selectBatchLink('declaration', e.target.value, e.currentTarget)}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="">-- 선택 --</option>
+                {linkChains
+                  .filter(c => c.declarationNo && (!batchSupplier || c.supplierName === batchSupplier))
+                  .map(c => (
+                    <option key={c.poId} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                      {isRecentPo(c) ? '● ' : ''}{c.declarationNo} | {c.shipmentBusinessId} | {c.poBusinessId}
                     </option>
                   ))}
               </select>
@@ -390,7 +515,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
 
           {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[1100px]">
+            <table className="w-full text-xs min-w-[1550px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-2 py-2 text-left font-medium w-[180px]">품목명</th>
@@ -404,9 +529,12 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                   <th className="px-2 py-2 text-left font-medium w-[140px]">
                     공급사 <span className="text-[9px] font-normal text-muted-foreground">(아이템별)</span>
                   </th>
-                  <th className="px-2 py-2 text-left font-medium w-[170px]">
-                    발주번호 <span className="text-[9px] font-normal text-muted-foreground">(아이템별)</span>
+                  <th className="px-2 py-2 text-left font-medium w-[140px]">발주번호(PO)</th>
+                  <th className="px-2 py-2 text-left font-medium w-[140px]">
+                    PI번호 <span className="text-red-500 text-[9px] font-normal">● 최근2달</span>
                   </th>
+                  <th className="px-2 py-2 text-left font-medium w-[140px]">선적번호</th>
+                  <th className="px-2 py-2 text-left font-medium w-[140px]">통관번호</th>
                   <th className="px-2 py-2 text-center font-medium w-14">
                     <span className="flex flex-col items-center leading-tight">
                       <PackageMinus className="w-3 h-3 mb-0.5" />
@@ -473,27 +601,71 @@ function SaleModal({ sale, companies, products, purchaseOrders, sales: allSales,
                       <td className="px-1 py-1">
                         <input className="w-full bg-transparent border-none outline-none text-xs border-b border-dashed border-muted-foreground/30"
                           value={item.supplierName || ''}
-                          onChange={e => { updateItem(idx, 'supplierName', e.target.value); updateItem(idx, 'poBusinessId', ''); updateItem(idx, 'poId', ''); setPoPreview(null); }}
+                          onChange={e => {
+                            const items = [...form.items];
+                            items[idx] = { ...items[idx], supplierName: e.target.value, poBusinessId: '', poId: '', piNumber: '', shipmentBusinessId: '', declarationNo: '' };
+                            setForm(f => ({ ...f, items }));
+                            setPoPreview(null);
+                          }}
                           list={`supplier-list-${idx}`} placeholder="공급사..." />
                         <datalist id={`supplier-list-${idx}`}>{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
                       </td>
-                      {/* 발주번호 (per-item, 공급사 필터) */}
+                      {/* 발주번호(PO) (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
                       <td className="px-1 py-1">
                         <select value={item.poBusinessId || ''}
-                          onChange={e => {
-                            const po = purchaseOrders.find(p => p.businessId === e.target.value);
-                            updateItem(idx, 'poBusinessId', e.target.value);
-                            updateItem(idx, 'poId', po?.id || '');
-                            if (e.target.value) showPoPreview(e.target.value, e.currentTarget);
-                            else setPoPreview(null);
-                          }}
+                          onChange={e => selectItemLink(idx, 'po', e.target.value, e.currentTarget)}
                           className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
-                          {purchaseOrders
-                            .filter(po => !item.supplierName || po.supplierName === item.supplierName)
-                            .map(po => (
-                              <option key={po.id} value={po.businessId}>
-                                {po.businessId} | {po.supplierName}
+                          {linkChains
+                            .filter(c => !item.supplierName || c.supplierName === item.supplierName)
+                            .map(c => (
+                              <option key={c.poId} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                                {isRecentPo(c) ? '● ' : ''}{c.poBusinessId} | {c.supplierName}
+                              </option>
+                            ))}
+                        </select>
+                      </td>
+                      {/* PI번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
+                      <td className="px-1 py-1">
+                        <select value={item.piNumber || ''}
+                          onChange={e => selectItemLink(idx, 'pi', e.target.value, e.currentTarget)}
+                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          <option value="">-- 선택 --</option>
+                          {linkChains
+                            .filter(c => c.piNumber && (!item.supplierName || c.supplierName === item.supplierName))
+                            .map(c => (
+                              <option key={c.poId} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                                {isRecentPo(c) ? '● ' : ''}{c.piNumber} | {c.poBusinessId}
+                              </option>
+                            ))}
+                        </select>
+                      </td>
+                      {/* 선적번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
+                      <td className="px-1 py-1">
+                        <select value={item.shipmentBusinessId || ''}
+                          onChange={e => selectItemLink(idx, 'shipment', e.target.value, e.currentTarget)}
+                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          <option value="">-- 선택 --</option>
+                          {linkChains
+                            .filter(c => c.shipmentBusinessId && (!item.supplierName || c.supplierName === item.supplierName))
+                            .map(c => (
+                              <option key={c.poId} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                                {isRecentPo(c) ? '● ' : ''}{c.shipmentBusinessId} | {c.poBusinessId}
+                              </option>
+                            ))}
+                        </select>
+                      </td>
+                      {/* 통관번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
+                      <td className="px-1 py-1">
+                        <select value={item.declarationNo || ''}
+                          onChange={e => selectItemLink(idx, 'declaration', e.target.value, e.currentTarget)}
+                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          <option value="">-- 선택 --</option>
+                          {linkChains
+                            .filter(c => c.declarationNo && (!item.supplierName || c.supplierName === item.supplierName))
+                            .map(c => (
+                              <option key={c.poId} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                                {isRecentPo(c) ? '● ' : ''}{c.declarationNo} | {c.shipmentBusinessId}
                               </option>
                             ))}
                         </select>
@@ -986,6 +1158,8 @@ function CRMPageInner() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [imports, setImports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStartDate, setFilterStartDate] = useState(`${curYear}-01-01`);
@@ -1007,12 +1181,14 @@ function CRMPageInner() {
   const load = async () => {
     setLoading(true);
     try {
-      const [sRes, cRes, pRes, csRes, poRes] = await Promise.all([
+      const [sRes, cRes, pRes, csRes, poRes, shpRes, impRes] = await Promise.all([
         safeFetch('/api/sales', { data: [] }),
         safeFetch('/api/companies', { data: [] }),
         safeFetch('/api/products', { data: [] }),
         safeFetch('/api/settings/company', { data: null }),
         safeFetch('/api/purchase-orders', { data: [] }),
+        safeFetch('/api/shipments', { data: [] }),
+        safeFetch('/api/imports', { data: [] }),
       ]);
       setSales(Array.isArray(sRes.data) ? sRes.data : []);
       setCompanies((Array.isArray(cRes.data) ? cRes.data : []).map((c: any) => ({
@@ -1023,6 +1199,8 @@ function CRMPageInner() {
       setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       if (csRes.data) setCompany(csRes.data);
       setPurchaseOrders(Array.isArray(poRes.data) ? poRes.data : []);
+      setShipments(Array.isArray(shpRes.data) ? shpRes.data : []);
+      setImports(Array.isArray(impRes.data) ? impRes.data : []);
     } catch (e) { console.error('[CRM] load error:', e); }
     finally { setLoading(false); }
   };
@@ -1156,7 +1334,7 @@ function CRMPageInner() {
 
       {modal.open && (
         <SaleModal sale={modal.sale} companies={companies} products={products}
-          purchaseOrders={purchaseOrders} sales={sales}
+          purchaseOrders={purchaseOrders} shipments={shipments} imports={imports} sales={sales}
           onClose={() => { setModal({ open: false }); load(); }}
           onSave={() => { setModal({ open: false }); load(); }} />
       )}
