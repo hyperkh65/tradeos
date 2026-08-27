@@ -109,6 +109,7 @@ export interface Quote {
   updatedAt?: string;
   updatedBy?: string;
   createdByName?: string;
+  createdByEmail?: string;
   docType?: string;
   specialNotes?: string;
   generalInfo?: string;
@@ -162,6 +163,8 @@ export interface PurchaseOrder {
   piFileUrl?: string;
   piStampedUrl?: string;
   createdBy: string;
+  createdByName?: string;
+  createdByEmail?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -685,7 +685,7 @@ function ImportModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
             {/* ── 기본정보 탭 ── */}
@@ -916,7 +916,7 @@ function ImportModal({
                           const inCif = h.includedInCif !== false;
                           return (
                             <div key={idx} className={`grid border-t border-border ${!inCif ? 'bg-orange-50/40' : ''}`} style={{ gridTemplateColumns: '2fr 60px 1fr 80px 1fr 80px 48px 24px' }}>
-                              <input className="w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input className="w-full min-w-0 px-2 py-1.5 text-sm bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.name} placeholder="항목명" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, name: e.target.value} : x) }))} />
                               <select className="w-full min-w-0 px-1 text-[10px] bg-transparent border-r border-border focus:outline-none"
@@ -928,23 +928,23 @@ function ImportModal({
                                 }}>
                                 <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
                               </select>
-                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-2 py-1.5 text-sm bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.amtCur||''} placeholder="0" disabled={!canEdit}
                                 onChange={e => {
                                   const v = Number(e.target.value)||0;
                                   const krw = h.currency==='KRW' ? v : Math.round(v*(h.exRate||1));
                                   setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtCur: v, amtKrw: krw} : x) }));
                                 }} />
-                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-2 py-1.5 text-sm bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.currency==='KRW' ? '' : (h.exRate||'')} placeholder={h.currency==='KRW'?'1':''} disabled={!canEdit||h.currency==='KRW'}
                                 onChange={e => {
                                   const rate = Number(e.target.value)||1;
                                   setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, exRate: rate, amtKrw: Math.round(x.amtCur*rate)} : x) }));
                                 }} />
-                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-2 py-1.5 text-sm bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.amtKrw||autoKrw||''} placeholder="자동" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, amtKrw: Number(e.target.value)||0} : x) }))} />
-                              <input type="number" className="no-spinner w-full min-w-0 px-1.5 py-1 text-xs bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
+                              <input type="number" className="no-spinner w-full min-w-0 px-2 py-1.5 text-sm bg-transparent border-r border-border focus:outline-none focus:bg-blue-50/50"
                                 value={h.vat||''} placeholder="0" disabled={!canEdit}
                                 onChange={e => setForm(f => ({ ...f, freightHandling: (f.freightHandling||[]).map((x: FreightItem, i: number) => i===idx ? {...x, vat: Number(e.target.value)||0} : x) }))} />
                               <div className="flex items-center justify-center border-r border-border min-w-0" title={inCif ? 'CIF 과세가격에 포함 (수입항 이전 비용)' : '과세가격 제외 (수입항 이후 국내비용)'}>

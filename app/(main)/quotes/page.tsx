@@ -406,14 +406,14 @@ function QuoteModal({
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-4">
 
           {/* Row 1: docType / type / company / date / currency / status */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">문서유형</label>
               <select value={form.docType} onChange={e => setForm(f => ({ ...f, docType: e.target.value }))}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm font-semibold">
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold">
                 <option value="QUOTE">QUOTATION</option>
                 <option value="PROFORMA">PROFORMA</option>
               </select>
@@ -421,7 +421,7 @@ function QuoteModal({
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">견적유형</label>
               <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="customer">판매견적</option>
                 <option value="supplier">구매견적</option>
               </select>
@@ -432,7 +432,7 @@ function QuoteModal({
                 <Input value={companySearch}
                   onChange={e => { setCompanySearch(e.target.value); setForm(f => ({ ...f, companyName: e.target.value, companyId: '' })); setShowCompanyList(true); }}
                   onFocus={() => setShowCompanyList(true)}
-                  placeholder="거래처 검색..." required className="h-9" />
+                  placeholder="거래처 검색..." required className="h-10" />
                 {showCompanyList && filteredCompanies.length > 0 && (
                   <div className="absolute top-full left-0 z-50 w-full bg-background border border-border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                     {filteredCompanies.map(c => (
@@ -449,12 +449,12 @@ function QuoteModal({
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">견적일</label>
-              <Input type="date" value={form.quoteDate} onChange={e => setForm(f => ({ ...f, quoteDate: e.target.value }))} className="h-9" />
+              <Input type="date" value={form.quoteDate} onChange={e => setForm(f => ({ ...f, quoteDate: e.target.value }))} className="h-10" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
               <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
@@ -464,20 +464,20 @@ function QuoteModal({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">유효기한</label>
-              <Input type="date" value={form.validity} onChange={e => setForm(f => ({ ...f, validity: e.target.value }))} className="h-9" />
+              <Input type="date" value={form.validity} onChange={e => setForm(f => ({ ...f, validity: e.target.value }))} className="h-10" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">결제조건</label>
-              <Input value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} placeholder="30 days net" className="h-9" />
+              <Input value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} placeholder="30 days net" className="h-10" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">인코텀</label>
-              <Input value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))} placeholder="FOB Ningbo" className="h-9" />
+              <Input value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))} placeholder="FOB Ningbo" className="h-10" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
               <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
-                className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option>KRW</option><option>USD</option><option>EUR</option><option>CNY</option>
               </select>
             </div>
@@ -485,7 +485,7 @@ function QuoteModal({
 
           {/* Items table */}
           <div className="border rounded-xl overflow-x-auto">
-            <table className="w-full text-xs min-w-[1100px]">
+            <table className="w-full text-sm min-w-[1100px]">
               <thead className="bg-muted/40 border-b">
                 <tr>
                   <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-6">#</th>
@@ -508,10 +508,10 @@ function QuoteModal({
                 {form.items.map((it, idx) => (
                   <tr key={(it as any).id} className="hover:bg-muted/20">
                     <td className="px-2 py-2 text-muted-foreground">{idx + 1}</td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <div className="relative">
                         <input
-                          className="w-full bg-transparent border-none outline-none text-xs"
+                          className="w-full bg-transparent border-none outline-none text-sm"
                           value={it.productName}
                           onChange={e => updateItem(idx, 'productName', e.target.value)}
                           placeholder="품목명 입력..."
@@ -525,9 +525,9 @@ function QuoteModal({
                         />
                       </div>
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <div className="flex items-center gap-0.5">
-                        <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                        <input className="flex-1 bg-transparent border-none outline-none text-sm min-w-0"
                           value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
                           placeholder="규격/설명" />
                         <button type="button" title="제품에서 규격 자동 가져오기"
@@ -543,37 +543,37 @@ function QuoteModal({
                       </div>
                     </td>
                     {(['voltage', 'watts', 'luminousEff', 'lumenOutput', 'cct'] as const).map(field => (
-                      <td key={field} className="px-1 py-1.5">
-                        <input className="w-full bg-transparent border-none outline-none text-xs text-center"
+                      <td key={field} className="px-1 py-2">
+                        <input className="w-full bg-transparent border-none outline-none text-sm text-center"
                           value={(it as any)[field] || ''} onChange={e => updateItem(idx, field, e.target.value)}
                           placeholder="-" />
                       </td>
                     ))}
-                    <td className="px-1 py-1.5">
+                    <td className="px-1 py-2">
                       <select value={(it as any).unit || 'PCS'} onChange={e => updateItem(idx, 'unit', e.target.value)}
-                        className="w-full bg-transparent border-none outline-none text-xs text-center">
+                        className="w-full bg-transparent border-none outline-none text-sm text-center">
                         {['PCS', 'SET', 'EA', 'UNIT', 'BOX', 'M'].map(u => <option key={u}>{u}</option>)}
                       </select>
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <input type="number" min="0"
-                        className="w-full bg-transparent border-none outline-none text-xs text-right"
+                        className="w-full bg-transparent border-none outline-none text-sm text-right"
                         value={it.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))} />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <input type="number" min="0" step="0.01"
-                        className="w-full bg-transparent border-none outline-none text-xs text-right"
+                        className="w-full bg-transparent border-none outline-none text-sm text-right"
                         value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} />
                     </td>
-                    <td className="px-2 py-1.5 text-right font-semibold">
+                    <td className="px-2 py-2 text-right font-semibold">
                       {(it.amount || 0).toLocaleString('ko-KR', { minimumFractionDigits: form.currency === 'KRW' ? 0 : 2 })}
                     </td>
-                    <td className="px-2 py-1.5">
-                      <input className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground"
+                    <td className="px-2 py-2">
+                      <input className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground"
                         value={(it as any).remark || ''} onChange={e => updateItem(idx, 'remark', e.target.value)}
                         placeholder="비고" />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
                         className="text-muted-foreground/40 hover:text-red-500 transition-colors">
                         <X className="w-3.5 h-3.5" />
@@ -793,7 +793,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                   <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{company.name}</div>
                   {company.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
                   {(company.tel || company.fax) && <div style={{ marginBottom: '2px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
-                  {company.email && <div>Email: {company.email}</div>}
+                  {(quote.createdByEmail || company.email) && <div>Email: {quote.createdByEmail || company.email}</div>}
                 </div>
               </div>
               <div className="box">

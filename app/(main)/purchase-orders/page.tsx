@@ -181,7 +181,7 @@ function POProductInput({
       onMouseLeave={() => setShowHist(false)}>
       <input
         ref={inputRef}
-        className="w-full bg-transparent border-none outline-none text-xs"
+        className="w-full bg-transparent border-none outline-none text-sm"
         value={value}
         onChange={e => { onChange(e.target.value); if (e.target.value.length >= 1) openDrop(); else setShowSearch(false); }}
         onFocus={() => { setIsFocused(true); setShowHist(false); if (value.length >= 1) openDrop(); }}
@@ -324,7 +324,7 @@ function SupplierInput({
     <div ref={ref} className="relative">
       <input
         ref={inputRef}
-        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         value={value}
         onChange={e => { onChange(e.target.value); openDrop(); }}
         onFocus={openDrop}
@@ -557,7 +557,7 @@ function POModal({
           <h2 className="font-semibold">{item ? '발주 수정' : '새 발주'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Row 1: Supplier + Customer + Currency + Incoterm */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="col-span-2">
@@ -580,13 +580,13 @@ function POModal({
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
-              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option>USD</option><option>EUR</option><option>KRW</option><option>CNY</option>
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">인코텀</label>
-              <select value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.incoterm} onChange={e => setForm(f => ({ ...f, incoterm: e.target.value }))} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option>FOB</option><option>CIF</option><option>EXW</option><option>DAP</option>
               </select>
             </div>
@@ -612,7 +612,7 @@ function POModal({
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">상태</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 {Object.entries(statusLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
@@ -620,7 +620,7 @@ function POModal({
 
           {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[900px]">
+            <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-2 py-2 text-left font-medium w-[210px]">품목명</th>
@@ -653,7 +653,7 @@ function POModal({
                     </td>
                     <td className="px-2 py-1">
                       <div className="flex items-center gap-0.5">
-                        <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                        <input className="flex-1 bg-transparent border-none outline-none text-sm min-w-0"
                           value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)}
                           placeholder="규격" />
                         <button type="button" title="크게 입력"
@@ -673,21 +673,21 @@ function POModal({
                           }}>↗</button>
                       </div>
                     </td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.luminousEff} onChange={e => updateItem(idx, 'luminousEff', e.target.value)} placeholder="100lm/W" /></td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.lumenOutput} onChange={e => updateItem(idx, 'lumenOutput', e.target.value)} placeholder="4000lm" /></td>
-                    <td className="px-1 py-1">
-                      <select className="w-full bg-transparent border-none outline-none text-xs text-center" value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.voltage} onChange={e => updateItem(idx, 'voltage', e.target.value)} placeholder="220V" /></td>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.watts} onChange={e => updateItem(idx, 'watts', e.target.value)} placeholder="40W" /></td>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.cct} onChange={e => updateItem(idx, 'cct', e.target.value)} placeholder="4K" /></td>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.luminousEff} onChange={e => updateItem(idx, 'luminousEff', e.target.value)} placeholder="100lm/W" /></td>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.lumenOutput} onChange={e => updateItem(idx, 'lumenOutput', e.target.value)} placeholder="4000lm" /></td>
+                    <td className="px-1 py-2">
+                      <select className="w-full bg-transparent border-none outline-none text-sm text-center" value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
                         <option>PCS</option><option>SET</option><option>BOX</option><option>KIT</option><option>M</option>
                       </select>
                     </td>
-                    <td className="px-1 py-1"><input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
-                    <td className="px-1 py-1"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-xs text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
+                    <td className="px-1 py-2"><input type="number" className="w-full bg-transparent border-none outline-none text-sm text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
+                    <td className="px-1 py-2"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-sm text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
                     <td className="px-2 py-1 text-right font-medium">{it.amount.toLocaleString()}</td>
-                    <td className="px-1 py-1"><input className="w-full bg-transparent border-none outline-none text-xs" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
-                    <td className="px-1 py-1"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
+                    <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
+                    <td className="px-1 py-2"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -885,7 +885,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
                   <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '10px', color: '#171717' }}>{company.name}</div>
                   {company.address && <div style={{ marginBottom: '2px' }}>{company.address}</div>}
                   {(company.tel || company.fax) && <div style={{ marginBottom: '2px' }}>Tel: {company.tel}{company.fax ? ` / Fax: ${company.fax}` : ''}</div>}
-                  {company.email && <div style={{ marginBottom: '2px' }}>Email: {company.email}</div>}
+                  {(po.createdByEmail || company.email) && <div style={{ marginBottom: '2px' }}>Email: {po.createdByEmail || company.email}</div>}
                   <div>Attn: Purchase Department</div>
                 </div>
               </div>

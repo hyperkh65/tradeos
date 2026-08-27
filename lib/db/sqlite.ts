@@ -608,6 +608,10 @@ function runMigrations(db: Database.Database) {
     // 공급업체 자료요청 링크: 생성자가 링크를 다시 조회할 수 있도록 암호화된 원문도 함께 저장
     // (해시는 그대로 실제 인증 경로로 사용 — 이 컬럼은 내부 화면 재조회 편의용 추가 저장일 뿐)
     `ALTER TABLE supplier_request_links ADD COLUMN token_encrypted TEXT`,
+    // 견적서/발주서 인쇄본에 작성자 본인 이메일을 표시하기 위함 (기존엔 회사 고정 이메일만 표시됨)
+    `ALTER TABLE quotes ADD COLUMN created_by_email TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN created_by_name TEXT`,
+    `ALTER TABLE purchase_orders ADD COLUMN created_by_email TEXT`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (

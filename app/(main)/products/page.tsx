@@ -759,7 +759,7 @@ function ProductModal({ item, preId, products: allProducts, onClose, onSave }: {
           <h2 className="font-semibold">{item ? '제품 수정' : '제품 등록'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-5">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-5">
 
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">제품 이미지</p>

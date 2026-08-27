@@ -230,7 +230,7 @@ export default function SettingsPage() {
           </div>
 
           {tab === 'profile' && (
-            <form onSubmit={saveProfile} className="space-y-4">
+            <form onSubmit={saveProfile} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="space-y-4">
               <h2 className="font-semibold text-base">프로필 정보</h2>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">이메일</label>
@@ -279,7 +279,7 @@ export default function SettingsPage() {
           )}
 
           {tab === 'company' && (
-            <form onSubmit={saveCompany} className="space-y-4">
+            <form onSubmit={saveCompany} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="space-y-4">
               <h2 className="font-semibold text-base">회사 기초 정보</h2>
               <p className="text-xs text-muted-foreground">견적서, 발주서 등 출력 문서에 자동으로 입력됩니다.</p>
               {!isAdmin && (
@@ -489,7 +489,7 @@ export default function SettingsPage() {
           )}
 
           {tab === 'security' && (
-            <form onSubmit={changePassword} className="space-y-4">
+            <form onSubmit={changePassword} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="space-y-4">
               <h2 className="font-semibold text-base">비밀번호 변경</h2>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">현재 비밀번호</label>

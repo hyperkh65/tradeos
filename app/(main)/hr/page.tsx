@@ -108,7 +108,7 @@ function HRModal({ item, onClose, onSave }: { item?: HRRecord | null; onClose: (
           <h2 className="font-semibold">{item ? '직원 수정' : '직원 등록'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-3">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">이름 *</label>
@@ -312,7 +312,7 @@ function LeaveForm({ onSubmitted }: { onSubmitted: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card border rounded-xl p-4 space-y-3">
+    <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="bg-card border rounded-xl p-4 space-y-3">
       <h3 className="text-sm font-semibold">휴가 신청</h3>
       <div className="grid grid-cols-2 gap-3">
         <div>

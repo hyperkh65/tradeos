@@ -537,7 +537,7 @@ function JournalEntryModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="overflow-y-auto flex-1">
           <div className="p-4 space-y-4">
 
             {/* 수입통관·매출 연동 패널 */}

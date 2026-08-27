@@ -264,7 +264,7 @@ function ClaimModal({
           <button type="button" onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-4">
 
           {/* Row 1: 이슈유형 / 상태 */}
           <div className="grid grid-cols-2 gap-3">

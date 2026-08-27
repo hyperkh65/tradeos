@@ -30,6 +30,7 @@ export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, 
     updatedAt: (row.updated_at as string) || undefined,
     updatedBy: (row.updated_by as string) || undefined,
     createdByName: (row.created_by_name as string) || undefined,
+    createdByEmail: (row.created_by_email as string) || undefined,
     imagesJson: (row.images_json as string) || undefined,
     historyJson: (row.history_json as string) || '[]',
     docType: (row.doc_type as string) || 'QUOTE',
@@ -41,8 +42,8 @@ export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, 
 const UPSERT = `INSERT OR REPLACE INTO quotes
   (id,business_id,type,company_id,company_name,items_json,currency,incoterm,payment_terms,
    validity,status,remark,created_by,created_by_name,notion_id,created_at,
-   quote_date,total_amount,images_json,history_json,doc_type,special_notes,general_info)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+   quote_date,total_amount,images_json,history_json,doc_type,special_notes,general_info,created_by_email)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 export async function GET() {
   const db = getDb();
@@ -67,7 +68,7 @@ export async function GET() {
             q.validity ?? null, q.status || 'sent', q.remark ?? null,
             q.createdBy || 'ynk-erp', null, q.id,
             q.createdAt, q.createdAt?.slice(0, 10), totalAmount, null, '[]',
-            'QUOTE', null, null,
+            'QUOTE', null, null, null,
           );
         }
       })();
@@ -137,6 +138,7 @@ export async function POST(req: NextRequest) {
       user?.id || 'unknown', actorName, null, ts,
       quoteDate, totalAmount, body.imagesJson ?? null, JSON.stringify([historyEntry]),
       body.docType ?? 'QUOTE', body.specialNotes ?? null, body.generalInfo ?? null,
+      user?.email ?? null,
     );
 
     createNotionQuote(q).then(notionId => {
@@ -155,7 +157,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
-    return NextResponse.json({ data: { ...dbToQuote({ ...q as any, id, business_id: bizId, created_at: ts, quote_date: quoteDate, total_amount: totalAmount, history_json: JSON.stringify([historyEntry]) }) } }, { status: 201 });
+    return NextResponse.json({ data: { ...dbToQuote({ ...q as any, id, business_id: bizId, created_at: ts, quote_date: quoteDate, total_amount: totalAmount, history_json: JSON.stringify([historyEntry]), created_by_name: actorName, created_by_email: user?.email ?? null }) } }, { status: 201 });
   } catch (e) {
     console.error('[Quote] POST error:', e);
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });

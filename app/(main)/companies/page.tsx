@@ -175,7 +175,7 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
           <h2 className="font-semibold">{item ? '거래처 수정' : '거래처 추가'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-4">
 
           {/* 기본 */}
           <div className="space-y-3">

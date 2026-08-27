@@ -73,7 +73,7 @@ function TaskCreateModal({ onClose, onSave }: { onClose: () => void; onSave: (t:
           <h2 className="font-semibold">새 업무</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-3">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="p-4 space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">업무명 *</label>
             <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="업무 내용을 입력하세요" required />

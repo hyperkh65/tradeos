@@ -423,7 +423,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
           <h2 className="font-semibold">{sale ? '매출 수정' : '매출 등록'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
+        <form onSubmit={handleSubmit} onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }} className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Row 1: 날짜, 거래처, 유형, 담당자 */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div>
@@ -437,7 +437,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">매출유형</label>
-              <select value={form.saleType} onChange={e => setForm(f => ({ ...f, saleType: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.saleType} onChange={e => setForm(f => ({ ...f, saleType: e.target.value }))} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 {SALE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
@@ -455,7 +455,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">통화</label>
-              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option>KRW</option><option>USD</option><option>CNY</option><option>EUR</option>
               </select>
             </div>
@@ -481,7 +481,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
             <div className="flex-1 min-w-[140px]">
               <label className="text-[10px] text-muted-foreground mb-1 block">공급사</label>
               <Input value={batchSupplier} onChange={e => { setBatchSupplier(e.target.value); setBatchPo(''); setBatchPi(''); setBatchShipment(''); setBatchDeclaration(''); setPoPreview(null); }}
-                list="batch-supplier-list" placeholder="공급사 선택..." className="h-8 text-xs" />
+                list="batch-supplier-list" placeholder="공급사 선택..." className="h-9 text-sm" />
               <datalist id="batch-supplier-list">{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
             </div>
             <div className="flex-1 min-w-[150px]">
@@ -491,7 +491,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
               </label>
               <select value={batchPo}
                 onChange={e => selectBatchLink('po', e.target.value, e.currentTarget)}
-                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
                 <option value="">-- 선택 --</option>
                 {linkChains
                   .filter(c => !batchSupplier || c.supplierName === batchSupplier)
@@ -506,7 +506,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
               <label className="text-[10px] text-muted-foreground mb-1 block">공급사 PI번호</label>
               <select value={batchPi}
                 onChange={e => selectBatchLink('pi', e.target.value, e.currentTarget)}
-                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
                 <option value="">-- 선택 --</option>
                 {linkChains
                   .filter(c => c.piNumber && (!batchSupplier || c.supplierName === batchSupplier))
@@ -521,7 +521,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
               <label className="text-[10px] text-muted-foreground mb-1 block">선적번호</label>
               <select value={batchShipment}
                 onChange={e => selectBatchLink('shipment', e.target.value, e.currentTarget)}
-                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
                 <option value="">-- 선택 --</option>
                 {linkChains
                   .filter(c => c.shipmentBusinessId && (!batchSupplier || c.supplierName === batchSupplier))
@@ -536,7 +536,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
               <label className="text-[10px] text-muted-foreground mb-1 block">통관번호</label>
               <select value={batchDeclaration}
                 onChange={e => selectBatchLink('declaration', e.target.value, e.currentTarget)}
-                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
                 <option value="">-- 선택 --</option>
                 {linkChains
                   .filter(c => c.declarationNo && (!batchSupplier || c.supplierName === batchSupplier))
@@ -547,14 +547,14 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                   ))}
               </select>
             </div>
-            <Button type="button" size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={applyBatchToAll}>
+            <Button type="button" size="sm" variant="outline" className="h-9 text-sm shrink-0" onClick={applyBatchToAll}>
               모두 적용
             </Button>
           </div>
 
           {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[1730px]">
+            <table className="w-full text-sm min-w-[1730px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-2 py-2 text-left font-medium w-[180px]">품목명</th>
@@ -592,7 +592,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                     <tr key={item.id} className={`hover:bg-muted/20 ${item.inventoryDeducted ? 'bg-orange-50/40 dark:bg-orange-950/10' : ''}`}>
                       <td className="px-2 py-1">
                         <div className="relative">
-                          <input className="w-full bg-transparent border-none outline-none text-xs"
+                          <input className="w-full bg-transparent border-none outline-none text-sm"
                             value={item.product}
                             onChange={e => updateItem(idx, 'product', e.target.value)}
                             onBlur={e => autoFillProduct(idx, e.target.value)}
@@ -609,7 +609,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                       </td>
                       <td className="px-2 py-1">
                         <div className="flex items-center gap-0.5">
-                          <input className="flex-1 bg-transparent border-none outline-none text-xs min-w-0"
+                          <input className="flex-1 bg-transparent border-none outline-none text-sm min-w-0"
                             value={item.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} placeholder="규격" />
                           <button type="button" onClick={() => setSpecModal({ open: true, idx, value: item.specification })}
                             className="shrink-0 text-muted-foreground hover:text-primary">
@@ -617,12 +617,12 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           </button>
                         </div>
                       </td>
-                      <td className="px-1 py-1">
-                        <input type="number" className="w-full bg-transparent border-none outline-none text-xs text-right"
+                      <td className="px-1 py-2">
+                        <input type="number" className="w-full bg-transparent border-none outline-none text-sm text-right"
                           value={item.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} />
                       </td>
-                      <td className="px-1 py-1">
-                        <input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-xs text-right"
+                      <td className="px-1 py-2">
+                        <input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-sm text-right"
                           value={item.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} />
                         {recentPrice != null && (
                           <div className="text-right">
@@ -634,8 +634,8 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         )}
                       </td>
                       {/* 환율 (아이템별) — 1이면 단가=환원단가 */}
-                      <td className="px-1 py-1">
-                        <input type="number" step="0.0001" min="0.0001" className="w-full bg-transparent border-none outline-none text-xs text-right"
+                      <td className="px-1 py-2">
+                        <input type="number" step="0.0001" min="0.0001" className="w-full bg-transparent border-none outline-none text-sm text-right"
                           value={item.exRate ?? 1} onChange={e => updateItem(idx, 'exRate', Number(e.target.value) || 1)} />
                       </td>
                       {/* 환원단가 = 단가 × 환율 (계산값, 읽기전용) */}
@@ -643,13 +643,13 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         {((item.unitPrice || 0) * (item.exRate || 1)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-2 py-1 text-right font-medium">{item.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td className="px-1 py-1">
-                        <input className="w-full bg-transparent border-none outline-none text-xs"
+                      <td className="px-1 py-2">
+                        <input className="w-full bg-transparent border-none outline-none text-sm"
                           value={item.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} placeholder="비고" />
                       </td>
                       {/* 공급사 (per-item) */}
-                      <td className="px-1 py-1">
-                        <input className="w-full bg-transparent border-none outline-none text-xs border-b border-dashed border-muted-foreground/30"
+                      <td className="px-1 py-2">
+                        <input className="w-full bg-transparent border-none outline-none text-sm border-b border-dashed border-muted-foreground/30"
                           value={item.supplierName || ''}
                           onChange={e => {
                             const items = [...form.items];
@@ -661,10 +661,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         <datalist id={`supplier-list-${idx}`}>{companies.map(c => <option key={c.id} value={c.name} />)}</datalist>
                       </td>
                       {/* 발주번호(PO) (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-2">
                         <select value={item.poBusinessId || ''}
                           onChange={e => selectItemLink(idx, 'po', e.target.value, e.currentTarget)}
-                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
                           {linkChains
                             .filter(c => !item.supplierName || c.supplierName === item.supplierName)
@@ -676,10 +676,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         </select>
                       </td>
                       {/* PI번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-2">
                         <select value={item.piNumber || ''}
                           onChange={e => selectItemLink(idx, 'pi', e.target.value, e.currentTarget)}
-                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
                           {linkChains
                             .filter(c => c.piNumber && (!item.supplierName || c.supplierName === item.supplierName))
@@ -691,10 +691,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         </select>
                       </td>
                       {/* 선적번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-2">
                         <select value={item.shipmentBusinessId || ''}
                           onChange={e => selectItemLink(idx, 'shipment', e.target.value, e.currentTarget)}
-                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
                           {linkChains
                             .filter(c => c.shipmentBusinessId && (!item.supplierName || c.supplierName === item.supplierName))
@@ -706,10 +706,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                         </select>
                       </td>
                       {/* 통관번호 (per-item, 공급사 필터) — 나머지 3개와 자동 연동 */}
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-2">
                         <select value={item.declarationNo || ''}
                           onChange={e => selectItemLink(idx, 'declaration', e.target.value, e.currentTarget)}
-                          className="w-full bg-transparent border-none outline-none text-xs text-muted-foreground cursor-pointer">
+                          className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
                           {linkChains
                             .filter(c => c.declarationNo && (!item.supplierName || c.supplierName === item.supplierName))
@@ -729,7 +729,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           {item.inventoryDeducted && <span className="text-[9px] text-orange-600 font-medium">출고</span>}
                         </label>
                       </td>
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-2">
                         <button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
                           className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
                       </td>
@@ -947,7 +947,7 @@ function CustomStatementModal({ sale, companies, onClose }: { sale: SalesRecord;
                 </button>
               </div>
               <div className="overflow-x-auto border rounded-lg">
-                <table className="w-full text-xs min-w-[760px]">
+                <table className="w-full text-sm min-w-[760px]">
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">품목명</th>
@@ -964,17 +964,17 @@ function CustomStatementModal({ sale, companies, onClose }: { sale: SalesRecord;
                   <tbody className="divide-y">
                     {items.map((it, idx) => (
                       <tr key={it.id}>
-                        <td className="px-1 py-1"><input value={it.productName} onChange={e => updateItem(idx, 'productName', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
-                        <td className="px-1 py-1"><input value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
-                        <td className="px-1 py-1"><input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
-                        <td className="px-1 py-1"><input type="number" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-xs text-right" /></td>
-                        <td className="px-1 py-1"><input type="number" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-xs text-right" /></td>
+                        <td className="px-1 py-2"><input value={it.productName} onChange={e => updateItem(idx, 'productName', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
+                        <td className="px-1 py-2"><input value={it.specification} onChange={e => updateItem(idx, 'specification', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
+                        <td className="px-1 py-2"><input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
+                        <td className="px-1 py-2"><input type="number" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-sm text-right" /></td>
+                        <td className="px-1 py-2"><input type="number" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-sm text-right" /></td>
                         <td className="px-2 py-1 text-right font-medium">{(it.qty * it.unitPrice).toLocaleString()}</td>
-                        <td className="px-1 py-1"><input value={it.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} className="w-full bg-transparent border-none outline-none text-xs" /></td>
+                        <td className="px-1 py-2"><input value={it.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
                         <td className="px-1 py-1 text-center">
                           <input type="checkbox" checked={it.vatIncluded} onChange={e => updateItem(idx, 'vatIncluded', e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
                         </td>
-                        <td className="px-1 py-1">
+                        <td className="px-1 py-2">
                           <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
                             <X className="w-3 h-3" />
                           </button>

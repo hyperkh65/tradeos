@@ -27,6 +27,8 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
     incoterm: (row.incoterm as string) || undefined,
     remark: (row.remark as string) || undefined,
     createdBy: (row.created_by as string) || 'user-1',
+    createdByName: (row.created_by_name as string) || undefined,
+    createdByEmail: (row.created_by_email as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     imagesJson: (row.images_json as string) || undefined,
@@ -40,8 +42,8 @@ function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: st
 
 function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?: string; depositRatio?: string }, id: string, ts: string, notionId?: string | null) {
   db.prepare(`INSERT OR IGNORE INTO purchase_orders
-    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio,customer_id,customer_name)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    (id,business_id,supplier_id,supplier_name,items_json,currency,total_amount,deposit_amount,balance_amount,payment_terms,order_date,production_due_date,inspection_date,etd,status,incoterm,remark,created_by,notion_id,created_at,updated_at,images_json,deposit_ratio,customer_id,customer_name,created_by_name,created_by_email)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, po.businessId, po.supplierId || '', po.supplierName,
       JSON.stringify(po.items), po.currency, po.totalAmount,
@@ -51,6 +53,7 @@ function poToDb(db: ReturnType<typeof getDb>, po: PurchaseOrder & { imagesJson?:
       po.createdBy || 'ynk-erp', notionId ?? null, po.createdAt || ts, ts,
       (po as any).imagesJson ?? null, (po as any).depositRatio ?? '30',
       po.customerId ?? null, po.customerName ?? null,
+      po.createdByName ?? null, po.createdByEmail ?? null,
     );
 }
 
@@ -160,6 +163,8 @@ export async function POST(req: NextRequest) {
       incoterm: body.incoterm,
       remark: body.remark,
       createdBy: user?.id || 'unknown',
+      createdByName: user?.name || undefined,
+      createdByEmail: user?.email || undefined,
       createdAt: ts, updatedAt: ts,
       imagesJson: body.imagesJson ?? null,
       depositRatio: body.depositRatio ?? '30',
