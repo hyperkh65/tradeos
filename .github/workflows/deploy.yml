@@ -69,6 +69,26 @@ jobs:
           source: ".next/standalone/,.next/static/,public/"
           target: /volume1/web/tradeos/
 
+      - name: Ensure docverify container running
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          command_timeout: 1m
+          script: |
+            DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
+            if ! $DOCKER ps --format '{{.Names}}' | grep -qx tradeos-docverify; then
+              $DOCKER rm -f tradeos-docverify 2>/dev/null || true
+              $DOCKER run -d --name tradeos-docverify --restart unless-stopped \
+                -v /volume1/web/tradeos/data:/volume1/web/tradeos/data \
+                -v /tmp:/tmp \
+                tradeos-docverify
+              echo "docverify container started"
+            else
+              echo "docverify container already running"
+            fi
+
       - name: Deploy on NAS
         uses: appleboy/ssh-action@v1
         with:
@@ -103,6 +123,8 @@ jobs:
             DEMO_MODE="false" \
             SQLITE_DB_PATH="/volume1/web/tradeos/data/nexport.db" \
             UPLOAD_DIR="/volume1/web/tradeos/data/uploads" \
+            DOCVERIFY_CONTAINER="tradeos-docverify" \
+            DOCVERIFY_DOCKER_BIN="/var/packages/ContainerManager/target/usr/bin/docker" \
             NOTION_TOKEN="${{ secrets.TRADEOS_NOTION_TOKEN }}" \
             NOTION_DB_COMPANIES="${{ secrets.TRADEOS_NOTION_DB_COMPANIES }}" \
             NOTION_DB_PRODUCTS="${{ secrets.TRADEOS_NOTION_DB_PRODUCTS }}" \

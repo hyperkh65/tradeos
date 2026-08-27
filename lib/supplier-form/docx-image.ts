@@ -15,19 +15,35 @@ const CELL_HEIGHT_TWIPS = 5320;
 const TWIP_TO_EMU = 635;
 const MAX_BOX_EMU = { cx: Math.round(CELL_WIDTH_TWIPS * TWIP_TO_EMU * 0.96), cy: Math.round(CELL_HEIGHT_TWIPS * TWIP_TO_EMU * 0.96) };
 
-/** PDF의 특정 페이지를 고해상도 PNG로 변환한다. poppler-utils(pdftoppm)가 서버에 없으면 null을
+// NAS 호스트에는 poppler-utils를 설치하지 않고 tradeos-docverify 컨테이너 안에만 둔다.
+// DOCVERIFY_CONTAINER가 설정되어 있으면 `docker exec`로 컨테이너 안의 pdftoppm을 호출하고,
+// 아니면(로컬 개발 등) 호스트에 직접 설치된 pdftoppm을 시도한다.
+const DOCVERIFY_CONTAINER = process.env.DOCVERIFY_CONTAINER;
+const DOCKER_BIN = process.env.DOCVERIFY_DOCKER_BIN || 'docker';
+
+/** pdftoppm을 컨테이너(docker exec) 또는 호스트에 직접 실행한다.
+ * 컨테이너 모드에서는 -v로 동일 경로에 마운트된 것을 전제로 호스트 절대경로를 그대로 넘긴다. */
+async function execPdftoppm(args: string[]): Promise<void> {
+  if (DOCVERIFY_CONTAINER) {
+    await execFileAsync(DOCKER_BIN, ['exec', DOCVERIFY_CONTAINER, 'pdftoppm', ...args]);
+  } else {
+    await execFileAsync('pdftoppm', args);
+  }
+}
+
+/** PDF의 특정 페이지를 고해상도 PNG로 변환한다. pdftoppm을 사용할 수 없으면 null을
  * 반환한다 — 이미지 삽입은 건너뛰지만 문서 생성 자체는 계속 진행되도록(우아한 실패) 설계했다.
- * 인프라 요구사항: 서버에 poppler-utils(pdftoppm) 설치 필요. */
+ * 인프라 요구사항: tradeos-docverify 컨테이너(또는 서버에 직접 poppler-utils) 필요. */
 async function rasterizePdfPage(pdfPath: string, pageNumber: number): Promise<Buffer | null> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-pdf-'));
   const outPrefix = path.join(tmpDir, 'page');
   try {
-    await execFileAsync('pdftoppm', ['-png', '-r', '220', '-f', String(pageNumber), '-l', String(pageNumber), pdfPath, outPrefix]);
+    await execPdftoppm(['-png', '-r', '220', '-f', String(pageNumber), '-l', String(pageNumber), pdfPath, outPrefix]);
     const files = fs.readdirSync(tmpDir).filter(f => f.startsWith('page') && f.endsWith('.png'));
     if (files.length === 0) return null;
     return fs.readFileSync(path.join(tmpDir, files[0]));
   } catch (e) {
-    console.error('[docx-image] pdftoppm 사용 불가 또는 변환 실패 (poppler-utils 설치 필요):', (e as Error).message);
+    console.error('[docx-image] pdftoppm 사용 불가 또는 변환 실패:', (e as Error).message);
     return null;
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
