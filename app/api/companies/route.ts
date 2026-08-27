@@ -25,16 +25,28 @@ export async function GET(req: NextRequest) {
   try {
     const notionData = await fetchNotionCompanies();
     if (notionData.length > 0) {
-      // INSERT OR REPLACE handles all UNIQUE conflicts (id PK + business_id UNIQUE)
-      // by deleting the conflicting row and inserting the new one
-      // INSERT OR IGNORE: only add new companies from Notion, never overwrite manual edits
-      const insert = db.prepare(`INSERT OR IGNORE INTO companies
+      const insert = db.prepare(`INSERT INTO companies
         (id,business_id,name,name_en,type,country,email,phone,website,wechat,memo,
          ceo,business_no,address,bank,account_no,trade_currency,notion_id,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      // 앱에서 거래처를 새로 등록하면 SQLite에는 newId()로 만든 id가 이미 있고, 백그라운드로
+      // Notion 페이지를 만든 뒤 그 notion_id만 나중에 연결한다(POST 라우트 참고). 그래서 이 동기화가
+      // notion_id가 아니라 page.id(=Notion의 id)만으로 중복을 판단하면, 같은 회사인데 SQLite id가
+      // 서로 달라 항상 "새 회사"로 오인해 매번 중복 행을 새로 만들어냈다(실제 운영 데이터에서 확인된
+      // 버그: 동일 거래처가 서로 다른 코드로 2건씩 등록됨). notion_id로 먼저 매칭하고, 그것도 없으면
+      // 이름+유형이 같은 기존 행(수기 등록분 포함)을 찾아 notion_id만 연결해준다.
+      const byNotionId = db.prepare('SELECT id, notion_id FROM companies WHERE notion_id=?');
+      const byNameType = db.prepare('SELECT id, notion_id FROM companies WHERE TRIM(LOWER(name))=TRIM(LOWER(?)) AND type=?');
+      const linkNotionId = db.prepare('UPDATE companies SET notion_id=? WHERE id=?');
       const prefixMap: Record<string, string> = { '고객사':'CUS','공급업체':'SUP','포워더':'FWD','관세사':'BRK','기타':'ETC' };
       db.transaction(() => {
         for (const c of notionData) {
+          if (byNotionId.get(c.id)) continue;
+          const existing = byNameType.get(c.name, c.type) as { id: string; notion_id: string | null } | undefined;
+          if (existing) {
+            if (!existing.notion_id) linkNotionId.run(c.id, existing.id);
+            continue;
+          }
           const prefix = prefixMap[c.type] ?? 'ETC';
           const bizId = nextBizId(prefix, false);
           insert.run(c.id, bizId, c.name, c.nameEn ?? null, c.type, c.country,
