@@ -302,7 +302,9 @@ export default function ProfitAnalysisPage() {
   }
 
   function applyImport(imp: ImportRecord) {
-    const handlingTotal = (imp.freightHandling || []).reduce((s, h) => s + (h.amtKrw || 0) + (h.vat || 0), 0);
+    // 부가세는 매입세액공제로 환급받는 항목이라 원가에 포함시키면 안 되는데, 부대비용
+    // 항목별 VAT까지 더해서 "포워더 운임" 원가가 실제보다 부풀려져 있었다(요청사항으로 수정).
+    const handlingTotal = (imp.freightHandling || []).reduce((s, h) => s + (h.amtKrw || 0), 0);
     const freightCost = (imp.freightKrw || 0) + handlingTotal;
 
     // import items → productItems
