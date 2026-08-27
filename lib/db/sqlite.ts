@@ -605,6 +605,9 @@ function runMigrations(db: Database.Database) {
     // 문서양식: 특정 레코드(매출 등)에 종속된 문서를 빠르게 조회하기 위한 연결 필드
     `ALTER TABLE documents ADD COLUMN related_type TEXT`,
     `ALTER TABLE documents ADD COLUMN related_id TEXT`,
+    // 공급업체 자료요청 링크: 생성자가 링크를 다시 조회할 수 있도록 암호화된 원문도 함께 저장
+    // (해시는 그대로 실제 인증 경로로 사용 — 이 컬럼은 내부 화면 재조회 편의용 추가 저장일 뿐)
+    `ALTER TABLE supplier_request_links ADD COLUMN token_encrypted TEXT`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
@@ -1159,6 +1162,7 @@ function runMigrations(db: Database.Database) {
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       token_hash TEXT UNIQUE NOT NULL,
+      token_encrypted TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_by TEXT,
       created_by_name TEXT,

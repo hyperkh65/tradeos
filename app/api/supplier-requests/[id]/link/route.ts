@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
-import { createLink, reissueLink } from '@/lib/supplier-form/token';
+import { createLink, reissueLink, getActiveLinkToken } from '@/lib/supplier-form/token';
 import { writeAuditLog } from '@/lib/supplier-form/audit';
 
 /** 링크를 만들거나 재발급할 권한: 프로젝트를 만든 본인 또는 admin */
@@ -42,11 +42,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({ data: { url: `${baseUrl}/supplier-form/${token}` } });
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const check = await assertLinkPermission(id);
   if (check.error) return check.error;
   const db = getDb();
   const link = db.prepare('SELECT created_at FROM supplier_request_links WHERE project_id=? AND is_active=1').get(id) as { created_at: string } | undefined;
-  return NextResponse.json({ data: { hasActiveLink: !!link, createdAt: link?.created_at ?? null } });
+  // 링크를 만든 본인/admin이면 재발급 없이도 원문 링크를 다시 볼 수 있게 한다.
+  const token = link ? getActiveLinkToken(id) : null;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  return NextResponse.json({
+    data: { hasActiveLink: !!link, createdAt: link?.created_at ?? null, url: token ? `${baseUrl}/supplier-form/${token}` : null },
+  });
 }

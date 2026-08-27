@@ -291,6 +291,34 @@ export default function SupplierFormPage() {
   const multiRows = componentItems.filter(c => c.listType === 'multi_component');
   const visibleCategories = converterType ? getVisibleAttachmentCategories(converterType) : [];
 
+  /** 검증 오류 목록에 raw 내부 키(예: "led_package_model_name")를 그대로 노출하면 사용자가
+   * 어디를 고쳐야 할지 알 수 없다(실제 민원: "칩모델명 입력란이 없는데 계속 필수라고 뜬다") —
+   * 모든 오류 키를 사람이 읽을 수 있는 라벨로 변환한다. */
+  const fixtureRowLabel = (rowKey: string) => t(FIXTURE_PART_FIXED_ROWS.find(r => r.rowKey === rowKey)?.label || { ko: rowKey, zh: rowKey, en: rowKey }, lang);
+  const issueLabel = (key: string): string => {
+    if (key === 'converterType') return ui.converterType;
+    const df = DISPLAY_FIELDS.find(f => f.key === key);
+    if (df) return t(df.label, lang);
+    const bf = BASE_MODEL_INFO_FIELDS.find(f => f.key === key);
+    if (bf) return t(bf.label, lang);
+    if (SUBFIELD_META[key]) return t(SUBFIELD_META[key].label, lang);
+    const cat = visibleCategories.find(c => c.key === key);
+    if (cat) return t(cat.label, lang);
+    if (key === 'led_package_model_name') return `${fixtureRowLabel('led_package')} - ${ui.partName}`;
+    const compMatch = key.match(/^component_(manufacturer|material|dimensions)_(.+)$/);
+    if (compMatch) {
+      const [, field, rowKey] = compMatch;
+      const fieldName = field === 'manufacturer' ? ui.manufacturer : field === 'material' ? ui.material : `${ui.width}/${ui.depth}/${ui.height}`;
+      return `${fixtureRowLabel(rowKey)} - ${fieldName}`;
+    }
+    return key;
+  };
+  const fixtureRowHasError = (rowKey: string | null) => !!rowKey && (
+    (rowKey === 'led_package' && hasIssue('led_package_model_name')) ||
+    hasIssue(`component_manufacturer_${rowKey}`) || hasIssue(`component_material_${rowKey}`) || hasIssue(`component_dimensions_${rowKey}`)
+  );
+  const hasFixtureIssue = fixtureRows.some(c => fixtureRowHasError(c.rowKey));
+
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
       <div className="sticky top-0 z-20 bg-white border-b border-border px-4 py-3 flex items-center gap-3">
@@ -322,7 +350,7 @@ export default function SupplierFormPage() {
         <div ref={firstErrorRef} className="bg-red-50 border border-red-200 rounded-lg mx-4 mt-4 p-3 text-xs text-red-700">
           <div className="font-semibold mb-1 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" />{ui.missingItemsTitle} ({issues.length})</div>
           <ul className="list-disc list-inside space-y-0.5">
-            {issues.map((it, i) => <li key={i}>{it.key} — {REASON_LABEL_KEY[it.reasonKey] ? ui[REASON_LABEL_KEY[it.reasonKey]] : it.reasonKey}</li>)}
+            {issues.map((it, i) => <li key={i}>{issueLabel(it.key)} — {REASON_LABEL_KEY[it.reasonKey] ? ui[REASON_LABEL_KEY[it.reasonKey]] : it.reasonKey}</li>)}
           </ul>
         </div>
       )}
@@ -388,7 +416,7 @@ export default function SupplierFormPage() {
             <p className="text-xs font-semibold text-muted-foreground mb-2">{t(DISPLAY_FIELDS.find(f => f.key === 'originMarking')!.label, lang)}</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {ORIGIN_MARKING_SUBFIELDS.map(k => (
-                <LabeledInput key={k} label={t(SUBFIELD_META[k].label, lang)} required value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)}
+                <LabeledInput key={k} label={t(SUBFIELD_META[k].label, lang)} value={values[k] || ''} onChange={v => setValue(k, v)} onBlur={() => saveDraft(true)} error={hasIssue(k)}
                   placeholder={SUBFIELD_META[k].example} help={SUBFIELD_META[k].help ? t(SUBFIELD_META[k].help!, lang) : undefined} />
               ))}
             </div>
@@ -422,11 +450,12 @@ export default function SupplierFormPage() {
         </section>
 
         {/* 등기구 부품 리스트 (표4 — 서식에 고정된 8개 표준 항목, 행 추가/삭제 불가) */}
-        <section className="bg-white border rounded-xl p-4">
+        <section ref={hasFixtureIssue ? firstErrorRef : undefined} className="bg-white border rounded-xl p-4">
           <h3 className="text-sm font-bold mb-1.5">{ui.fixtureParts}</h3>
           <p className="text-[10px] text-muted-foreground mb-2">💡 {ui.fixtureFixedNote}</p>
           <ComponentTable items={fixtureRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent}
-            rowLabel={(c) => FIXTURE_PART_FIXED_ROWS.find(r => r.rowKey === c.rowKey)?.label[lang] || c.rowKey || ''} hideRemove />
+            rowLabel={(c) => FIXTURE_PART_FIXED_ROWS.find(r => r.rowKey === c.rowKey)?.label[lang] || c.rowKey || ''} hideRemove
+            rowHasError={(c) => fixtureRowHasError(c.rowKey)} />
         </section>
 
         {/* 컨버터 내부 부품 (컨버터 있음 / 일체형 컨버터 모두 해당) */}
@@ -520,7 +549,7 @@ export default function SupplierFormPage() {
   );
 }
 
-function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, rowLabel, hideRemove, editablePartName, showDimensions = true }: {
+function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, rowLabel, hideRemove, editablePartName, showDimensions = true, rowHasError }: {
   items: ComponentItemUI[]; ui: Record<string, string>; closed: boolean;
   onChange: (id: string, patch: Partial<ComponentItemUI>) => void;
   onBlurSave: (item: ComponentItemUI) => void;
@@ -532,6 +561,8 @@ function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, row
   editablePartName?: boolean;
   /** 표5/6은 재질/가로/세로/높이 열이 없다(DOCX에 해당 셀이 없어 입력해도 버려짐) — 숨긴다. */
   showDimensions?: boolean;
+  /** 검증 오류가 있는 행을 시각적으로 표시(어느 행을 고쳐야 하는지 안내문만으로는 찾기 어려움) */
+  rowHasError?: (item: ComponentItemUI) => boolean;
 }) {
   if (items.length === 0) return <p className="text-xs text-muted-foreground">항목이 없습니다.</p>;
   const showRemoveCol = !closed && !hideRemove;
@@ -556,7 +587,7 @@ function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, row
         </thead>
         <tbody className="divide-y">
           {items.map(item => (
-            <tr key={item.id}>
+            <tr key={item.id} className={cn(rowHasError?.(item) && 'ring-1 ring-inset ring-red-300 bg-red-50/50')}>
               {rowLabel && <td className="px-2 py-1.5 font-medium whitespace-nowrap">{rowLabel(item)}</td>}
               {editablePartName && (
                 <td className="px-1 py-1">

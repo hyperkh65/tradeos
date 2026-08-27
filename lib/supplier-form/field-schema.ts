@@ -110,7 +110,7 @@ export const BASE_MODEL_INFO_FIELDS: {
   { key: 'baseModelReportDate', label: { ko: '시험성적서 발행일', zh: '检测报告签发日期', en: 'Test Report Issue Date' },
     example: '2026.01.15', required: false, docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 발행일' } },
   { key: 'baseModelReportNo', label: { ko: '시험성적서 번호', zh: '检测报告编号', en: 'Test Report No.' },
-    help: { ko: '아직 시험이 진행 중이면 KTR 접수번호를 기재하세요.', zh: '如检测仍在进行中，请填写KTR受理编号。', en: 'If testing is still in progress, enter the KTR receipt number instead.' },
+    help: { ko: '아직 시험이 진행 중이면 접수번호를 기재하세요.', zh: '如检测仍在进行中，请填写受理编号。', en: 'If testing is still in progress, enter the receipt number instead.' },
     example: 'HEE2026-0000', required: false, docx: { kind: 'paragraph', matchPrefix: '⦁시험성적서 번호' } },
 ];
 // 위 3개는 "변경이나 파생일 경우에만" 필수 — 검증 규칙에서 testCategory에 derived/part_change 포함 시 required 처리.
@@ -175,8 +175,8 @@ export const DISPLAY_FIELDS: DisplayField[] = [
     example: '80', required: true, preserveOriginal: true, format: 'number+unit', docx: { table: 3, row: 8, col: 1 } },
   // 9번: 원산지/상표/제조자명/공급자명 — 4개 하위값을 한 셀에 결합
   { key: 'originMarking', label: { ko: '원산지표시(상표,제조자명,공급자명)', zh: '原产地标识(商标、制造商、供应商)', en: 'Origin Marking (Trademark/Manufacturer/Supplier)' },
-    help: { ko: '아래 4개 항목(원산지/상표/제조자명/공급자명)을 각각 입력하면 자동으로 합쳐집니다.', zh: '请分别填写下方4个项目（原产地/商标/制造商/供应商），系统会自动合并。', en: 'Fill in the 4 sub-items below (origin/trademark/manufacturer/supplier) — they will be combined automatically.' },
-    required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 9, col: 1 } },
+    help: { ko: '아래 4개 항목(원산지/상표/제조자명/공급자명)을 각각 입력하면 자동으로 합쳐집니다. 알 수 없는 항목은 비워두어도 됩니다.', zh: '请分别填写下方4个项目（原产地/商标/制造商/供应商），系统会自动合并。不清楚的项目可留空。', en: 'Fill in the 4 sub-items below (origin/trademark/manufacturer/supplier) — they will be combined automatically. Leave any unknown item blank.' },
+    required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 9, col: 1 } },
   { key: 'asContact', label: { ko: 'A/S연락처', zh: '售后服务电话', en: 'A/S Contact' },
     help: { ko: '소비자가 문의할 수 있는 A/S 전화번호입니다. 라벨에 표시됩니다.', zh: '消费者可咨询的售后服务电话，将标示在产品标签上。', en: 'The A/S contact number consumers can call. This will be printed on the product label.' },
     example: '1566-2718', required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 10, col: 1 } },
@@ -184,7 +184,7 @@ export const DISPLAY_FIELDS: DisplayField[] = [
     help: { ko: '예시 형식을 참고해 연도.월 형식으로 입력하세요.', zh: '请参考示例格式，按"年.月"格式填写。', en: 'Please use the year.month format shown in the example.' },
     example: '2026.08', required: true, preserveOriginal: true, format: 'text', docx: { table: 3, row: 11, col: 1 } },
   { key: 'fixtureKsKcNo', label: { ko: '등기구 KS 또는 KC 인증번호', zh: '灯具 KS 或 KC 认证编号', en: 'Fixture KS/KC Cert No.' },
-    help: { ko: '실내용 LED등기구는 필수입니다. 아직 인증이 진행 중이면 KTR 접수번호를 기재하세요.', zh: '室内用LED灯具为必填项。如认证仍在进行中，请填写KTR受理编号。', en: 'Required for indoor LED fixtures. If certification is still in progress, enter the KTR receipt number.' },
+    help: { ko: '실내용 LED등기구는 KS 또는 KC 인증이 필요합니다. 아직 인증이 진행 중이면 인증 접수번호를 기재하세요.', zh: '室内用LED灯具需要 KS 或 KC 认证。如认证仍在进行中，请填写认证受理编号。', en: 'Indoor LED fixtures require KS or KC certification. If certification is still in progress, enter the certification receipt number.' },
     example: 'KS C 7653 제12-1718호', required: false, preserveOriginal: true, format: 'text', docx: { table: 3, row: 12, col: 1 } },
   { key: 'converterKsKcNo', label: { ko: '컨버터 KS 또는 KC 인증번호', zh: '驱动电源 KS 或 KC 认证编号', en: 'Converter KS/KC Cert No.' },
     help: { ko: '컨버터가 없는 제품이면 "-"로 입력하세요.', zh: '如产品无驱动电源，请填写"-"。', en: 'If the product has no converter, enter "-".' },
@@ -315,6 +315,11 @@ const PCB_PATTERN_HELP: I18nText = {
   zh: '请上传实际PCB电路板的布局（版图）图纸，需能确认元件位置及走线。',
   en: 'Attach the actual PCB layout drawing. Component positions and traces should be identifiable.',
 };
+const HAVE_IT_HELP: I18nText = {
+  ko: '보유하고 있으면 첨부하세요. 없어도 제출에 지장 없습니다.',
+  zh: '如有请上传。没有也不影响提交。',
+  en: 'Attach if you have it. Submission is not blocked if you don\'t.',
+};
 
 export const ATTACHMENT_CATEGORIES: AttachmentCategoryDef[] = [
   // 공통 필수/해당시 필수
@@ -326,8 +331,8 @@ export const ATTACHMENT_CATEGORIES: AttachmentCategoryDef[] = [
   { key: 'etc_general', label: { ko: '기타 관련 자료', zh: '其他相关资料', en: 'Other Related Documents' }, required: false, visibleWhen: 'always', accept: 'pdf' },
 
   // 컨버터 있음
-  { key: 'converter_ks_kc_cert', label: { ko: '컨버터 KS 또는 KC 인증서', zh: '驱动电源 KS 或 KC 认证证书', en: 'Converter KS/KC Certificate' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf' },
-  { key: 'converter_spec', label: { ko: '컨버터 사양서', zh: '驱动电源规格书', en: 'Converter Datasheet' }, required: true, visibleWhen: ['has_converter'], accept: 'pdf' },
+  { key: 'converter_ks_kc_cert', label: { ko: '컨버터 KS 또는 KC 인증서', zh: '驱动电源 KS 或 KC 认证证书', en: 'Converter KS/KC Certificate' }, help: HAVE_IT_HELP, required: false, visibleWhen: ['has_converter'], accept: 'pdf' },
+  { key: 'converter_spec', label: { ko: '컨버터 사양서', zh: '驱动电源规格书', en: 'Converter Datasheet' }, help: HAVE_IT_HELP, required: false, visibleWhen: ['has_converter'], accept: 'pdf' },
   { key: 'led_module_circuit_a', label: { ko: 'LED 모듈 회로도', zh: 'LED模块电路图', en: 'LED Module Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 7 } },
   { key: 'led_module_pcb_a', label: { ko: 'LED 모듈 PCB 패턴도', zh: 'LED模块PCB版图', en: 'LED Module PCB Pattern' }, help: PCB_PATTERN_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 8 } },
   { key: 'converter_circuit', label: { ko: '컨버터 회로도', zh: '驱动电源电路图', en: 'Converter Circuit Diagram' }, help: CIRCUIT_DIAGRAM_HELP, required: true, visibleWhen: ['has_converter'], accept: 'pdf', isImageInsertTarget: { table: 10 } },

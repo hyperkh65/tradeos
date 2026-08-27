@@ -37,6 +37,9 @@ export default function SupplierRequestDetailPage() {
   const load = useCallback(() => {
     setLoading(true);
     fetch(`/api/supplier-requests/${id}`).then(r => r.json()).then(j => setData(j.data)).finally(() => setLoading(false));
+    // 링크를 만든 본인/admin이면 재발급 없이도 원문 링크를 계속 볼 수 있어야 한다(매번 재발급하지
+    // 않고도 다시 확인 가능해야 한다는 요청사항) — 별도 엔드포인트가 암호화된 원문을 복호화해 돌려준다.
+    fetch(`/api/supplier-requests/${id}/link`).then(r => r.json()).then(j => { if (j.data?.url) setLinkUrl(j.data.url); }).catch(() => {});
   }, [id]);
   useEffect(load, [load]);
 
@@ -116,7 +119,7 @@ export default function SupplierRequestDetailPage() {
               </button>
             </div>
           )}
-          {!linkUrl && data.hasActiveLink && <p className="text-xs text-muted-foreground">링크가 이미 발급되어 있습니다 (보안상 원문 토큰은 재조회할 수 없습니다 — 재발급 시 새 링크가 표시됩니다).</p>}
+          {!linkUrl && !loading && data.hasActiveLink && <p className="text-xs text-muted-foreground">이 링크는 재조회 기능 도입 이전에 발급되어 다시 표시할 수 없습니다. 필요하면 재발급하세요.</p>}
         </div>
 
         {/* 다운로드 */}

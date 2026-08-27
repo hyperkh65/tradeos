@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getDb, newId, now } from '@/lib/db/sqlite';
+import { encryptPassword, decryptPassword } from '@/lib/mail/crypto';
 
 /** 256비트 URL-safe 랜덤 토큰. 원문은 절대 DB에 저장하지 않는다. */
 export function generateToken(): string {
@@ -43,9 +44,21 @@ export function createLink(projectId: string, createdBy: string, createdByName: 
   const db = getDb();
   const token = generateToken();
   const id = newId();
-  db.prepare(`INSERT INTO supplier_request_links (id, project_id, token_hash, is_active, created_by, created_by_name, created_at)
-    VALUES (?, ?, ?, 1, ?, ?, ?)`).run(id, projectId, hashToken(token), createdBy, createdByName, now());
+  // token_hash가 실제 인증 경로(외부 API는 이것만 사용). token_encrypted는 링크를 만든 내부
+  // 담당자가 나중에 다시 조회할 수 있도록 편의상 추가로 저장하는 복호화 가능한 사본이다 —
+  // 매번 재발급하지 않고도 "만든 사람은 링크를 계속 볼 수 있게" 해달라는 요청사항 때문.
+  db.prepare(`INSERT INTO supplier_request_links (id, project_id, token_hash, token_encrypted, is_active, created_by, created_by_name, created_at)
+    VALUES (?, ?, ?, ?, 1, ?, ?, ?)`).run(id, projectId, hashToken(token), encryptPassword(token), createdBy, createdByName, now());
   return { token, linkId: id };
+}
+
+/** 링크를 만든 내부 담당자가 원문 링크를 다시 확인할 때 사용(재발급 없이). */
+export function getActiveLinkToken(projectId: string): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT token_encrypted FROM supplier_request_links WHERE project_id=? AND is_active=1')
+    .get(projectId) as { token_encrypted: string | null } | undefined;
+  if (!row?.token_encrypted) return null;
+  try { return decryptPassword(row.token_encrypted); } catch { return null; }
 }
 
 export type GuardResult =
