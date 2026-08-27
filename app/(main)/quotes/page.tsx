@@ -82,7 +82,7 @@ interface PriceHint {
   code: string; nameKo: string; purchasePrice?: number; sellingPrice?: number;
   currency: string; recentQuotePrice?: number; recentQuoteCompany?: string; recentPoPrice?: number;
   voltage?: string; watts?: string; cct?: string; sizeSpec?: string; material?: string; converter?: string;
-  detail?: string; specification?: string;
+  detail?: string; specification?: string; images?: string[];
 }
 
 function ProductSearchHelper({
@@ -115,6 +115,7 @@ function ProductSearchHelper({
       voltage: ex.voltage, watts: ex.watts, cct: ex.cct,
       sizeSpec: ex.sizeSpec, material: ex.material, converter: ex.converter, detail: ex.detail,
       specification: ex.detail || ex.sizeSpec || [ex.voltage, ex.watts, ex.cct].filter(Boolean).join(' / ') || '',
+      images: (ex.images?.length ? ex.images : ex.imageUrl ? [ex.imageUrl] : undefined),
     };
   });
 
@@ -335,6 +336,17 @@ function QuoteModal({
       };
       return { ...f, items };
     });
+    // 제품에 등록된 사진이 있으면 첨부 사진에 자동으로 추가 (요청사항) — 이미 들어있거나
+    // 최대 장수를 넘으면 건너뛴다. 필요 없으면 첨부 사진 목록에서 수동으로 삭제 가능.
+    if (h.images?.length) {
+      setImages(prev => {
+        const next = [...prev];
+        for (const url of h.images!) {
+          if (!next.includes(url) && next.length < MAX_QUOTE_IMAGES) next.push(url);
+        }
+        return next;
+      });
+    }
   };
 
   const totalAmount = form.items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -880,14 +892,14 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
             </div>
 
             {quoteImages.length > 0 && (
-              <div style={{ pageBreakBefore: 'always', marginTop: '50px', padding: '10px' }}>
+              <div style={{ marginTop: '50px', padding: '10px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '20px', borderBottom: '2px solid #171717', paddingBottom: '10px' }}>ATTACHMENTS</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
                   {quoteImages.map((url, i) => (
-                    <div key={i}>
+                    <div key={i} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                       <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '5px', color: '#888' }}>Attachment {i + 1}</div>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" style={{ maxWidth: '100%', border: '1px solid #e5e5e5', borderRadius: '4px' }} />
+                      <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: '130mm', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', border: '1px solid #e5e5e5', borderRadius: '4px' }} />
                     </div>
                   ))}
                 </div>
