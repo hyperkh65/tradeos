@@ -17,7 +17,7 @@ const UI: Record<Lang, Record<string, string>> = {
     savedAt: '저장됨', submitSuccess: '제출이 완료되었습니다.', submitFailed: '제출할 수 없습니다 — 아래 항목을 확인해주세요.',
     required: '필수', testCategory: '시험 구분', baseModelInfo: '기본모델 정보 (파생/변경 시 필수)',
     derivedChangeItems: '파생모델 및 부품변경 구분', displayFields: '표시사항', converterType: '컨버터 사용 여부',
-    fixtureParts: '등기구 부품 리스트', converterParts: '컨버터 내부 부품 리스트 (일체형 컨버터 전용)',
+    fixtureParts: '등기구 부품 리스트', converterParts: '컨버터 내부 부품 리스트',
     multiComponent: '복수부품 등재', attachments: '첨부파일', remark: '요청사항 / 메모',
     submitterName: '제출자 이름', addRow: '행 추가', removeRow: '삭제',
     uploadHint: '클릭 또는 드래그하여 PDF 업로드', uploading: '업로드 중...', fileDesc: '파일 설명',
@@ -26,8 +26,11 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: '형명', spec: '명세', material: '재질', width: '가로(mm)', depth: '세로(mm)', height: '높이/두께(mm)',
     qty: '수량', manufacturer: '제조회사', remarkCol: '비고', unit: '단위',
     reasonRequired: '필수', reasonFormat: '형식이 올바르지 않습니다', reasonMismatch: '값이 일치하지 않습니다', reasonNoKorean: '한국어 확정값이 필요합니다',
-    ledDiagramCaption: '직렬·병렬 연결 예시 (3직렬 × 2병렬 = 총 6개)', exampleAdded: '자주 쓰는 부품 예시가 자동으로 채워졌습니다. 필요 없는 항목은 삭제하거나 값을 수정하세요.',
+    ledDiagramCaption: '직렬·병렬 연결 예시 (3직렬 × 2병렬 = 총 6개)', exampleAdded: '자주 쓰는 부품 예시(컨버터 PCB, FUSE, X-CAPACITOR, Y-CAPACITOR, Varistor, Transformer 등)가 자동으로 채워졌습니다. 필요 없는 항목은 삭제하거나 값을 수정하세요.',
     exampleBadge: '예시',
+    fixtureFixedNote: '아래 8개 항목(컨버터, LED Package, LED PCB, 외함, 확산커버, 렌즈, 방열판 등)은 본 서식에 고정된 표준 부품 항목입니다. 해당 없는 항목은 비워두세요.',
+    multiComponentHint: '위 표준 목록에 없는 추가 부품(예: 반사판, 전선/리드선, 커넥터, 나사류 등)은 여기에 행을 추가해 기재하세요.',
+    partNameCol: '부품명',
   },
   zh: {
     loading: '加载中...', notFound: '无效的链接。',
@@ -35,7 +38,7 @@ const UI: Record<Lang, Record<string, string>> = {
     savedAt: '已保存', submitSuccess: '提交完成。', submitFailed: '无法提交 — 请检查以下项目。',
     required: '必填', testCategory: '测试类别', baseModelInfo: '基本型号信息（派生/变更时必填）',
     derivedChangeItems: '派生型号及部件变更分类', displayFields: '标示事项', converterType: '是否使用驱动电源',
-    fixtureParts: '灯具部件清单', converterParts: '驱动电源内部部件清单（仅限一体式驱动电源）',
+    fixtureParts: '灯具部件清单', converterParts: '驱动电源内部部件清单',
     multiComponent: '多组件登记', attachments: '附件', remark: '备注/要求事项',
     submitterName: '提交人姓名', addRow: '添加行', removeRow: '删除',
     uploadHint: '点击或拖拽上传PDF', uploading: '上传中...', fileDesc: '文件说明',
@@ -44,8 +47,11 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: '型号', spec: '规格', material: '材质', width: '宽(mm)', depth: '长(mm)', height: '高/厚(mm)',
     qty: '数量', manufacturer: '制造商', remarkCol: '备注', unit: '单位',
     reasonRequired: '必填', reasonFormat: '格式不正确', reasonMismatch: '数值不一致', reasonNoKorean: '需要韩语确认值',
-    ledDiagramCaption: '串联·并联示例（3串 × 2并 = 共6个）', exampleAdded: '已自动填入常用部件示例。不需要的项目可删除或修改数值。',
+    ledDiagramCaption: '串联·并联示例（3串 × 2并 = 共6个）', exampleAdded: '已自动填入常用部件示例（驱动电源PCB、FUSE、X-CAPACITOR、Y-CAPACITOR、压敏电阻、变压器等）。不需要的项目可删除或修改数值。',
     exampleBadge: '示例',
+    fixtureFixedNote: '以下8个项目（驱动电源、LED Package、LED PCB、外壳、扩散罩、透镜、散热片等）是本表格固定的标准部件项目。不适用的项目请留空。',
+    multiComponentHint: '以上标准清单中没有的其他部件（例如：反射板、导线/引线、连接器、螺丝类等）请在此添加行填写。',
+    partNameCol: '部件名称',
   },
   en: {
     loading: 'Loading...', notFound: 'Invalid link.',
@@ -53,7 +59,7 @@ const UI: Record<Lang, Record<string, string>> = {
     savedAt: 'Saved', submitSuccess: 'Submission completed.', submitFailed: 'Cannot submit — please check the items below.',
     required: 'Required', testCategory: 'Test Category', baseModelInfo: 'Base Model Info (required for derived/changed)',
     derivedChangeItems: 'Derived Model & Component Change', displayFields: 'Display Items', converterType: 'Converter Usage',
-    fixtureParts: 'Fixture Component List', converterParts: 'Converter Internal Component List (Integrated Converter Only)',
+    fixtureParts: 'Fixture Component List', converterParts: 'Converter Internal Component List',
     multiComponent: 'Multiple Component Registration', attachments: 'Attachments', remark: 'Notes / Requests',
     submitterName: 'Submitter Name', addRow: 'Add Row', removeRow: 'Remove',
     uploadHint: 'Click or drag to upload PDF', uploading: 'Uploading...', fileDesc: 'File description',
@@ -62,8 +68,11 @@ const UI: Record<Lang, Record<string, string>> = {
     partName: 'Model No.', spec: 'Spec', material: 'Material', width: 'Width(mm)', depth: 'Depth(mm)', height: 'Height/Thk(mm)',
     qty: 'Qty', manufacturer: 'Manufacturer', remarkCol: 'Remark', unit: 'Unit',
     reasonRequired: 'Required', reasonFormat: 'Invalid format', reasonMismatch: 'Values do not match', reasonNoKorean: 'Korean confirmed value needed',
-    ledDiagramCaption: 'Series/Parallel Example (3 in series × 2 in parallel = 6 total)', exampleAdded: 'Commonly used component examples were filled in automatically. Delete or edit any items you don\'t need.',
+    ledDiagramCaption: 'Series/Parallel Example (3 in series × 2 in parallel = 6 total)', exampleAdded: 'Commonly used component examples (Converter PCB, FUSE, X-CAPACITOR, Y-CAPACITOR, Varistor, Transformer, etc.) were filled in automatically. Delete or edit any items you don\'t need.',
     exampleBadge: 'Example',
+    fixtureFixedNote: 'The 8 items below (Converter, LED Package, LED PCB, Housing, Diffuser Cover, Lens, Heatsink, etc.) are the fixed standard component items on this form. Leave items that don\'t apply blank.',
+    multiComponentHint: 'Add rows here for any additional components not covered above (e.g., reflector, wire/lead, connector, screws, etc.).',
+    partNameCol: 'Component Name',
   },
 };
 
@@ -154,12 +163,19 @@ export default function SupplierFormPage() {
       setTestCategories(d.testCategories?.length ? d.testCategories : ['base']);
       setDerivedChecks(d.derivedChangeChecks || {});
       setValues(Object.fromEntries(Object.entries(d.formData || {}).map(([k, v]: [string, any]) => [k, v.original || ''])));
-      setComponentItems((d.componentItems || []).map((c: any) => ({
+      const items = (d.componentItems || []).map((c: any) => ({
         id: c.id, listType: c.listType, rowKey: c.rowKey, partName: c.partName || '', modelName: c.modelName || '',
         specText: c.specText || '', material: c.material || '', widthMm: c.widthMm || '', depthMm: c.depthMm || '',
         heightMm: c.heightMm || '', qty: c.qty || '', manufacturer: c.manufacturer || '', remark: c.remark || '',
-      })));
+      }));
+      setComponentItems(items);
       setAttachments(d.attachments || []);
+      // 등기구 부품 리스트(표4)는 서식에 고정된 8개 표준 항목 — 아직 한 번도 생성되지 않은
+      // 새 프로젝트라면 화면에 항목 자체가 안 보여 사용자가 뭘 채워야 할지 알 수 없으므로
+      // 최초 진입 시 자동으로 생성해둔다(값은 비워둔 채, 값은 공급업체가 직접 입력).
+      if (d.project.status !== 'closed' && !items.some((it: ComponentItemUI) => it.listType === 'fixture_part')) {
+        populateFixtureRows();
+      }
     }).catch(() => setNotFound(true)).finally(() => setLoading(false));
   }, [token]);
   useEffect(load, [load]);
@@ -207,7 +223,20 @@ export default function SupplierFormPage() {
     if (r.ok) load();
   };
 
-  /** 일체형 컨버터를 처음 선택했을 때, 자주 쓰는 부품 예시를 자동으로 채워준다 (요청사항).
+  /** 등기구 부품 리스트(표4)는 서식에 고정된 8개 표준 항목(컨버터/LED Package/LED PCB/외함/
+   * 확산커버/렌즈/방열판×2) — 원본 문서 구조상 행을 추가/삭제할 수 없는 고정 표이므로, 프로젝트
+   * 생성 시 화면에 이 8개 행이 항상 보이도록 자동으로 생성해둔다(값은 비워둔 채). */
+  const populateFixtureRows = async () => {
+    for (const row of FIXTURE_PART_FIXED_ROWS) {
+      await fetch(`/api/supplier-form/${token}/components`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listType: 'fixture_part', rowKey: row.rowKey }),
+      });
+    }
+    load();
+  };
+
+  /** 컨버터를 사용하는 경우(외장형/일체형 모두), 자주 쓰는 부품 예시를 자동으로 채워준다 (요청사항).
    * 실제 DB 행으로 생성되므로 필요 없으면 그대로 삭제하거나 값을 수정할 수 있다. */
   const populateConverterExamples = async () => {
     for (const ex of CONVERTER_PART_EXAMPLES) {
@@ -384,7 +413,7 @@ export default function SupplierFormPage() {
               <label key={ct} className={cn('flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 cursor-pointer', converterType === ct && 'border-primary bg-primary/5')}>
                 <input type="radio" name="converterType" disabled={closed} checked={converterType === ct} onChange={() => {
                   setConverterType(ct);
-                  if (ct === 'integrated' && converterRows.length === 0) populateConverterExamples();
+                  if ((ct === 'integrated' || ct === 'has_converter') && converterRows.length === 0) populateConverterExamples();
                 }} />
                 {t(CONVERTER_TYPE_LABELS[ct], lang)}
               </label>
@@ -392,35 +421,36 @@ export default function SupplierFormPage() {
           </div>
         </section>
 
-        {/* 등기구 부품 리스트 */}
+        {/* 등기구 부품 리스트 (표4 — 서식에 고정된 8개 표준 항목, 행 추가/삭제 불가) */}
         <section className="bg-white border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold">{ui.fixtureParts}</h3>
-            <Button size="sm" variant="outline" disabled={closed} onClick={() => addComponent('fixture_part')} className="gap-1 h-7 text-xs"><Plus className="w-3 h-3" />{ui.addRow}</Button>
-          </div>
+          <h3 className="text-sm font-bold mb-1.5">{ui.fixtureParts}</h3>
+          <p className="text-[10px] text-muted-foreground mb-2">💡 {ui.fixtureFixedNote}</p>
           <ComponentTable items={fixtureRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent}
-            rowLabel={(c) => FIXTURE_PART_FIXED_ROWS.find(r => r.rowKey === c.rowKey)?.label[lang] || c.rowKey || ''} />
+            rowLabel={(c) => FIXTURE_PART_FIXED_ROWS.find(r => r.rowKey === c.rowKey)?.label[lang] || c.rowKey || ''} hideRemove />
         </section>
 
-        {/* 컨버터 내부 부품 (일체형만) */}
-        {converterType === 'integrated' && (
+        {/* 컨버터 내부 부품 (컨버터 있음 / 일체형 컨버터 모두 해당) */}
+        {(converterType === 'integrated' || converterType === 'has_converter') && (
           <section className="bg-white border rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold">{ui.converterParts}</h3>
               <Button size="sm" variant="outline" disabled={closed} onClick={() => addComponent('converter_part')} className="gap-1 h-7 text-xs"><Plus className="w-3 h-3" />{ui.addRow}</Button>
             </div>
             <p className="text-[10px] text-muted-foreground mb-2">💡 {ui.exampleAdded}</p>
-            <ComponentTable items={converterRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent} />
+            <ComponentTable items={converterRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent}
+              editablePartName showDimensions={false} />
           </section>
         )}
 
         {/* 복수부품 */}
         <section className="bg-white border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-bold">{ui.multiComponent}</h3>
             <Button size="sm" variant="outline" disabled={closed} onClick={() => addComponent('multi_component')} className="gap-1 h-7 text-xs"><Plus className="w-3 h-3" />{ui.addRow}</Button>
           </div>
-          <ComponentTable items={multiRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent} />
+          <p className="text-[10px] text-muted-foreground mb-2">💡 {ui.multiComponentHint}</p>
+          <ComponentTable items={multiRows} ui={ui} closed={closed} onChange={updateComponent} onBlurSave={persistComponent} onRemove={removeComponent}
+            editablePartName showDimensions={false} />
         </section>
 
         {/* 첨부파일 */}
@@ -490,43 +520,69 @@ export default function SupplierFormPage() {
   );
 }
 
-function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, rowLabel }: {
+function ComponentTable({ items, ui, closed, onChange, onBlurSave, onRemove, rowLabel, hideRemove, editablePartName, showDimensions = true }: {
   items: ComponentItemUI[]; ui: Record<string, string>; closed: boolean;
   onChange: (id: string, patch: Partial<ComponentItemUI>) => void;
   onBlurSave: (item: ComponentItemUI) => void;
   onRemove: (id: string) => void;
   rowLabel?: (item: ComponentItemUI) => string;
+  hideRemove?: boolean;
+  /** 표4(등기구)는 부품명이 서식에 고정되어 rowLabel로 표시하지만, 표5/6(컨버터 내부부품/복수부품)은
+   * 부품명 자체를 사용자가 자유롭게 입력해야 한다(DOCX 생성 시 item.partName이 실제로 사용됨). */
+  editablePartName?: boolean;
+  /** 표5/6은 재질/가로/세로/높이 열이 없다(DOCX에 해당 셀이 없어 입력해도 버려짐) — 숨긴다. */
+  showDimensions?: boolean;
 }) {
   if (items.length === 0) return <p className="text-xs text-muted-foreground">항목이 없습니다.</p>;
+  const showRemoveCol = !closed && !hideRemove;
+  const dimFields = (['material', 'widthMm', 'depthMm', 'heightMm'] as const);
+  const dimHeaderKey: Record<typeof dimFields[number], string> = { material: 'material', widthMm: 'width', depthMm: 'depth', heightMm: 'height' };
+  const otherFields = (['qty', 'manufacturer', 'remark'] as const);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs min-w-[760px]">
         <thead className="bg-muted/50">
           <tr>
             {rowLabel && <th className="text-left px-2 py-1.5">항목</th>}
+            {editablePartName && <th className="text-left px-2 py-1.5">{ui.partNameCol}</th>}
             <th className="text-left px-2 py-1.5">{ui.partName}</th>
             <th className="text-left px-2 py-1.5">{ui.spec}</th>
-            <th className="text-left px-2 py-1.5">{ui.material}</th>
-            <th className="text-left px-2 py-1.5">{ui.width}</th>
-            <th className="text-left px-2 py-1.5">{ui.depth}</th>
-            <th className="text-left px-2 py-1.5">{ui.height}</th>
+            {showDimensions && dimFields.map(f => <th key={f} className="text-left px-2 py-1.5">{ui[dimHeaderKey[f]]}</th>)}
             <th className="text-left px-2 py-1.5">{ui.qty}</th>
             <th className="text-left px-2 py-1.5">{ui.manufacturer}</th>
             <th className="text-left px-2 py-1.5">{ui.remarkCol}</th>
-            {!closed && <th />}
+            {showRemoveCol && <th />}
           </tr>
         </thead>
         <tbody className="divide-y">
           {items.map(item => (
             <tr key={item.id}>
               {rowLabel && <td className="px-2 py-1.5 font-medium whitespace-nowrap">{rowLabel(item)}</td>}
-              {(['modelName', 'specText', 'material', 'widthMm', 'depthMm', 'heightMm', 'qty', 'manufacturer', 'remark'] as const).map(field => (
+              {editablePartName && (
+                <td className="px-1 py-1">
+                  <input disabled={closed} value={item.partName} onChange={e => onChange(item.id, { partName: e.target.value })}
+                    onBlur={() => onBlurSave(item)} className="w-full h-7 rounded border border-input bg-background px-1.5 text-xs" />
+                </td>
+              )}
+              {(['modelName', 'specText'] as const).map(field => (
                 <td key={field} className="px-1 py-1">
                   <input disabled={closed} value={item[field]} onChange={e => onChange(item.id, { [field]: e.target.value })}
                     onBlur={() => onBlurSave(item)} className="w-full h-7 rounded border border-input bg-background px-1.5 text-xs" />
                 </td>
               ))}
-              {!closed && <td className="px-1"><button onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button></td>}
+              {showDimensions && dimFields.map(field => (
+                <td key={field} className="px-1 py-1">
+                  <input disabled={closed} value={item[field]} onChange={e => onChange(item.id, { [field]: e.target.value })}
+                    onBlur={() => onBlurSave(item)} className="w-full h-7 rounded border border-input bg-background px-1.5 text-xs" />
+                </td>
+              ))}
+              {otherFields.map(field => (
+                <td key={field} className="px-1 py-1">
+                  <input disabled={closed} value={item[field]} onChange={e => onChange(item.id, { [field]: e.target.value })}
+                    onBlur={() => onBlurSave(item)} className="w-full h-7 rounded border border-input bg-background px-1.5 text-xs" />
+                </td>
+              ))}
+              {showRemoveCol && <td className="px-1"><button onClick={() => onRemove(item.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button></td>}
             </tr>
           ))}
         </tbody>
