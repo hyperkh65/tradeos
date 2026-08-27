@@ -222,21 +222,73 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   // PO/PI/선적번호/통관번호 통합 연결표 — 발주(PO)에 연결된 PI, 그 PO를 실은 선적, 그 선적의
   // 통관 신고번호까지 한 번에 묶어서, 넷 중 무엇을 입력해도 나머지가 자동으로 채워지게 한다
   // (요청사항: "선적번호와 통관번호로도 등록할 수 있게, 4개를 한번에").
-  const linkChains = useMemo(() => purchaseOrders.map((po: any) => {
-    // linkedPoBusinessId(내부 PO DB 연결로 수동 확정된 값)를 우선으로 찾되, 아직 그렇게 연결
-    // 안 된 선적 건이 대부분이라(패킹리스트 파싱만 된 상태) poBusinessId(원본 파싱값)로도
-    // 한번 더 찾는다 — 안 그러면 선적번호/통관번호 목록이 대부분 비어 보이는 문제가 있었음.
-    const ship = shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.linkedPoBusinessId === po.businessId))
-      || shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.poBusinessId === po.businessId));
-    const imp = ship ? importList.find((i: any) => i.shipmentBusinessId === ship.businessId) : undefined;
-    return {
-      poBusinessId: po.businessId as string, poId: po.id as string, supplierName: po.supplierName as string,
-      piNumber: (po.piNumber || undefined) as string | undefined,
-      shipmentBusinessId: (ship?.businessId || undefined) as string | undefined,
-      declarationNo: (imp?.declarationNo || undefined) as string | undefined,
-      etd: po.etd as string | undefined, orderDate: po.orderDate as string | undefined,
+  // PO를 앵커로 못 찾는(=PO에 연결 안 된) 선적/통관 건도 목록에서 선택할 수 있어야 하므로,
+  // PO/선적/통관 셋을 각각 독립적인 시작점으로 훑어서 합친다 — 예전엔 PO를 기준으로만 순회해서
+  // PO에 연결 안 된 선적번호·통관번호는 드롭다운에 아예 뜨지 않는 문제가 있었음.
+  const linkChains = useMemo(() => {
+    type Chain = {
+      key: string; poBusinessId?: string; poId?: string; supplierName?: string;
+      piNumber?: string; shipmentBusinessId?: string; declarationNo?: string;
+      etd?: string; orderDate?: string;
     };
-  }), [purchaseOrders, shipments, importList]);
+    const chains: Chain[] = [];
+    const usedShipmentIds = new Set<string>();
+
+    for (const po of purchaseOrders) {
+      // linkedPoBusinessId(내부 PO DB 연결로 수동 확정된 값)를 우선으로 찾되, 아직 그렇게 연결
+      // 안 된 선적 건이 대부분이라(패킹리스트 파싱만 된 상태) poBusinessId(원본 파싱값)로도
+      // 한번 더 찾는다.
+      const ship = shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.linkedPoBusinessId === po.businessId))
+        || shipments.find((s: any) => (s.cargoItems || []).some((ci: any) => ci.poBusinessId === po.businessId));
+      const imp = ship ? importList.find((i: any) => i.shipmentBusinessId === ship.businessId) : undefined;
+      if (ship) usedShipmentIds.add(ship.businessId);
+      chains.push({
+        key: `po-${po.id}`,
+        poBusinessId: po.businessId, poId: po.id, supplierName: po.supplierName,
+        piNumber: po.piNumber || undefined,
+        shipmentBusinessId: ship?.businessId || undefined,
+        declarationNo: imp?.declarationNo || undefined,
+        etd: po.etd, orderDate: po.orderDate,
+      });
+    }
+
+    // 위에서 어떤 PO와도 안 걸린 선적 건 — cargoItem 단위로(혼적일 경우 공급사가 다를 수 있음)
+    for (const s of shipments) {
+      if (usedShipmentIds.has(s.businessId)) continue;
+      const imp = importList.find((i: any) => i.shipmentBusinessId === s.businessId);
+      const cargoItems = (s.cargoItems && s.cargoItems.length) ? s.cargoItems : [{} as any];
+      const seen = new Set<string>();
+      for (const ci of cargoItems) {
+        const poBiz = ci.linkedPoBusinessId || ci.poBusinessId || undefined;
+        const dedupeKey = `${poBiz || ''}|${ci.supplierName || ''}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const po = poBiz ? purchaseOrders.find((p: any) => p.businessId === poBiz) : undefined;
+        chains.push({
+          key: `ship-${s.businessId}-${dedupeKey}`,
+          poBusinessId: poBiz, poId: po?.id,
+          supplierName: ci.supplierName || po?.supplierName || undefined,
+          piNumber: po?.piNumber || undefined,
+          shipmentBusinessId: s.businessId,
+          declarationNo: imp?.declarationNo || undefined,
+          etd: s.etd, orderDate: undefined,
+        });
+      }
+    }
+
+    // 선적에도 안 걸린 통관 건(수입통관은 선적을 필수로 선택하게 되어있어 이론상 드묾) — 안전망
+    const usedDeclarations = new Set(chains.map(c => c.declarationNo).filter(Boolean));
+    for (const imp of importList) {
+      if (!imp.declarationNo || usedDeclarations.has(imp.declarationNo)) continue;
+      chains.push({
+        key: `imp-${imp.id}`,
+        shipmentBusinessId: imp.shipmentBusinessId || undefined,
+        declarationNo: imp.declarationNo,
+      });
+    }
+
+    return chains;
+  }, [purchaseOrders, shipments, importList]);
 
   const [form, setForm] = useState({
     saleDate: sale?.saleDate || new Date().toISOString().slice(0, 10),
@@ -487,16 +539,16 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
             <div className="flex-1 min-w-[150px]">
               <label className="text-[10px] text-muted-foreground mb-1 block">
                 내부 발주번호(PO)
-                {batchSupplier && <span className="text-blue-500 ml-1">({linkChains.filter(c => c.supplierName === batchSupplier).length}건)</span>}
+                {batchSupplier && <span className="text-blue-500 ml-1">({linkChains.filter(c => c.poBusinessId && c.supplierName === batchSupplier).length}건)</span>}
               </label>
               <select value={batchPo}
                 onChange={e => selectBatchLink('po', e.target.value, e.currentTarget)}
                 className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
                 <option value="">-- 선택 --</option>
                 {linkChains
-                  .filter(c => !batchSupplier || c.supplierName === batchSupplier)
+                  .filter(c => c.poBusinessId && (!batchSupplier || c.supplierName === batchSupplier))
                   .map(c => (
-                    <option key={c.poId} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                    <option key={c.key} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                       {isRecentPo(c) ? '● ' : ''}{c.poBusinessId} | {c.supplierName} | {c.orderDate}
                     </option>
                   ))}
@@ -511,7 +563,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                 {linkChains
                   .filter(c => c.piNumber && (!batchSupplier || c.supplierName === batchSupplier))
                   .map(c => (
-                    <option key={c.poId} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                    <option key={c.key} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                       {isRecentPo(c) ? '● ' : ''}{c.piNumber} | {c.poBusinessId} | {c.supplierName}
                     </option>
                   ))}
@@ -526,7 +578,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                 {linkChains
                   .filter(c => c.shipmentBusinessId && (!batchSupplier || c.supplierName === batchSupplier))
                   .map(c => (
-                    <option key={c.poId} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                    <option key={c.key} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                       {isRecentPo(c) ? '● ' : ''}{c.shipmentBusinessId} | {c.poBusinessId} | {c.supplierName}
                     </option>
                   ))}
@@ -541,7 +593,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                 {linkChains
                   .filter(c => c.declarationNo && (!batchSupplier || c.supplierName === batchSupplier))
                   .map(c => (
-                    <option key={c.poId} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                    <option key={c.key} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                       {isRecentPo(c) ? '● ' : ''}{c.declarationNo} | {c.shipmentBusinessId} | {c.poBusinessId}
                     </option>
                   ))}
@@ -667,9 +719,9 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground cursor-pointer">
                           <option value="">-- 선택 --</option>
                           {linkChains
-                            .filter(c => !item.supplierName || c.supplierName === item.supplierName)
+                            .filter(c => c.poBusinessId && (!item.supplierName || c.supplierName === item.supplierName))
                             .map(c => (
-                              <option key={c.poId} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                              <option key={c.key} value={c.poBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                                 {isRecentPo(c) ? '● ' : ''}{c.poBusinessId} | {c.supplierName}
                               </option>
                             ))}
@@ -684,7 +736,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           {linkChains
                             .filter(c => c.piNumber && (!item.supplierName || c.supplierName === item.supplierName))
                             .map(c => (
-                              <option key={c.poId} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                              <option key={c.key} value={c.piNumber} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                                 {isRecentPo(c) ? '● ' : ''}{c.piNumber} | {c.poBusinessId}
                               </option>
                             ))}
@@ -699,7 +751,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           {linkChains
                             .filter(c => c.shipmentBusinessId && (!item.supplierName || c.supplierName === item.supplierName))
                             .map(c => (
-                              <option key={c.poId} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                              <option key={c.key} value={c.shipmentBusinessId} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                                 {isRecentPo(c) ? '● ' : ''}{c.shipmentBusinessId} | {c.poBusinessId}
                               </option>
                             ))}
@@ -714,7 +766,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           {linkChains
                             .filter(c => c.declarationNo && (!item.supplierName || c.supplierName === item.supplierName))
                             .map(c => (
-                              <option key={c.poId} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                              <option key={c.key} value={c.declarationNo} style={isRecentPo(c) ? { color: '#dc2626', fontWeight: 700 } : undefined}>
                                 {isRecentPo(c) ? '● ' : ''}{c.declarationNo} | {c.shipmentBusinessId}
                               </option>
                             ))}
@@ -1192,12 +1244,12 @@ function SalePrintModal({ sale, company, companies, onClose }: {
                   <div style={{ whiteSpace: 'pre-line' }}>{company.bank}</div>
                 </div>
               ) : <div style={{ flex: 1 }} />}
-              <div style={{ textAlign: 'center', position: 'relative', minWidth: '160px' }}>
+              <div style={{ textAlign: 'center', position: 'relative', minWidth: '220px' }}>
                 <div style={{ fontSize: '8pt', color: '#888', marginBottom: '8px' }}>{company.name} (인)</div>
                 {company.stampUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={company.stampUrl} alt="stamp" style={{ width: '100px', opacity: 0.8, transform: 'rotate(-5deg)', display: 'block', margin: '0 auto' }} />
-                  : <div style={{ width: '100px', height: '100px', border: '2px dashed #ccc', borderRadius: '50%', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '7.5pt', color: '#aaa' }}>도장</div>}
+                  ? <img src={company.stampUrl} alt="stamp" style={{ width: '180px', opacity: 0.8, transform: 'rotate(-5deg)', display: 'block', margin: '0 auto' }} />
+                  : <div style={{ width: '180px', height: '180px', border: '2px dashed #ccc', borderRadius: '50%', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9pt', color: '#aaa' }}>도장</div>}
               </div>
             </div>
           </div>
