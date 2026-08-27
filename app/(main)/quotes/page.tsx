@@ -292,8 +292,9 @@ function QuoteModal({
   const savingRef = useRef(false);
   const [specMode, setSpecMode] = useState<Record<number, 'auto' | 'manual'>>({});
 
+  const companySearchQ = companySearch.toLowerCase();
   const filteredCompanies = companies.filter(c =>
-    c.name.includes(companySearch) || (c.nameEn ?? '').toLowerCase().includes(companySearch.toLowerCase())
+    c.name.toLowerCase().includes(companySearchQ) || (c.nameEn ?? '').toLowerCase().includes(companySearchQ)
   ).slice(0, 8);
 
   useEffect(() => {

@@ -301,8 +301,9 @@ function SupplierInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
 
+  const q = value.toLowerCase();
   const filtered = companies.filter(c =>
-    !value || c.name?.includes(value) || (c.nameEn ?? '').includes(value)
+    !q || c.name?.toLowerCase().includes(q) || (c.nameEn ?? '').toLowerCase().includes(q)
   ).slice(0, 10);
 
   const openDrop = () => {
