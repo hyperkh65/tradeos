@@ -142,8 +142,9 @@ export async function generateSupplierFormDocx(input: GenerateDocxInput): Promis
   // 표4: 등기구 부품 리스트 (고정 8행 전부 재기입 — 미입력 행은 공란으로 초기화)
   xml = fillFixtureParts(xml, input.componentItems.filter(c => c.listType === 'fixture_part'));
 
-  // 표5: 컨버터 내부 부품 (일체형일 때만 실제 값, 아니면 전부 공란 처리)
-  const converterItems = input.converterType === 'integrated' ? input.componentItems.filter(c => c.listType === 'converter_part') : [];
+  // 표5: 컨버터 내부 부품 (컨버터 있음/일체형일 때만 실제 값, 아니면 전부 공란 처리)
+  const converterItems = (input.converterType === 'integrated' || input.converterType === 'has_converter')
+    ? input.componentItems.filter(c => c.listType === 'converter_part') : [];
   xml = fillRepeatableList(xml, CONVERTER_PART_TABLE_DOCX.table, converterItems, { firstDataRow: CONVERTER_PART_TABLE_DOCX.firstDataRow, templateRowCount: 8 });
 
   // 표6: 복수부품
