@@ -41,6 +41,9 @@ function isRecentPo(po: { etd?: string; orderDate?: string }, months = 2) {
 interface SalesItem {
   id: string; product: string; specification: string;
   qty: number; unitPrice: number; amount: number; remark: string;
+  /** 단가에 적용할 환율(아이템별로 다를 수 있음 — PO/입고 시점마다 환율이 다르기 때문).
+   * 환원단가(unitPrice×exRate) × 수량 = 금액. 환율이 1이면 단가=환원단가(원화 그대로). */
+  exRate?: number;
   supplierName?: string; poId?: string; poBusinessId?: string; piNumber?: string;
   shipmentBusinessId?: string; declarationNo?: string;
   inventoryDeducted?: boolean;
@@ -62,7 +65,7 @@ interface CompanySettings { name: string; ceo: string; bizNo: string; bizType: s
 
 const emptyItem = (): SalesItem => ({
   id: Date.now().toString() + Math.random(),
-  product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '',
+  product: '', specification: '', qty: 1, unitPrice: 0, amount: 0, remark: '', exRate: 1,
   supplierName: '', poId: '', poBusinessId: '', piNumber: '', shipmentBusinessId: '', declarationNo: '',
   inventoryDeducted: false,
 });
@@ -245,16 +248,23 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
     exchangeRate: String(sale?.exchangeRate ?? 1),
     misc: sale?.misc || '',
     items: sale?.items?.length
-      ? sale.items.map((i, idx) => ({
-          ...i, id: String(idx), remark: (i as any).remark || '',
-          supplierName: (i as any).supplierName || sale.supplierName || '',
-          poId: (i as any).poId || sale.poId || '',
-          poBusinessId: (i as any).poBusinessId || sale.poBusinessId || '',
-          piNumber: (i as any).piNumber || sale.piNumber || '',
-          shipmentBusinessId: (i as any).shipmentBusinessId || '',
-          declarationNo: (i as any).declarationNo || '',
-          inventoryDeducted: (i as any).inventoryDeducted ?? false,
-        }))
+      ? sale.items.map((i, idx) => {
+          // 옛날에 저장된 매출(아이템별 exRate 없이 전체 환율만 있던 시절)을 열어도 숫자가
+          // 안 틀어지도록, 아이템에 저장된 값이 없으면 그 매출 건의 전체 환율로 채운다.
+          // amount도 옛 방식(qty×unitPrice, 미환산)으로 저장돼 있었을 수 있어 새 공식으로 재계산.
+          const exRate = (i as any).exRate ?? sale.exchangeRate ?? 1;
+          return {
+            ...i, id: String(idx), remark: (i as any).remark || '', exRate,
+            amount: (i.qty || 0) * (i.unitPrice || 0) * exRate,
+            supplierName: (i as any).supplierName || sale.supplierName || '',
+            poId: (i as any).poId || sale.poId || '',
+            poBusinessId: (i as any).poBusinessId || sale.poBusinessId || '',
+            piNumber: (i as any).piNumber || sale.piNumber || '',
+            shipmentBusinessId: (i as any).shipmentBusinessId || '',
+            declarationNo: (i as any).declarationNo || '',
+            inventoryDeducted: (i as any).inventoryDeducted ?? false,
+          };
+        })
       : [emptyItem()],
   });
 
@@ -310,10 +320,14 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
     // PO/PI/선적번호/통관번호 중 무엇으로 골랐든 연결된 PO의 실제 품목이 있으면 그대로
     // 매출 품목 리스트에 가져와 채운다(요청사항: "모두 적용 누르면 제품 리스트가 아래 나와야해").
     if (poItems.length > 0) {
+      // PO 품목의 단가는 PO 통화(대개 CNY) 그대로이므로, 이 매출 건의 환율을 기본값으로 채워서
+      // 환원단가(=단가×환율)와 금액이 처음부터 원화로 정확히 계산되게 한다(요청사항).
+      const defaultExRate = Number(form.exchangeRate) || 1;
       const imported: SalesItem[] = poItems.map((pi: any, i: number) => ({
         id: Date.now().toString() + i,
         product: pi.productName || '', specification: pi.specification || '',
-        qty: pi.qty || 1, unitPrice: pi.unitPrice || 0, amount: (pi.qty || 1) * (pi.unitPrice || 0),
+        qty: pi.qty || 1, unitPrice: pi.unitPrice || 0, exRate: defaultExRate,
+        amount: (pi.qty || 1) * (pi.unitPrice || 0) * defaultExRate,
         remark: '', supplierName: batchSupplier, poId: po?.id || '', poBusinessId: batchPo,
         piNumber: po?.piNumber || batchPi, shipmentBusinessId: batchShipment, declarationNo: batchDeclaration,
         inventoryDeducted: false,
@@ -356,7 +370,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   const updateItem = (idx: number, field: string, val: string | number | boolean) => {
     const items = [...form.items];
     (items[idx] as any)[field] = val;
-    if (field === 'qty' || field === 'unitPrice') items[idx].amount = items[idx].qty * items[idx].unitPrice;
+    // 금액 = 수량 × 단가 × 환율(환원단가). 환율이 1이면 단가 = 환원단가(요청사항).
+    if (field === 'qty' || field === 'unitPrice' || field === 'exRate') {
+      items[idx].amount = items[idx].qty * items[idx].unitPrice * (items[idx].exRate || 1);
+    }
     setForm(f => ({ ...f, items }));
   };
 
@@ -379,8 +396,11 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   };
 
   const rate = Number(form.exchangeRate) || 1;
+  // item.amount는 이제 아이템별 환율이 이미 반영된 원화 금액이라(수량×단가×환율),
+  // 여기서 전체 환율을 한 번 더 곱하지 않는다 — 예전에는 이 합계에만 환율을 곱해서
+  // 품목별 단가/금액은 외화 그대로 보이고 합계만 원화로 튀는 문제가 있었다.
   const netAmount = form.items.reduce((s, i) => s + i.amount, 0);
-  const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
+  const netKRW = netAmount;
   const vat = Math.round(netKRW * 0.1);
   const deductedItems = form.items.filter(i => i.inventoryDeducted).length;
 
@@ -534,16 +554,18 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
 
           {/* Items table */}
           <div className="border rounded-lg overflow-x-auto">
-            <table className="w-full text-xs min-w-[1550px]">
+            <table className="w-full text-xs min-w-[1730px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-2 py-2 text-left font-medium w-[180px]">품목명</th>
                   <th className="px-2 py-2 text-left font-medium w-[110px]">규격</th>
                   <th className="px-2 py-2 text-right font-medium w-14">수량</th>
-                  <th className="px-2 py-2 text-right font-medium w-32">
+                  <th className="px-2 py-2 text-right font-medium w-28">
                     단가 <span className="text-[9px] text-blue-500 font-normal">(최근↓ 클릭적용)</span>
                   </th>
-                  <th className="px-2 py-2 text-right font-medium w-24">금액</th>
+                  <th className="px-2 py-2 text-right font-medium w-20">환율</th>
+                  <th className="px-2 py-2 text-right font-medium w-24">환원단가</th>
+                  <th className="px-2 py-2 text-right font-medium w-24">금액(KRW)</th>
                   <th className="px-2 py-2 text-left font-medium w-[90px]">비고</th>
                   <th className="px-2 py-2 text-left font-medium w-[140px]">
                     공급사 <span className="text-[9px] font-normal text-muted-foreground">(아이템별)</span>
@@ -580,7 +602,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                               const items = [...form.items];
                               items[idx].product = name;
                               if (!items[idx].specification && spec) items[idx].specification = spec;
-                              if (items[idx].unitPrice === 0 && price > 0) { items[idx].unitPrice = price; items[idx].amount = items[idx].qty * price; }
+                              if (items[idx].unitPrice === 0 && price > 0) { items[idx].unitPrice = price; items[idx].amount = items[idx].qty * price * (items[idx].exRate || 1); }
                               setForm(f => ({ ...f, items }));
                             }} />
                         </div>
@@ -611,7 +633,16 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
                           </div>
                         )}
                       </td>
-                      <td className="px-2 py-1 text-right font-medium">{item.amount.toLocaleString()}</td>
+                      {/* 환율 (아이템별) — 1이면 단가=환원단가 */}
+                      <td className="px-1 py-1">
+                        <input type="number" step="0.0001" min="0.0001" className="w-full bg-transparent border-none outline-none text-xs text-right"
+                          value={item.exRate ?? 1} onChange={e => updateItem(idx, 'exRate', Number(e.target.value) || 1)} />
+                      </td>
+                      {/* 환원단가 = 단가 × 환율 (계산값, 읽기전용) */}
+                      <td className="px-2 py-1 text-right text-muted-foreground">
+                        {((item.unitPrice || 0) * (item.exRate || 1)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-2 py-1 text-right font-medium">{item.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                       <td className="px-1 py-1">
                         <input className="w-full bg-transparent border-none outline-none text-xs"
                           value={item.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} placeholder="비고" />
@@ -725,11 +756,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
             <div className="space-y-1 text-sm w-72">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">공급가액</span>
-                <span>
-                  {netAmount.toLocaleString()}
-                  {rate !== 1 && <span className="text-muted-foreground text-xs"> × {rate} = {netKRW.toLocaleString()}원</span>}
-                  {rate === 1 && '원'}
-                </span>
+                <span>{netAmount.toLocaleString()}원</span>
               </div>
               <div className="flex justify-between"><span className="text-muted-foreground">부가세 (10%)</span><span>{vat.toLocaleString()}원</span></div>
               <div className="flex justify-between font-bold text-base border-t pt-1"><span>합계</span><span>{(netKRW + vat).toLocaleString()}원</span></div>
@@ -812,10 +839,16 @@ function CustomStatementModal({ sale, companies, onClose }: { sale: SalesRecord;
         } else {
           setCustomer(c2 => ({ ...c2, name: sale.customer }));
         }
-        setItems(sale.items.length ? sale.items.map(i => ({
-          id: i.id, productName: i.product, specification: i.specification, unit: 'EA',
-          qty: i.qty, unitPrice: i.unitPrice, amount: i.amount, remark: i.remark || '', vatIncluded: false,
-        })) : [emptyStatementItem()]);
+        setItems(sale.items.length ? sale.items.map(i => {
+          // 아이템별 환율(없으면 매출 건 전체 환율)로 환산한 원화 단가/금액을 씀 — 그렇지 않으면
+          // 정산서에 외화 단가가 그대로 찍혀 나온다(요청사항: 매출단가는 원화로 나와야 함).
+          const exRate = (i as any).exRate ?? (sale.exchangeRate || 1);
+          const priceKrw = (i.unitPrice || 0) * exRate;
+          return {
+            id: i.id, productName: i.product, specification: i.specification, unit: 'EA',
+            qty: i.qty, unitPrice: priceKrw, amount: i.qty * priceKrw, remark: i.remark || '', vatIncluded: false,
+          };
+        }) : [emptyStatementItem()]);
       }
     }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -995,10 +1028,16 @@ function cnStatement(mismatch: boolean) {
 function SalePrintModal({ sale, company, companies, onClose }: {
   sale: SalesRecord; company: CompanySettings; companies: Company[]; onClose: () => void;
 }) {
-  const items = sale.items || [];
   const rate = Number(sale.exchangeRate) || 1;
-  const netAmount = items.reduce((s, i) => s + i.amount, 0);
-  const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
+  // 아이템에 저장된 exRate를 우선 쓰고, 없으면(예전 매출 건) 전체 환율로 대신 계산 —
+  // 화면에서 보이는 단가/금액이 항상 원화 환산값이 되도록(요청사항).
+  const items = (sale.items || []).map(i => {
+    const exRate = (i as any).exRate ?? rate;
+    const priceKrw = (i.unitPrice || 0) * exRate;
+    return { ...i, priceKrw, amountKrw: (i.qty || 0) * priceKrw };
+  });
+  const netAmount = items.reduce((s, i) => s + i.amountKrw, 0);
+  const netKRW = netAmount;
   const vat = sale.vat ?? Math.round(netKRW * 0.1);
   const total = sale.totalAmount ?? netKRW + vat;
   const customerCo = companies.find(c => c.name === sale.customer);
@@ -1100,8 +1139,8 @@ function SalePrintModal({ sale, company, companies, onClose }: {
                       {item.specification && <div style={{ fontSize: '7.5pt', color: '#666', marginTop: '1px' }}>{item.specification}</div>}
                     </td>
                     <td style={{ ...td, textAlign: 'right' }}>{item.qty.toLocaleString()}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>{item.unitPrice.toLocaleString()}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>{item.amount.toLocaleString()}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{item.priceKrw.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>{item.amountKrw.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     <td style={{ ...td, color: '#555', fontSize: '7.5pt' }}>{(item as any).remark || ''}</td>
                   </tr>
                 ))}
@@ -1250,7 +1289,9 @@ function CRMPageInner() {
     return dateOk && searchOk;
   });
 
-  const totalNet = filtered.reduce((s, r) => s + r.netAmount, 0);
+  // r.totalAmount-r.vat는 신규/기존 매출 건 모두 항상 정확한 원화 공급가액(예전 매출의
+  // netAmount는 환율 미반영 원본값일 수 있음 — 요청사항으로 신규 저장분부터 수정됨).
+  const totalNet = filtered.reduce((s, r) => s + (r.totalAmount - r.vat), 0);
   const totalVat = filtered.reduce((s, r) => s + r.vat, 0);
   const totalDeposited = filtered.reduce((s, r) => s + (r.totalDeposited ?? 0), 0);
   const totalUndeposited = filtered.reduce((s, r) => s + Math.max(0, r.depositRemaining ?? r.totalAmount), 0);
@@ -1326,7 +1367,7 @@ function CRMPageInner() {
                           {DEPOSIT_STATUS_LABEL[s.depositStatus || 'unpaid']}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{s.netAmount.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{(s.totalAmount - s.vat).toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-muted-foreground hidden lg:table-cell whitespace-nowrap">{s.vat.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right font-bold whitespace-nowrap">{s.totalAmount.toLocaleString()}</td>
                       <td className="px-3 py-3">

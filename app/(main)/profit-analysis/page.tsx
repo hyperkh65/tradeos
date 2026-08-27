@@ -76,6 +76,7 @@ interface SaleRecord {
   businessId: string;
   customer: string;
   netAmount: number;
+  vat?: number;
   totalAmount: number;
   currency: string;
   saleDate?: string;
@@ -292,7 +293,7 @@ export default function ProfitAnalysisPage() {
       ...f,
       saleId: s.id,
       saleBusinessId: s.businessId,
-      saleAmount: s.netAmount || 0,
+      saleAmount: (s.totalAmount - (s.vat || 0)) || s.netAmount || 0,
       saleCurrency: s.currency || 'KRW',
       customerName: s.customer || f.customerName,
       title: f.title || `${s.customer} 수익분석`,
@@ -937,7 +938,10 @@ export default function ProfitAnalysisPage() {
                         <div className="text-[10px] text-muted-foreground">{s.businessId} · {s.saleDate || ''}{s.poNo ? ` · PO: ${s.poNo}` : ''}</div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-xs font-semibold text-blue-600">{fmt(s.netAmount)} {s.currency}</div>
+                        {/* s.netAmount는 예전 매출 건에서 환율 미반영 원본값일 수 있어(요청사항으로
+                            수정됨), totalAmount-vat로 계산 — 이 두 값은 신규/기존 매출 모두 항상
+                            원화로 정확히 저장돼 있다. */}
+                        <div className="text-xs font-semibold text-blue-600">{fmt(s.totalAmount - (s.vat || 0))} {s.currency}</div>
                         <div className="text-[10px] text-muted-foreground">VAT제외</div>
                       </div>
                     </div>
