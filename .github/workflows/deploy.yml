@@ -95,7 +95,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 1m
+          command_timeout: 5m
           script: |
             DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
             mkdir -p /volume1/web/tradeos/data/qdrant
