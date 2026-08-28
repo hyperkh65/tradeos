@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionExpenses, createNotionExpense } from '@/lib/notion/mapper';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import type { Expense } from '@/types';
 
 function dbToExpense(row: Record<string, unknown>): Expense {
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     await createNotionExpense(expense).catch(() => null);
 
     syncExpenseToDb(db, expense, ts);
+    syncIndexOnWrite('expense', id);
     return NextResponse.json({ data: expense }, { status: 201 });
   } catch {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });

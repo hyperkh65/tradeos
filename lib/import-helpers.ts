@@ -1,4 +1,5 @@
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -94,6 +95,11 @@ export function syncImportExpenses(
   const ts = now();
   const incurredDate = fields.incurredDate || ts.slice(0, 10);
 
+  const oldExpenseIds = (db.prepare(
+    "SELECT id FROM expenses WHERE related_type='import' AND related_id=?"
+  ).all(importId) as { id: string }[]).map(r => r.id);
+  const newExpenseIds: string[] = [];
+
   const sync = db.transaction(() => {
     // 기존 expenses/cost_records 삭제 후 재삽입 (atomic)
     db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
@@ -108,6 +114,7 @@ export function syncImportExpenses(
         (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
+      newExpenseIds.push(expId);
 
       const crId = newId();
       const crBizId = nextBizId('CST');
@@ -132,6 +139,9 @@ export function syncImportExpenses(
     }
   });
   sync();
+
+  for (const oldId of oldExpenseIds) syncIndexOnDelete('expense', oldId);
+  for (const eid of newExpenseIds) syncIndexOnWrite('expense', eid);
 }
 
 export function updateLinkedShipmentStatus(db: Db, shipmentId: string | undefined, importStatus: string) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { updateNotionQuote, deleteNotionQuote } from '@/lib/notion/mapper';
 import { dbToQuote } from '../route';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -60,6 +61,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }).catch(() => {});
 
     const updated = db.prepare('SELECT * FROM quotes WHERE id=?').get(id) as Record<string, unknown>;
+    syncIndexOnWrite('quote', id);
     return NextResponse.json({ data: dbToQuote(updated) });
   } catch {
     return NextResponse.json({ error: '수정 실패' }, { status: 500 });
@@ -75,6 +77,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       deleteNotionQuote(row.business_id).catch(() => {});
     }
     db.prepare('DELETE FROM quotes WHERE id=?').run(id);
+    syncIndexOnDelete('quote', id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

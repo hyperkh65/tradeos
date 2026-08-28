@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { dbToShipment } from '../route';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,6 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       );
 
     const updated = db.prepare('SELECT * FROM shipments WHERE id=?').get(id) as Record<string, unknown>;
+    syncIndexOnWrite('shipment', id);
     return NextResponse.json({ data: dbToShipment(updated) });
   } catch (e) {
     console.error('[shipments PUT]', e);
@@ -57,6 +59,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const db = getDb();
     // 소프트 삭제: Notion 싱크가 다시 살리지 못하도록 local_deleted=1 마킹
     db.prepare('UPDATE shipments SET local_deleted=1, updated_at=? WHERE id=?').run(now(), id);
+    syncIndexOnDelete('shipment', id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

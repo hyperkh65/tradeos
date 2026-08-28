@@ -55,7 +55,11 @@ interface IndexStatus {
   recentFailed: { sourceType: string; sourceId: string; title: string | null; error: string | null; updatedAt: string }[];
   qdrant: { configured: boolean; connected: boolean; pointsCount: number; vectorSize: number | null; error?: string };
 }
-const SOURCE_TYPE_LABELS: Record<string, string> = { product: '제품', inspection: '검품', claim: '클레임', attachment: '첨부파일' };
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  product: '제품', inspection: '검품', claim: '클레임', attachment: '첨부파일',
+  quote: '견적', sale: '매출', purchaseorder: '발주', shipment: '선적',
+  import: '수입통관', expense: '비용', commission: '커미션',
+};
 const PROMPT_LABELS: Record<string, string> = {
   base: '기본 시스템 프롬프트', rag_answer: '자료 검색 답변 프롬프트',
   draft_writing: '초안 작성 프롬프트', tool_selection: '도구 선택 프롬프트',
@@ -432,7 +436,7 @@ export default function AISettingsPage() {
               {indexEstimate && (
                 <div className="border border-border rounded-lg p-4 space-y-3">
                   <div className="font-medium text-sm">인덱싱 대상 현황</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 text-sm">
                     {Object.entries(indexEstimate.bySourceType).map(([type, count]) => (
                       <div key={type} className="border border-border rounded-md p-2 text-center">
                         <div className="text-xs text-muted-foreground">{SOURCE_TYPE_LABELS[type] || type}</div>
@@ -457,10 +461,10 @@ export default function AISettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    현재는 제품/검품/클레임 데이터와 검품·클레임에 첨부된 리포트 파일(PDF/DOCX/XLSX/TXT/CSV)을 대상으로 합니다.
+                    제품/검품/클레임/견적/매출/발주/선적/수입통관/비용/커미션 데이터와 검품·클레임에 첨부된 리포트 파일(PDF/DOCX/XLSX/TXT/CSV)을 대상으로 합니다.
                     사진 등 이미지 첨부파일은 문자 인식(OCR)이 필요해 이번 범위에서는 제외했습니다.
                     변경되지 않은 문서는 자동으로 건너뛰어 불필요한 재임베딩을 하지 않습니다.
-                    제품/검품/클레임을 저장·삭제하면 자동으로 이 목록에 반영됩니다(백그라운드에서 10초 주기로 처리).
+                    각 데이터를 저장·삭제하면 자동으로 이 목록에 반영됩니다(백그라운드에서 10초 주기로 처리).
                   </p>
                 </div>
               )}

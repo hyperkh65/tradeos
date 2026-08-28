@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { updateNotionPurchaseOrder, deleteNotionPurchaseOrder } from '@/lib/notion/mapper';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -55,6 +56,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       createdAt: row.created_at as string, updatedAt: ts,
     }).catch(e => console.error('[PO] Notion update error:', e));
 
+    syncIndexOnWrite('purchaseorder', id);
     return NextResponse.json({ data: { ...row, ...body, totalAmount: total, updatedAt: ts } });
   } catch (e) {
     return NextResponse.json({ error: '수정 실패' }, { status: 500 });
@@ -72,6 +74,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
 
     db.prepare('DELETE FROM purchase_orders WHERE id=?').run(id);
+    syncIndexOnDelete('purchaseorder', id);
     return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

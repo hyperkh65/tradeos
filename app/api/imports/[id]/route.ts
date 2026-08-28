@@ -3,6 +3,7 @@ import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { dbToImport } from '../route';
 import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -116,6 +117,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       console.error('[imports PUT] expenses sync failed (non-fatal):', syncErr instanceof Error ? syncErr.message : syncErr);
     }
 
+    syncIndexOnWrite('import', id);
     return NextResponse.json({ data: dbToImport(updated) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -130,7 +132,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const db = getDb();
     db.prepare('UPDATE imports SET local_deleted=1, updated_at=? WHERE id=?').run(now(), id);
     // 연동 비용도 함께 삭제
+    const relatedExpenseIds = (db.prepare(
+      "SELECT id FROM expenses WHERE related_type='import' AND related_id=?"
+    ).all(id) as { id: string }[]).map(r => r.id);
     db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(id);
+    syncIndexOnDelete('import', id);
+    for (const eid of relatedExpenseIds) syncIndexOnDelete('expense', eid);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

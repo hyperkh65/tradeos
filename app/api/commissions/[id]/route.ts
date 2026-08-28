@@ -3,6 +3,7 @@ import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { updateNotionCommission, deleteNotionCommission } from '@/lib/notion/mapper';
 import { dbToCommission } from '../route';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -47,6 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const updated = db.prepare('SELECT * FROM commissions WHERE id=?').get(id) as Record<string, unknown>;
+  syncIndexOnWrite('commission', id);
   return NextResponse.json({ data: dbToCommission(updated) });
 }
 
@@ -61,5 +63,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   db.prepare('DELETE FROM commissions WHERE id=?').run(id);
   deleteNotionCommission(row.business_id as string).catch(() => {});
+  syncIndexOnDelete('commission', id);
   return NextResponse.json({ success: true });
 }

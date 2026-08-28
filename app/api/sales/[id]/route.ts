@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getNotionClient, isDemoMode } from '@/lib/notion/client';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 async function syncSaleToNotion(bizId: string, items: any[], body: any) {
   const salesDbId = process.env.NOTION_DB_SALES || '';
@@ -64,6 +65,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Sync to Notion
   const row = db.prepare('SELECT business_id FROM sales WHERE id=?').get(id) as { business_id: string } | undefined;
   if (row?.business_id) syncSaleToNotion(row.business_id, items, body).catch(() => {});
+  syncIndexOnWrite('sale', id);
   return NextResponse.json({ ok: true });
 }
 
@@ -73,5 +75,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const row = db.prepare('SELECT business_id FROM sales WHERE id=?').get(id) as { business_id: string } | undefined;
   db.prepare('DELETE FROM sales WHERE id=?').run(id);
   if (row?.business_id) archiveSaleFromNotion(row.business_id).catch(() => {});
+  syncIndexOnDelete('sale', id);
   return NextResponse.json({ ok: true });
 }

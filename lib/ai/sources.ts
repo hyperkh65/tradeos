@@ -10,9 +10,13 @@ import { extractFileText, EXTRACTABLE_EXTENSIONS } from './file-extract';
  * 대상에서 의도적으로 제외한다(텍스트 PDF에는 OCR을 쓰지 않는다는 원칙과 별개로,
  * 사진 첨부파일 자체의 텍스트화는 범위 밖).
  */
-export type IndexableSourceType = 'product' | 'inspection' | 'claim' | 'attachment';
+export type IndexableSourceType = 'product' | 'inspection' | 'claim' | 'attachment'
+  | 'quote' | 'sale' | 'purchaseorder' | 'shipment' | 'import' | 'expense' | 'commission';
 
-export const INDEXABLE_SOURCE_TYPES: IndexableSourceType[] = ['product', 'inspection', 'claim', 'attachment'];
+export const INDEXABLE_SOURCE_TYPES: IndexableSourceType[] = [
+  'product', 'inspection', 'claim', 'attachment',
+  'quote', 'sale', 'purchaseorder', 'shipment', 'import', 'expense', 'commission',
+];
 
 type AttachmentParentType = 'inspection' | 'claim';
 
@@ -169,18 +173,118 @@ function buildClaimDocument(id: string): SourceDocument | null {
   };
 }
 
+function buildQuoteDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const q = db.prepare(`SELECT * FROM quotes WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!q) return null;
+  const lines = [
+    `견적번호: ${q.business_id}`, `유형: ${q.type === 'customer' ? '판매견적' : '구매견적'}`,
+    `거래처: ${q.company_name}`, q.incoterm ? `인코텀즈: ${q.incoterm}` : '',
+    q.payment_terms ? `결제조건: ${q.payment_terms}` : '', q.validity ? `유효기간: ${q.validity}` : '',
+    `통화: ${q.currency}`, `상태: ${q.status}`, q.remark ? `비고: ${q.remark}` : '',
+  ].filter(Boolean);
+  return { title: `견적 - ${q.company_name} (${q.business_id})`, text: lines.join('\n'), sourceUpdatedAt: q.created_at as string, businessId: q.business_id as string };
+}
+
+function buildSaleDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const s = db.prepare(`SELECT * FROM sales WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!s) return null;
+  const lines = [
+    `매출번호: ${s.business_id}`, `매출일: ${s.sale_date}`, `고객사: ${s.customer}`, `매출유형: ${s.sale_type}`,
+    s.salesperson ? `담당자: ${s.salesperson}` : '', s.po_no ? `발주번호: ${s.po_no}` : '',
+    `공급가: ${s.net_amount} ${s.currency}, 부가세: ${s.vat}, 합계: ${s.total_amount} ${s.currency}`,
+  ].filter(Boolean);
+  return { title: `매출 - ${s.customer} (${s.business_id})`, text: lines.join('\n'), sourceUpdatedAt: s.created_at as string, businessId: s.business_id as string };
+}
+
+function buildPurchaseOrderDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const po = db.prepare(`SELECT * FROM purchase_orders WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!po) return null;
+  const lines = [
+    `발주번호: ${po.business_id}`, `공급업체: ${po.supplier_name}`, `발주일: ${po.order_date}`,
+    po.production_due_date ? `생산완료예정일: ${po.production_due_date}` : '', po.etd ? `출항예정일: ${po.etd}` : '',
+    `금액: ${po.total_amount} ${po.currency}`, po.payment_terms ? `결제조건: ${po.payment_terms}` : '',
+    po.incoterm ? `인코텀즈: ${po.incoterm}` : '', `상태: ${po.status}`, po.remark ? `비고: ${po.remark}` : '',
+  ].filter(Boolean);
+  return { title: `발주 - ${po.supplier_name} (${po.business_id})`, text: lines.join('\n'), sourceUpdatedAt: (po.updated_at as string) || (po.created_at as string), businessId: po.business_id as string };
+}
+
+function buildShipmentDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const s = db.prepare(`SELECT * FROM shipments WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!s || s.local_deleted) return null;
+  const lines = [
+    `선적번호: ${s.business_id}`, `구분: ${s.type}`, s.forwarder_name ? `포워더: ${s.forwarder_name}` : '',
+    s.pol ? `출발항: ${s.pol}` : '', s.pod ? `도착항: ${s.pod}` : '', s.etd ? `출항일: ${s.etd}` : '', s.eta ? `도착예정일: ${s.eta}` : '',
+    s.bl_no ? `B/L번호: ${s.bl_no}` : '', s.vessel ? `선박명: ${s.vessel}` : '', `상태: ${s.status}`,
+  ].filter(Boolean);
+  return { title: `선적 - ${s.business_id}`, text: lines.join('\n'), sourceUpdatedAt: (s.updated_at as string) || (s.created_at as string), businessId: s.business_id as string };
+}
+
+function buildImportDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const i = db.prepare(`SELECT * FROM imports WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!i || i.local_deleted) return null;
+  const lines = [
+    `수입통관번호: ${i.business_id}`, `선적번호: ${i.shipment_business_id}`, i.broker_name ? `관세사: ${i.broker_name}` : '',
+    i.declaration_no ? `신고번호: ${i.declaration_no}` : '', i.release_date ? `반출일: ${i.release_date}` : '',
+    i.hs_code ? `HS코드: ${i.hs_code}` : '', i.duty != null ? `관세: ${i.duty}` : '', i.vat != null ? `부가세: ${i.vat}` : '',
+    i.broker_fee != null ? `통관수수료: ${i.broker_fee}` : '', `상태: ${i.status}`,
+  ].filter(Boolean);
+  return { title: `수입통관 - ${i.business_id}`, text: lines.join('\n'), sourceUpdatedAt: i.created_at as string, businessId: i.business_id as string };
+}
+
+function buildExpenseDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const e = db.prepare(`SELECT * FROM expenses WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!e) return null;
+  const lines = [
+    `비용번호: ${e.business_id}`, `분류: ${e.category}`, `내용: ${e.description}`,
+    `금액: ${e.amount} ${e.currency}`, e.amount_krw ? `원화환산: ${e.amount_krw}원` : '',
+    e.related_name ? `관련: ${e.related_name}` : '', e.paid_date ? `지급일: ${e.paid_date}` : '', `상태: ${e.status}`,
+  ].filter(Boolean);
+  return { title: `비용 - ${e.category} (${e.business_id})`, text: lines.join('\n'), sourceUpdatedAt: e.created_at as string, businessId: e.business_id as string };
+}
+
+function buildCommissionDocument(id: string): SourceDocument | null {
+  const db = getDb();
+  const c = db.prepare(`SELECT * FROM commissions WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  if (!c) return null;
+  const lines = [
+    `커미션번호: ${c.business_id}`, `해외거래처: ${c.foreign_company}`, `일자: ${c.date}`,
+    `금액: ${c.amount} ${c.currency}`, c.amount_krw ? `원화환산: ${c.amount_krw}원` : '',
+    c.memo ? `메모: ${c.memo}` : '', `상태: ${c.status}`,
+  ].filter(Boolean);
+  return { title: `커미션 - ${c.foreign_company} (${c.business_id})`, text: lines.join('\n'), sourceUpdatedAt: (c.updated_at as string) || (c.created_at as string), businessId: c.business_id as string };
+}
+
 export async function buildSourceDocument(sourceType: IndexableSourceType, sourceId: string): Promise<SourceDocument | null> {
   switch (sourceType) {
     case 'product': return buildProductDocument(sourceId);
     case 'inspection': return buildInspectionDocument(sourceId);
     case 'claim': return buildClaimDocument(sourceId);
     case 'attachment': return buildAttachmentDocument(sourceId);
+    case 'quote': return buildQuoteDocument(sourceId);
+    case 'sale': return buildSaleDocument(sourceId);
+    case 'purchaseorder': return buildPurchaseOrderDocument(sourceId);
+    case 'shipment': return buildShipmentDocument(sourceId);
+    case 'import': return buildImportDocument(sourceId);
+    case 'expense': return buildExpenseDocument(sourceId);
+    case 'commission': return buildCommissionDocument(sourceId);
   }
 }
 
 const TABLE_BY_TYPE: Record<Exclude<IndexableSourceType, 'attachment'>, string> = {
   product: 'products', inspection: 'inspections', claim: 'claims',
+  quote: 'quotes', sale: 'sales', purchaseorder: 'purchase_orders', shipment: 'shipments',
+  import: 'imports', expense: 'expenses', commission: 'commissions',
 };
+
+/** shipments/imports는 소프트 삭제(local_deleted)를 쓴다 — 삭제된 행이 재인덱싱 대상
+ * 목록이나 문서 빌더에 다시 걸리지 않도록 이 두 타입만 별도로 걸러낸다. */
+const SOFT_DELETE_TYPES = new Set<IndexableSourceType>(['shipment', 'import']);
 
 export function listAllSourceIds(sourceType: IndexableSourceType): string[] {
   const db = getDb();
@@ -193,7 +297,9 @@ export function listAllSourceIds(sourceType: IndexableSourceType): string[] {
     }
     return ids;
   }
-  const rows = db.prepare(`SELECT id FROM ${TABLE_BY_TYPE[sourceType]}`).all() as { id: string }[];
+  const table = TABLE_BY_TYPE[sourceType];
+  const where = SOFT_DELETE_TYPES.has(sourceType) ? ' WHERE local_deleted=0 OR local_deleted IS NULL' : '';
+  const rows = db.prepare(`SELECT id FROM ${table}${where}`).all() as { id: string }[];
   return rows.map(r => r.id);
 }
 

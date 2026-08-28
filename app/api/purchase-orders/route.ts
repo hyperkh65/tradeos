@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/notion/mapper';
 import type { PurchaseOrder } from '@/types';
 import { createCalendarEvent } from '@/lib/calendar-events';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string; revisionsJson?: string } {
   return {
@@ -191,6 +192,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
+    syncIndexOnWrite('purchaseorder', id);
     return NextResponse.json({ data: po }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });

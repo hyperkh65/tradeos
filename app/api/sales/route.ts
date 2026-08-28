@@ -4,6 +4,7 @@ import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { getSessionUser } from '@/lib/auth/session';
 import { createCalendarEvent } from '@/lib/calendar-events';
 import { parseDeposits, summarizeDeposits } from '@/lib/deposits';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export function dbToSale(row: Record<string, unknown>) {
   const deposits = parseDeposits(row.deposits_json as string);
@@ -174,5 +175,6 @@ export async function POST(req: NextRequest) {
     }).catch(() => {});
   }
 
+  syncIndexOnWrite('sale', id);
   return NextResponse.json({ data: { id, businessId: bizId, saleDate: body.saleDate, customer: body.customer, saleType: body.saleType, items, netAmount, vat, totalAmount, currency: body.currency || 'KRW', createdAt: ts } }, { status: 201 });
 }

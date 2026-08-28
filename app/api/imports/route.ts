@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { syncImportExpenses, updateLinkedShipmentStatus } from '@/lib/import-helpers';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import type { Import } from '@/types';
 
 export function dbToImport(row: Record<string, unknown>): Import {
@@ -177,6 +178,7 @@ export async function POST(req: NextRequest) {
     });
 
     const row = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
+    syncIndexOnWrite('import', id);
     return NextResponse.json({ data: dbToImport(row) }, { status: 201 });
   } catch (e) {
     console.error('[imports POST]', e);

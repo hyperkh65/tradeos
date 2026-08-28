@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { fetchNotionQuotes, createNotionQuote } from '@/lib/notion/mapper';
 import type { Quote } from '@/types';
 import { createCalendarEvent } from '@/lib/calendar-events';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, unknown> {
   const items = JSON.parse((row.items_json as string) || '[]').map((it: any) => ({
@@ -157,6 +158,7 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
+    syncIndexOnWrite('quote', id);
     return NextResponse.json({ data: { ...dbToQuote({ ...q as any, id, business_id: bizId, created_at: ts, quote_date: quoteDate, total_amount: totalAmount, history_json: JSON.stringify([historyEntry]), created_by_name: actorName, created_by_email: user?.email ?? null }) } }, { status: 201 });
   } catch (e) {
     console.error('[Quote] POST error:', e);

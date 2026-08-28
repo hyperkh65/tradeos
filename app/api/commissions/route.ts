@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { createNotionCommission } from '@/lib/notion/mapper';
 import { parseDeposits, summarizeDeposits } from '@/lib/deposits';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export function dbToCommission(row: Record<string, unknown>) {
   const deposits = parseDeposits(row.deposits_json as string);
@@ -64,5 +65,6 @@ export async function POST(req: NextRequest) {
   }
 
   const row = db.prepare('SELECT * FROM commissions WHERE id=?').get(id) as Record<string, unknown>;
+  syncIndexOnWrite('commission', id);
   return NextResponse.json({ data: dbToCommission(row) }, { status: 201 });
 }

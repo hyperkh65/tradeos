@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { fetchNotionShipments, createNotionShipment } from '@/lib/notion/mapper';
 import type { Shipment } from '@/types';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export function dbToShipment(row: Record<string, unknown>): Shipment {
   return {
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
     await createNotionShipment(shipment as Shipment).catch(() => null);
 
     syncShipmentToDb(db, body, id, ts);
+    syncIndexOnWrite('shipment', id);
     return NextResponse.json({ data: dbToShipment(db.prepare('SELECT * FROM shipments WHERE id=?').get(id) as Record<string, unknown>) }, { status: 201 });
   } catch (e) {
     console.error('[shipments POST]', e);
