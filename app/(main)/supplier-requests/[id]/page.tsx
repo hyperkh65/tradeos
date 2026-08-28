@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
-import { ClipboardCheck, Loader2, Link2, RefreshCw, Lock, Unlock, Copy, FileSpreadsheet, FileType2, Check } from 'lucide-react';
+import { ClipboardCheck, Loader2, Link2, RefreshCw, Lock, Unlock, Copy, FileSpreadsheet, FileType2, Check, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { DISPLAY_FIELDS } from '@/lib/supplier-form/field-schema';
+import { DISPLAY_FIELDS, ATTACHMENT_CATEGORIES } from '@/lib/supplier-form/field-schema';
 
 interface DetailData {
   project: { id: string; businessId: string; productName: string; supplierName: string; contactPerson?: string; dueDate?: string; status: string; memo?: string; createdByName?: string };
@@ -157,9 +157,15 @@ export default function SupplierRequestDetailPage() {
           {data.attachments.length === 0 ? <p className="text-xs text-muted-foreground">첨부된 파일이 없습니다.</p> : (
             <div className="space-y-1">
               {data.attachments.map(a => (
-                <div key={a.id} className="flex items-center justify-between text-xs border-b border-border/60 py-1.5">
-                  <span>{a.originalFilename}</span>
-                  <span className="text-muted-foreground">{(a.sizeBytes / 1024).toFixed(0)}KB</span>
+                <div key={a.id} className="flex items-center justify-between text-xs border-b border-border/60 py-1.5 gap-3">
+                  <div className="min-w-0">
+                    <div className="text-muted-foreground">{ATTACHMENT_CATEGORIES.find(c => c.key === a.categoryKey)?.label.ko || a.categoryKey}</div>
+                    <a href={`/api/supplier-requests/${id}/files/${a.id}`} target="_blank" rel="noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1 truncate">
+                      <Download className="w-3 h-3 shrink-0" />{a.originalFilename}
+                    </a>
+                  </div>
+                  <span className="text-muted-foreground shrink-0">{(a.sizeBytes / 1024).toFixed(0)}KB</span>
                 </div>
               ))}
             </div>

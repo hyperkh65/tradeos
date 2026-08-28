@@ -4,7 +4,8 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createLink, reissueLink, getActiveLinkToken } from '@/lib/supplier-form/token';
 import { writeAuditLog } from '@/lib/supplier-form/audit';
 
-/** 링크를 만들거나 재발급할 권한: 프로젝트를 만든 본인 또는 admin */
+/** 링크를 만들거나 재발급할 권한: 프로젝트를 만든 본인 또는 admin (재발급은 기존 링크를
+ * 폐기하는 민감한 동작이라 그대로 제한한다). */
 async function assertLinkPermission(projectId: string) {
   const user = await getSessionUser();
   if (!user) return { error: NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 }) };
@@ -14,6 +15,14 @@ async function assertLinkPermission(projectId: string) {
   if (user.role !== 'admin' && project.created_by !== user.id) {
     return { error: NextResponse.json({ error: '이 프로젝트의 링크를 생성/재발급할 권한이 없습니다.' }, { status: 403 }) };
   }
+  return { user };
+}
+
+/** 링크 조회는 로그인한 그룹웨어 사용자면 누구나 가능 — 프로젝트 담당자가 아니어도 링크를 볼
+ * 수 있어야 한다는 요청사항. 생성/재발급(POST)만 위 권한 제한을 그대로 유지한다. */
+async function assertLoggedIn() {
+  const user = await getSessionUser();
+  if (!user) return { error: NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 }) };
   return { user };
 }
 
@@ -44,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const check = await assertLinkPermission(id);
+  const check = await assertLoggedIn();
   if (check.error) return check.error;
   const db = getDb();
   const link = db.prepare('SELECT created_at FROM supplier_request_links WHERE project_id=? AND is_active=1').get(id) as { created_at: string } | undefined;
