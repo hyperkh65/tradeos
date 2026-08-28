@@ -4,9 +4,9 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { DepositManager, type DepositEntry } from '@/components/deposits/deposit-manager';
+import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { AccountManageModal } from '@/components/deposits/account-manage-modal';
 
 interface BankAccount {
@@ -209,6 +209,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
   const [deposits, setDeposits] = useState<DepositEntry[]>(item?.deposits || []);
   const [savedId, setSavedId] = useState(item?.id || '');
   const [uploading, setUploading] = useState<'invoice' | null>(null);
+  const depositManagerRef = useRef<DepositManagerHandle>(null);
 
   const amountKrw = form.currency === 'KRW' ? Math.round(form.amount) : Math.round(form.amount * form.exchangeRate);
 
@@ -216,6 +217,8 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
     if (!form.foreignCompany || !form.date || !form.amount) { alert('해외업체명, 일자, 금액은 필수입니다.'); return; }
     setSaving(true);
     try {
+      // 입금 내역 입력칸에 "추가" 안 누른 값이 남아있으면 저장 전에 먼저 반영 — crm/page.tsx와 동일한 이유.
+      await depositManagerRef.current?.flushPending();
       const url = savedId ? `/api/commissions/${savedId}` : '/api/commissions';
       const res = await fetch(url, {
         method: savedId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
@@ -323,7 +326,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
             <>
               <FileZone label="해외 인보이스" files={invoiceFiles} type="invoice" />
               <div className="pt-2 border-t">
-                <DepositManager apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} onAccountsRefresh={onAccountsRefresh} />
+                <DepositManager ref={depositManagerRef} apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} onAccountsRefresh={onAccountsRefresh} />
               </div>
             </>
           ) : (

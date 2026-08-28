@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
-import { DepositManager, type DepositEntry } from '@/components/deposits/deposit-manager';
+import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { cn } from '@/lib/utils';
 
 const ADMIN_PASSWORD = '1209';
@@ -354,6 +354,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   const [customStatementOpen, setCustomStatementOpen] = useState(false);
   const [deposits, setDeposits] = useState<DepositEntry[]>(sale?.deposits || []);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bankName: string; accountNumber: string; currency: string }>>([]);
+  const depositManagerRef = useRef<DepositManagerHandle>(null);
 
   const loadBankAccounts = () => {
     fetch('/api/bank-accounts').then(r => r.json()).then(j => setBankAccounts(Array.isArray(j.data) ? j.data : []));
@@ -461,6 +462,10 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
     if (!form.customer) return;
     setSaving(true);
     try {
+      // 입금 내역 입력칸에 아직 "추가" 안 누른 값이 남아있으면 저장 전에 먼저 반영한다 —
+      // 금액만 입력하고 곧장 이 버튼(수정 저장)을 누르는 게 자연스러운 사용자 흐름인데,
+      // 입금 등록은 원래 별개의 API 호출이라 그대로 두면 입력한 입금이 조용히 사라졌다.
+      await depositManagerRef.current?.flushPending();
       const body = { ...form, exchangeRate: rate, netAmount, vat, totalAmount: netKRW + vat };
       if (sale) await fetch(`/api/sales/${sale.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       else await fetch('/api/sales', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -825,7 +830,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
           )}
           {sale && (
             <div className="border rounded-lg p-3">
-              <DepositManager apiBase={`/api/sales/${sale.id}`} totalDue={netKRW + vat} deposits={deposits} accounts={bankAccounts} onChange={setDeposits} onAccountsRefresh={loadBankAccounts} />
+              <DepositManager ref={depositManagerRef} apiBase={`/api/sales/${sale.id}`} totalDue={netKRW + vat} deposits={deposits} accounts={bankAccounts} onChange={setDeposits} onAccountsRefresh={loadBankAccounts} />
             </div>
           )}
           {sale && (

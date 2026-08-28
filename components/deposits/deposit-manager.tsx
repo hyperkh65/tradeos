@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Upload, Trash2, Loader2, CreditCard } from 'lucide-react';
+import { useState, forwardRef, useImperativeHandle } from 'react';
+import { Plus, Upload, Trash2, Loader2, CreditCard, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AccountManageModal } from '@/components/deposits/account-manage-modal';
@@ -10,11 +10,18 @@ interface DepositFile { url: string; filename: string; originalName: string; siz
 export interface DepositEntry { id: string; date: string; amount: number; accountId?: string; memo?: string; files: DepositFile[] }
 interface BankAccount { id: string; bankName: string; accountNumber: string; currency: string }
 
-export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange, onAccountsRefresh }: {
+/** 상위 모달의 "저장" 버튼이 입금 내역 입력칸에 남아있는 값을 놓치지 않게 하기 위한
+ * 탈출구 — 입금 등록(+버튼)과 상위 폼 저장은 원래 완전히 별개의 액션이라, 사용자가
+ * 금액만 입력하고 곧장 "저장"을 누르면 입금이 조용히 유실되는 문제가 있었다. */
+export interface DepositManagerHandle {
+  flushPending: () => Promise<void>;
+}
+
+export const DepositManager = forwardRef<DepositManagerHandle, {
   apiBase: string; totalDue: number; deposits: DepositEntry[]; accounts: BankAccount[];
   onChange: (deposits: DepositEntry[]) => void;
   onAccountsRefresh: () => void;
-}) {
+}>(function DepositManager({ apiBase, totalDue, deposits, accounts, onChange, onAccountsRefresh }, ref) {
   const [manageAccountsOpen, setManageAccountsOpen] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: 0, accountId: '' });
   const [saving, setSaving] = useState(false);
@@ -43,6 +50,12 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
       alert('입금 등록 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.\n' + (err instanceof Error ? err.message : String(err)));
     } finally { setSaving(false); }
   };
+
+  useImperativeHandle(ref, () => ({
+    flushPending: async () => {
+      if (form.date && form.amount) await addEntry();
+    },
+  }), [form]);
 
   const removeEntry = async (depositId: string) => {
     setConfirmingId(null);
@@ -154,10 +167,16 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
             {accounts.map(a => <option key={a.id} value={a.id}>{a.bankName} {a.accountNumber}</option>)}
           </select>
         </div>
-        <Button type="button" size="sm" onClick={addEntry} disabled={saving} className="h-8">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+        <Button type="button" size="sm" onClick={addEntry} disabled={saving} className="h-8 gap-1">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}추가
         </Button>
       </div>
+      {form.amount > 0 && (
+        <p className="text-[10px] text-amber-600 flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          위 금액은 아직 입금 내역에 추가되지 않았습니다. &quot;추가&quot; 버튼을 눌러야 반영됩니다(하단의 저장 버튼과는 별개입니다).
+        </p>
+      )}
       {accounts.length === 0 && (
         <p className="text-[10px] text-muted-foreground">등록된 입금 계좌가 없습니다. 위 &quot;계좌 등록&quot;을 눌러 먼저 계좌를 등록하세요.</p>
       )}
@@ -171,4 +190,4 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
       )}
     </div>
   );
-}
+});
