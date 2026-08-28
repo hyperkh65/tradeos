@@ -34,11 +34,16 @@ export async function GET(req: NextRequest) {
   }
 
   // 수입 — 커미션 입금
-  const commissions = db.prepare(`SELECT business_id, foreign_company, deposits_json FROM commissions WHERE deposits_json IS NOT NULL AND deposits_json != '[]'`).all() as Record<string, unknown>[];
+  // 커미션 입금액은 원화가 아니라 그 커미션의 원래 통화(주로 USD)로 입력·저장된다
+  // (커미션 모달의 DepositManager에 totalDue={form.amount}, 즉 외화 원본 금액이 넘어가기
+  // 때문). 그래서 원화 집계인 이 화면에서는 반드시 exchange_rate를 곱해 환산해야 하고,
+  // 곱하지 않으면 "총 입금"이 외화 숫자를 원화인 것처럼 그대로 더해 터무니없이 작게 나온다.
+  const commissions = db.prepare(`SELECT business_id, foreign_company, exchange_rate, deposits_json FROM commissions WHERE deposits_json IS NOT NULL AND deposits_json != '[]'`).all() as Record<string, unknown>[];
   for (const c of commissions) {
+    const rate = (c.exchange_rate as number) || 1;
     for (const d of parseDeposits(c.deposits_json as string)) {
       if (d.date < start || d.date > end) continue;
-      entries.push({ date: d.date, type: 'in', source: 'commission', refBusinessId: c.business_id as string, refName: c.foreign_company as string, amount: d.amount, accountId: d.accountId });
+      entries.push({ date: d.date, type: 'in', source: 'commission', refBusinessId: c.business_id as string, refName: c.foreign_company as string, amount: Math.round(d.amount * rate), accountId: d.accountId });
     }
   }
 
