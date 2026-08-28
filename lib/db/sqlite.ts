@@ -1722,6 +1722,146 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 포워더운임(해상운임 견적) 관리 끝 ────────────────────────────────────────
 
+  // ── 사내 AI Assistant 시작 ──────────────────────────────────────────────────
+  // Provider(Cloudflare 등)는 완전히 교체 가능해야 하므로 provider_type 컬럼으로
+  // 구분만 하고, 벤더별 필드는 공용 컬럼(계정/토큰/모델)으로 최대한 통일해 둔다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      enabled INTEGER NOT NULL DEFAULT 0,
+      default_chat_provider_id TEXT,
+      default_embedding_provider_id TEXT,
+      rate_limit_per_user_per_hour INTEGER NOT NULL DEFAULT 60,
+      search_top_k INTEGER NOT NULL DEFAULT 8,
+      qdrant_url TEXT,
+      qdrant_api_key_encrypted TEXT,
+      qdrant_collection TEXT NOT NULL DEFAULT 'tradeos_knowledge',
+      updated_at TEXT NOT NULL,
+      updated_by TEXT
+    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      provider_type TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      priority INTEGER NOT NULL DEFAULT 100,
+      account_id TEXT,
+      api_token_encrypted TEXT,
+      base_url TEXT,
+      chat_model TEXT,
+      embedding_model TEXT,
+      supports_chat INTEGER NOT NULL DEFAULT 1,
+      supports_embedding INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'healthy',
+      last_success_at TEXT,
+      last_failure_at TEXT,
+      failure_count INTEGER NOT NULL DEFAULT 0,
+      cooldown_until TEXT,
+      last_error TEXT,
+      daily_usage_estimate INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_providers_priority ON ai_providers(enabled, priority)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_prompt_settings (
+      prompt_key TEXT PRIMARY KEY,
+      custom_value TEXT,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT
+    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_conversations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      title TEXT,
+      context_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_conversations_user ON ai_conversations(user_id, updated_at)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT,
+      provider_id TEXT,
+      model TEXT,
+      tool_calls_json TEXT,
+      sources_json TEXT,
+      token_usage_json TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_messages_conv ON ai_messages(conversation_id, created_at)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_usage_logs (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT,
+      message_id TEXT,
+      user_id TEXT,
+      user_name TEXT,
+      provider_id TEXT,
+      provider_type TEXT,
+      model TEXT,
+      request_type TEXT NOT NULL,
+      success INTEGER NOT NULL,
+      error TEXT,
+      latency_ms INTEGER,
+      fallback_from_provider_id TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_created ON ai_usage_logs(created_at)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_user ON ai_usage_logs(user_id, created_at)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_document_index (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      title TEXT,
+      content_hash TEXT,
+      chunk_count INTEGER NOT NULL DEFAULT 0,
+      embedding_model TEXT,
+      embedding_version TEXT,
+      department_id TEXT,
+      visibility TEXT,
+      security_level TEXT,
+      source_updated_at TEXT,
+      indexed_at TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_document_index_source ON ai_document_index(source_type, source_id)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_index_jobs (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      processed_at TEXT
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_index_jobs_status ON ai_index_jobs(status, created_at)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_tool_logs (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT,
+      message_id TEXT,
+      user_id TEXT,
+      tool_name TEXT NOT NULL,
+      args_json TEXT,
+      result_summary TEXT,
+      allowed INTEGER NOT NULL DEFAULT 1,
+      denied_reason TEXT,
+      latency_ms INTEGER,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_tool_logs_created ON ai_tool_logs(created_at)`);
+  } catch { /* already exists */ }
+  // ── 사내 AI Assistant 끝 ────────────────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

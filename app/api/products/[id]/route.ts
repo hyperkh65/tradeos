@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { updateNotionPage, productToNotion, archiveNotionPage } from '@/lib/notion/mapper';
 import { dbToProduct } from '../route';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,6 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const updated = db.prepare('SELECT * FROM products WHERE id=?').get(id) as Record<string, unknown>;
+    syncIndexOnWrite('product', id);
     return NextResponse.json({ data: dbToProduct(updated) });
   } catch {
     return NextResponse.json({ error: '수정 실패' }, { status: 500 });
@@ -57,6 +59,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const row = db.prepare('SELECT notion_id FROM products WHERE id=?').get(id) as { notion_id: string } | undefined;
     db.prepare('DELETE FROM products WHERE id=?').run(id);
     if (row?.notion_id) archiveNotionPage(row.notion_id).catch(() => {});
+    syncIndexOnDelete('product', id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

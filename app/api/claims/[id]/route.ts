@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { dbToClaim } from '../route';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 async function syncNotionUpdate(row: Record<string, unknown>) {
   const dbId = DB.claims;
@@ -89,6 +90,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const updated = db.prepare('SELECT * FROM claims WHERE id=?').get(id) as Record<string, unknown>;
     syncNotionUpdate(updated).catch(() => {});
 
+    syncIndexOnWrite('claim', id);
     return NextResponse.json({ data: dbToClaim(updated) });
   } catch (e) {
     console.error('[claims PUT]', e);
@@ -105,6 +107,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (row?.notion_id && DB.claims && !isDemoMode()) {
       getNotionClient().pages.update({ page_id: row.notion_id, archived: true }).catch(() => {});
     }
+    syncIndexOnDelete('claim', id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

@@ -463,6 +463,26 @@ function ClaimsPageInner() {
     if (found) setModal({ open: true, item: found });
   }, [loading, claims, searchParams]);
 
+  // AI 도우미가 만든 클레임 초안을 "이 화면에 적용" 눌렀을 때 여기로 전달된다 —
+  // 등록 모달을 새 클레임 상태로 열고 초안 필드만 미리 채운다(저장은 사용자가 직접 확인 후).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.type !== 'claimDraft') return;
+      const f = detail.fields || {};
+      setModal({
+        open: true,
+        item: {
+          issueType: f.issueType, description: f.description,
+          customerName: f.customerName, supplierName: f.supplierName,
+          productName: f.productName, claimAmount: f.claimAmount, currency: f.currency,
+        } as unknown as Claim,
+      });
+    };
+    window.addEventListener('ai-apply-draft', handler);
+    return () => window.removeEventListener('ai-apply-draft', handler);
+  }, []);
+
   const statuses = ['전체', ...STATUS_OPTIONS.filter(s => claims.some(c => c.status === s))];
 
   const searchQ = search.toLowerCase();

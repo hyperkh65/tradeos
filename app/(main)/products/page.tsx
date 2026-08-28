@@ -10,7 +10,8 @@ import {
   ArrowRight, Box, Layers, RefreshCw, Lock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { Product, Company } from '@/types';
 
 function CompanyAutocomplete({ label, value, onChange, companies }: {
@@ -849,7 +850,8 @@ function ProductModal({ item, preId, products: allProducts, onClose, onSave }: {
 
 /* ─── Products Page ──────────────────────────────────────────────────────── */
 
-export default function ProductsPage() {
+function ProductsPageInner() {
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [pos, setPos] = useState<any[]>([]);
   const [quotes, setQuotes] = useState<any[]>([]);
@@ -875,6 +877,14 @@ export default function ProductsPage() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  // AI 도우미가 답변에 붙인 출처 링크(?open=id)로 들어오면 해당 제품 상세를 자동으로 연다.
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (!openId || products.length === 0) return;
+    const target = products.find(p => p.businessId === openId);
+    if (target) setDrawer(target);
+  }, [searchParams, products]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -1103,4 +1113,8 @@ export default function ProductsPage() {
       )}
     </div>
   );
+}
+
+export default function ProductsPage() {
+  return <Suspense><ProductsPageInner /></Suspense>;
 }

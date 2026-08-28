@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { createCalendarEvent } from '@/lib/calendar-events';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
       }
     }).catch(() => {});
 
+    syncIndexOnWrite('claim', id);
     return NextResponse.json({ data: saved }, { status: 201 });
   } catch (e) {
     console.error('[claims POST]', e);

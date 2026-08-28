@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
+import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
 
 const RESULT_LABEL: Record<string, string> = { PASS: '합격', FAIL: '불합격', RETEST: '재시험', PENDING: '판정대기' };
 const STATUS_LABEL: Record<string, string> = { scheduled: '예정', in_progress: '진행중', completed: '완료', on_hold: '보류' };
@@ -88,6 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const updatedRow = db.prepare('SELECT * FROM inspections WHERE id=?').get(id) as Record<string, unknown>;
     syncNotionUpdate(updatedRow).catch(() => {});
 
+    syncIndexOnWrite('inspection', id);
     return NextResponse.json({ data: { ...updatedRow, defectRate, updatedAt: ts } });
   } catch (e) {
     console.error('[inspection PUT]', e);
@@ -105,6 +107,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     if (row?.notion_id && DB.inspections && !isDemoMode()) {
       getNotionClient().pages.update({ page_id: row.notion_id, archived: true }).catch(() => {});
     }
+    syncIndexOnDelete('inspection', id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: '삭제 실패' }, { status: 500 });

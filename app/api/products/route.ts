@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { fetchNotionProducts, createNotionProduct } from '@/lib/notion/mapper';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export function dbToProduct(row: Record<string, unknown>) {
   const images: string[] = (() => {
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       if (notionId) db.prepare('UPDATE products SET notion_id=? WHERE id=?').run(notionId, id);
     }).catch(() => {});
 
+    syncIndexOnWrite('product', id);
     return NextResponse.json({ data: { id, businessId: bizId, ...body, images, createdAt: ts, updatedAt: ts } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: '저장 실패' }, { status: 500 });

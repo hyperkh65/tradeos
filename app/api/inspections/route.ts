@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { getNotionClient, DB, isDemoMode } from '@/lib/notion/client';
 import { DEMO_INSPECTIONS } from '@/lib/demo-data';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 const RESULT_LABEL: Record<string, string> = { PASS: '합격', FAIL: '불합격', RETEST: '재시험', PENDING: '판정대기' };
 const STATUS_LABEL: Record<string, string> = { scheduled: '예정', in_progress: '진행중', completed: '완료', on_hold: '보류' };
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
       }
     }).catch(() => {});
 
+    syncIndexOnWrite('inspection', id);
     return NextResponse.json({ data: saved }, { status: 201 });
   } catch (e) {
     console.error('[inspection POST]', e);

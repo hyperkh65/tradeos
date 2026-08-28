@@ -5,6 +5,7 @@ import { SidebarContext } from '@/lib/sidebar-context';
 import { AppSidebar } from './sidebar';
 import { cn } from '@/lib/utils';
 import { NotificationToast } from '@/components/notifications/NotificationToast';
+import { FloatingAssistant } from '@/components/ai/floating-assistant';
 
 export function MainShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -55,6 +56,7 @@ export function MainShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <NotificationToast />
+      <FloatingAssistant />
     </SidebarContext.Provider>
   );
 }

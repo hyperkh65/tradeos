@@ -141,11 +141,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const buf = fs.readFileSync(filePath);
 
-    // pdf-parse v2
+    // pdf-parse v2 — 'pdf-parse/lib/pdf-parse.js'는 이 패키지 버전에 더 이상 존재하지
+    // 않는 내부 경로라 항상 MODULE_NOT_FOUND로 죽고 있었다(정식 공개 진입점으로 교체).
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PDFParse } = require('pdf-parse/lib/pdf-parse.js');
+    const { PDFParse } = require('pdf-parse');
     const parser = new PDFParse({ data: buf });
-    const text: string = await parser.getText({ lineEnforce: true });
+    const result = await parser.getText({ lineEnforce: true });
+    const text: string = result.text;
 
     const extracted = extractFromText(text, docType);
 
