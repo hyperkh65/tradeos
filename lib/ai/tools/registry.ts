@@ -161,6 +161,18 @@ const getPurchaseOrder: ToolDefinition<{ id: string }> = {
   },
 };
 
+const getPurchaseOrdersTotal: ToolDefinition<BaseArgs> = {
+  name: 'getPurchaseOrdersTotal',
+  description: '발주(PO) 금액 합계를 통화별로 정확히 계산한다("총 발주금액", "이번 달 발주 총액" 같은 합계 질문에는 searchPurchaseOrders로 직접 더하지 말고 반드시 이 도구를 써라 — DB가 직접 계산해서 누락/계산오류가 없다).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('발주일') } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'supplier_name', 'status'], 'order_date');
+    const byCurrency = db.prepare(`SELECT currency, SUM(total_amount) as total, COUNT(*) as count FROM purchase_orders ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
+    return { byCurrency };
+  },
+};
+
 const searchShipments: ToolDefinition<BaseArgs> = {
   name: 'searchShipments',
   description: '선적번호/포워더명/출발항/도착항/B/L번호로 선적을 검색한다. dateFrom/dateTo로 출항일(ETD) 범위 지정 가능.',
@@ -220,6 +232,18 @@ const getSale: ToolDefinition<{ id: string }> = {
   },
 };
 
+const getSalesTotal: ToolDefinition<BaseArgs> = {
+  name: 'getSalesTotal',
+  description: '매출 합계를 통화별로 정확히 계산한다("총 매출금액", "이번 달 매출 총액", "OOO 매출총금액" 같은 합계 질문에는 searchSales로 직접 더하지 말고 반드시 이 도구를 써라 — DB가 직접 계산해서 누락/계산오류가 없다). query로 특정 고객사만 좁힐 수 있다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '고객사명 등 검색어(생략 가능)' }, ...dateParams('매출일') } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'customer', 'po_no'], 'sale_date');
+    const byCurrency = db.prepare(`SELECT currency, SUM(total_amount) as total, COUNT(*) as count FROM sales ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
+    return { byCurrency };
+  },
+};
+
 const searchInventory: ToolDefinition<BaseArgs> = {
   name: 'searchInventory',
   description: '제품명/제품코드/보관위치로 현재 재고 수량을 검색한다. query를 비워두면 전체 재고 목록.',
@@ -269,6 +293,19 @@ const searchExpenses: ToolDefinition<BaseArgs> = {
   },
 };
 
+const getExpensesTotal: ToolDefinition<BaseArgs> = {
+  name: 'getExpensesTotal',
+  description: '비용 합계를 정확히 계산한다("총 비용", "이번 달 비용 합계" 같은 질문에는 searchExpenses로 직접 더하지 말고 반드시 이 도구를 써라). 통화별 원금 합계와, 이미 원화환산된 amount_krw를 합산한 전체 원화 총액을 함께 준다(각 행이 자기 거래 시점 환율로 이미 환산돼 있으므로 이 원화 합계는 신뢰할 수 있다).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('지급일') } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'category', 'description', 'related_name'], 'paid_date');
+    const byCurrency = db.prepare(`SELECT currency, SUM(amount) as total, COUNT(*) as count FROM expenses ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
+    const krw = db.prepare(`SELECT SUM(amount_krw) as totalKrw, COUNT(*) as count FROM expenses ${clause}`).get(...params) as Record<string, unknown>;
+    return { byCurrency, totalKrw: krw.totalKrw ?? 0, totalCount: krw.count ?? 0 };
+  },
+};
+
 const searchCommissions: ToolDefinition<BaseArgs> = {
   name: 'searchCommissions',
   description: '커미션번호/해외거래처명으로 커미션(수수료) 입금 기록을 검색한다. dateFrom/dateTo로 기간 지정 가능.',
@@ -279,6 +316,19 @@ const searchCommissions: ToolDefinition<BaseArgs> = {
     const rows = db.prepare(`SELECT id, business_id, foreign_company, date, amount, currency, amount_krw, status
       FROM commissions ${clause} ORDER BY date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
+  },
+};
+
+const getCommissionsTotal: ToolDefinition<BaseArgs> = {
+  name: 'getCommissionsTotal',
+  description: '커미션 합계를 정확히 계산한다("총 커미션 금액", "이번 달 커미션 합계" 같은 질문에는 searchCommissions로 직접 더하지 말고 반드시 이 도구를 써라 — 행 누락이나 계산 실수가 절대 없다). 통화별 원금 합계와, 이미 원화환산된 amount_krw를 합산한 전체 원화 총액을 함께 준다(각 행이 자기 입금 시점 환율로 이미 환산돼 있으므로 이 원화 합계는 신뢰할 수 있다).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(해외거래처명 등, 생략 가능)' }, ...dateParams('일자') } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'foreign_company'], 'date');
+    const byCurrency = db.prepare(`SELECT currency, SUM(amount) as total, COUNT(*) as count FROM commissions ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
+    const krw = db.prepare(`SELECT SUM(amount_krw) as totalKrw, COUNT(*) as count FROM commissions ${clause}`).get(...params) as Record<string, unknown>;
+    return { byCurrency, totalKrw: krw.totalKrw ?? 0, totalCount: krw.count ?? 0 };
   },
 };
 
@@ -320,14 +370,14 @@ export const TOOL_REGISTRY: ToolDefinition<any, any>[] = [
   searchInspections, getInspection,
   searchClaims, getClaim,
   searchCompanies, getCompany,
-  searchPurchaseOrders, getPurchaseOrder,
+  searchPurchaseOrders, getPurchaseOrder, getPurchaseOrdersTotal,
   searchShipments,
   searchQuotes, getQuote,
-  searchSales, getSale,
+  searchSales, getSale, getSalesTotal,
   searchInventory,
   searchImports, getImport,
-  searchExpenses,
-  searchCommissions, getCommission,
+  searchExpenses, getExpensesTotal,
+  searchCommissions, getCommission, getCommissionsTotal,
   searchEmployees,
   searchKnowledgeTool,
 ];
