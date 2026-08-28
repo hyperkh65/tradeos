@@ -1,4 +1,6 @@
-import { buildSourceDocument, listAttachmentSourceIdsForParent, type IndexableSourceType } from './sources';
+import { buildSourceDocument, listAttachmentSourceIdsForParent, type IndexableSourceType, type AttachmentParentType } from './sources';
+
+const ATTACHMENT_PARENT_SOURCE_TYPES = new Set<IndexableSourceType>(['inspection', 'claim', 'purchaseorder', 'shipment', 'import', 'commission']);
 import { chunkText, deriveCharBudget } from './chunking';
 import { embedTexts, deterministicPointId, sha256 } from './embeddings';
 import { getQdrantConfig } from './qdrant-config';
@@ -15,11 +17,12 @@ export async function indexOneSource(sourceType: IndexableSourceType, sourceId: 
     return { status: 'deleted' };
   }
 
-  // 검품/클레임을 재인덱싱할 때, 그 밑에 달린 리포트 첨부파일(PDF/DOCX/XLSX)도 함께
-  // 최신 상태로 맞춘다 — 이미 삭제된 첨부파일의 옛 인덱스는 정리하고, 현재 남아있는
-  // 파일만 큐에 넣는다(각 파일은 자기 content-hash로 알아서 변경분만 재임베딩됨).
-  if (sourceType === 'inspection' || sourceType === 'claim') {
-    await syncAttachmentsForParent(sourceType, sourceId);
+  // 검품/클레임/발주/선적/수입통관/커미션을 재인덱싱할 때, 그 밑에 달린 첨부문서
+  // (PDF/DOCX/XLSX)도 함께 최신 상태로 맞춘다 — 이미 삭제된 첨부파일의 옛 인덱스는
+  // 정리하고, 현재 남아있는 파일만 큐에 넣는다(각 파일은 자기 content-hash로
+  // 알아서 변경분만 재임베딩됨).
+  if (ATTACHMENT_PARENT_SOURCE_TYPES.has(sourceType)) {
+    await syncAttachmentsForParent(sourceType as AttachmentParentType, sourceId);
   }
 
   const contentHash = sha256(doc.text);
@@ -91,15 +94,15 @@ export async function deleteOneSource(sourceType: IndexableSourceType, sourceId:
   }
   deleteDocumentIndexRow(sourceType, sourceId);
 
-  // 검품/클레임 자체가 삭제되면 그 첨부파일 인덱스도 고아로 남지 않게 함께 정리한다.
-  if (sourceType === 'inspection' || sourceType === 'claim') {
+  // 부모 레코드 자체가 삭제되면 그 첨부파일 인덱스도 고아로 남지 않게 함께 정리한다.
+  if (ATTACHMENT_PARENT_SOURCE_TYPES.has(sourceType)) {
     const prefix = `${sourceType}:${sourceId}:`;
     const attachmentRows = listDocumentIndex({ limit: 1000 }).filter(r => r.sourceType === 'attachment' && r.sourceId.startsWith(prefix));
     for (const row of attachmentRows) await deleteOneSource('attachment', row.sourceId);
   }
 }
 
-async function syncAttachmentsForParent(parentType: 'inspection' | 'claim', parentId: string): Promise<void> {
+async function syncAttachmentsForParent(parentType: AttachmentParentType, parentId: string): Promise<void> {
   const prefix = `${parentType}:${parentId}:`;
   const currentIds = new Set(listAttachmentSourceIdsForParent(parentType, parentId));
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { DEFAULT_COMPANY } from '@/app/api/settings/company/route';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
@@ -206,6 +207,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     db.prepare('UPDATE purchase_orders SET pi_number=?,pi_file_url=?,pi_stamped_url=?,status=?,updated_at=? WHERE id=?')
       .run(piNumber, piFileUrl, piStampedUrl, newStatus, ts, id);
+    syncIndexOnWrite('purchaseorder', id);
 
     return NextResponse.json({ piFileUrl, piStampedUrl, piNumber, status: newStatus });
   } catch (e) {

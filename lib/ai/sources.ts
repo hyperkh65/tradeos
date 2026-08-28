@@ -2,13 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/db/sqlite';
 import { extractFileText, EXTRACTABLE_EXTENSIONS } from './file-extract';
+import { parseDeposits } from '@/lib/deposits';
 
 /**
  * "인덱싱 대상"을 하나 더 추가할 때 건드릴 곳은 이 파일뿐이어야 한다.
- * product/inspection/claim은 DB에 이미 있는 텍스트, attachment는 검품/클레임에 첨부된
- * 리포트 파일(PDF/DOCX/XLSX/TXT/CSV) 원문 — 이미지 첨부파일은 OCR이 필요해 이번 단계
- * 대상에서 의도적으로 제외한다(텍스트 PDF에는 OCR을 쓰지 않는다는 원칙과 별개로,
- * 사진 첨부파일 자체의 텍스트화는 범위 밖).
+ * product/inspection/claim/quote/sale/purchaseorder/shipment/import/expense/commission은
+ * DB에 이미 있는 텍스트, attachment는 각 모듈에 첨부된 문서 파일(PDF/DOCX/XLSX/XLS/TXT/CSV)
+ * 원문 — 이미지 첨부파일은 OCR이 필요해 이번 단계 대상에서 의도적으로 제외한다(텍스트
+ * PDF에는 OCR을 쓰지 않는다는 원칙과 별개로, 사진 첨부파일 자체의 텍스트화는 범위 밖).
  */
 export type IndexableSourceType = 'product' | 'inspection' | 'claim' | 'attachment'
   | 'quote' | 'sale' | 'purchaseorder' | 'shipment' | 'import' | 'expense' | 'commission';
@@ -18,11 +19,29 @@ export const INDEXABLE_SOURCE_TYPES: IndexableSourceType[] = [
   'quote', 'sale', 'purchaseorder', 'shipment', 'import', 'expense', 'commission',
 ];
 
-type AttachmentParentType = 'inspection' | 'claim';
+export type AttachmentParentType = 'inspection' | 'claim' | 'purchaseorder' | 'shipment' | 'import' | 'commission';
 
-const ATTACHMENT_UPLOAD_BASE: Record<AttachmentParentType, string> = {
-  inspection: process.env.NODE_ENV === 'production' ? '/volume1/web/tradeos/data/uploads/inspections' : path.join(process.cwd(), 'data/uploads/inspections'),
-  claim: process.env.NODE_ENV === 'production' ? '/volume1/web/tradeos/data/uploads/claims' : path.join(process.cwd(), 'data/uploads/claims'),
+const ATTACHMENT_PARENT_TYPES: AttachmentParentType[] = ['inspection', 'claim', 'purchaseorder', 'shipment', 'import', 'commission'];
+
+/** 부모 레코드 목록을 조회할 테이블 — shipment/import는 소프트 삭제라 별도 필터가 붙는다. */
+const ATTACHMENT_PARENT_TABLE: Record<AttachmentParentType, string> = {
+  inspection: 'inspections', claim: 'claims', purchaseorder: 'purchase_orders',
+  shipment: 'shipments', import: 'imports', commission: 'commissions',
+};
+const ATTACHMENT_PARENT_SOFT_DELETE = new Set<AttachmentParentType>(['shipment', 'import']);
+
+function uploadDir(prodPath: string, devSubdir: string): string {
+  return process.env.NODE_ENV === 'production' ? prodPath : path.join(process.cwd(), devSubdir);
+}
+
+const ATTACHMENT_UPLOAD_BASE = {
+  inspection: uploadDir('/volume1/web/tradeos/data/uploads/inspections', 'data/uploads/inspections'),
+  claim: uploadDir('/volume1/web/tradeos/data/uploads/claims', 'data/uploads/claims'),
+  pi: process.env.NODE_ENV === 'production' ? '/volume1/web/tradeos/data/uploads/pi' : path.join(process.cwd(), 'data/uploads/pi'),
+  shipment: process.env.UPLOAD_DIR ? path.join(process.env.UPLOAD_DIR, 'shipments') : uploadDir('/volume1/web/tradeos/data/uploads/shipments', 'data/uploads/shipments'),
+  import: process.env.UPLOAD_DIR ? path.join(process.env.UPLOAD_DIR, 'imports') : uploadDir('/volume1/web/tradeos/data/uploads/imports', 'data/uploads/imports'),
+  commission: uploadDir('/volume1/web/tradeos/data/uploads/commissions', 'data/uploads/commissions'),
+  commissionDeposit: uploadDir('/volume1/web/tradeos/data/uploads/commission-deposits', 'data/uploads/commission-deposits'),
 };
 
 interface StoredFileRef { filename?: string; originalName?: string; fileType?: string; url?: string }
@@ -36,50 +55,127 @@ function parseReportFiles(json: string | null | undefined): StoredFileRef[] {
   } catch { return []; }
 }
 
-/** attachment의 sourceId는 "부모타입:부모id:파일명" 합성키다(별도 테이블이 없으므로). */
-export function attachmentSourceId(parentType: AttachmentParentType, parentId: string, filename: string): string {
-  return `${parentType}:${parentId}:${filename}`;
+function parseJsonArray<T>(json: string | null | undefined): T[] {
+  try {
+    const arr = JSON.parse(json || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
 }
 
-function parseAttachmentSourceId(sourceId: string): { parentType: AttachmentParentType; parentId: string; filename: string } | null {
+/** attachment의 sourceId는 "부모타입:부모id:키" 합성키다(별도 테이블이 없으므로).
+ * 키는 파일명일 수도, 커미션 입금 파일처럼 "dep:입금id:파일명" 같은 합성값일 수도 있다. */
+export function attachmentSourceId(parentType: AttachmentParentType, parentId: string, key: string): string {
+  return `${parentType}:${parentId}:${key}`;
+}
+
+function parseAttachmentSourceId(sourceId: string): { parentType: AttachmentParentType; parentId: string; key: string } | null {
   const [parentType, parentId, ...rest] = sourceId.split(':');
-  if ((parentType !== 'inspection' && parentType !== 'claim') || !parentId || rest.length === 0) return null;
-  return { parentType, parentId, filename: rest.join(':') };
+  if (!ATTACHMENT_PARENT_TYPES.includes(parentType as AttachmentParentType) || !parentId || rest.length === 0) return null;
+  return { parentType: parentType as AttachmentParentType, parentId, key: rest.join(':') };
 }
 
-/** 특정 검품/클레임 레코드가 현재 가지고 있는 "인덱싱 가능한(텍스트 추출 가능한 확장자)"
- * 리포트 첨부파일들의 sourceId 목록 — 부모 재인덱싱 시 이 목록으로 첨부파일도 함께 갱신한다. */
-export function listAttachmentSourceIdsForParent(parentType: AttachmentParentType, parentId: string): string[] {
+interface AttachmentFileRef { key: string; diskPath: string; label: string; ext: string }
+
+const isExtractable = (ext: string) => (EXTRACTABLE_EXTENSIONS as string[]).includes(ext);
+
+/** 특정 부모 레코드가 현재 가지고 있는 "인덱싱 가능한(텍스트 추출 가능한 확장자)" 첨부파일
+ * 목록을 실제 디스크 경로까지 계산해서 반환한다 — 목록/빌드 두 군데에서 공유하는 단일 소스. */
+function listAttachmentFiles(parentType: AttachmentParentType, parentId: string): AttachmentFileRef[] {
   const db = getDb();
-  const table = parentType === 'inspection' ? 'inspections' : 'claims';
-  const row = db.prepare(`SELECT report_files FROM ${table} WHERE id=?`).get(parentId) as { report_files: string | null } | undefined;
-  if (!row) return [];
-  return parseReportFiles(row.report_files)
-    .filter(f => f.fileType === 'report' && f.filename)
-    .filter(f => (EXTRACTABLE_EXTENSIONS as string[]).includes(path.extname(f.filename!).slice(1).toLowerCase()))
-    .map(f => attachmentSourceId(parentType, parentId, f.filename!));
+  switch (parentType) {
+    case 'inspection':
+    case 'claim': {
+      const table = parentType === 'inspection' ? 'inspections' : 'claims';
+      const row = db.prepare(`SELECT report_files FROM ${table} WHERE id=?`).get(parentId) as { report_files: string | null } | undefined;
+      if (!row) return [];
+      return parseReportFiles(row.report_files)
+        .filter(f => f.fileType === 'report' && f.filename)
+        .map(f => {
+          const ext = path.extname(f.filename!).slice(1).toLowerCase();
+          return { key: f.filename!, diskPath: path.join(ATTACHMENT_UPLOAD_BASE[parentType], parentId, 'reports', f.filename!), label: f.originalName || f.filename!, ext };
+        })
+        .filter(r => isExtractable(r.ext));
+    }
+    case 'purchaseorder': {
+      const row = db.prepare(`SELECT pi_file_url FROM purchase_orders WHERE id=?`).get(parentId) as { pi_file_url: string | null } | undefined;
+      if (!row?.pi_file_url) return [];
+      const filename = row.pi_file_url.split('/').pop() || '';
+      const ext = path.extname(filename).slice(1).toLowerCase();
+      if (!filename || !isExtractable(ext)) return [];
+      return [{ key: 'pi', diskPath: path.join(ATTACHMENT_UPLOAD_BASE.pi, parentId, filename), label: 'PI(Proforma Invoice)', ext }];
+    }
+    case 'shipment': {
+      const row = db.prepare(`SELECT documents_json FROM shipments WHERE id=?`).get(parentId) as { documents_json: string | null } | undefined;
+      if (!row) return [];
+      return parseJsonArray<{ id: string; filename: string; originalName?: string; customName?: string }>(row.documents_json)
+        .filter(d => d.filename)
+        .map(d => {
+          const ext = path.extname(d.filename).slice(1).toLowerCase();
+          return { key: d.id || d.filename, diskPath: path.join(ATTACHMENT_UPLOAD_BASE.shipment, parentId, d.filename), label: d.customName || d.originalName || d.filename, ext };
+        })
+        .filter(r => isExtractable(r.ext));
+    }
+    case 'import': {
+      const row = db.prepare(`SELECT documents_json FROM imports WHERE id=?`).get(parentId) as { documents_json: string | null } | undefined;
+      if (!row) return [];
+      return parseJsonArray<{ id: string; filename: string; originalName?: string; customName?: string }>(row.documents_json)
+        .filter(d => d.filename)
+        .map(d => {
+          const ext = path.extname(d.filename).slice(1).toLowerCase();
+          return { key: d.id || d.filename, diskPath: path.join(ATTACHMENT_UPLOAD_BASE.import, parentId, d.filename), label: d.customName || d.originalName || d.filename, ext };
+        })
+        .filter(r => isExtractable(r.ext));
+    }
+    case 'commission': {
+      const row = db.prepare(`SELECT invoice_files_json, deposits_json FROM commissions WHERE id=?`).get(parentId) as Record<string, unknown> | undefined;
+      if (!row) return [];
+      const invoices = parseJsonArray<{ filename: string; originalName?: string }>(row.invoice_files_json as string)
+        .filter(f => f.filename)
+        .map(f => {
+          const ext = path.extname(f.filename).slice(1).toLowerCase();
+          return { key: `inv:${f.filename}`, diskPath: path.join(ATTACHMENT_UPLOAD_BASE.commission, parentId, 'invoice', f.filename), label: f.originalName || f.filename, ext };
+        })
+        .filter(r => isExtractable(r.ext));
+      const deposits = parseDeposits(row.deposits_json as string);
+      const depositFiles = deposits.flatMap(d => (d.files || [])
+        .filter(f => f.filename)
+        .map(f => {
+          const ext = path.extname(f.filename).slice(1).toLowerCase();
+          return { key: `dep:${d.id}:${f.filename}`, diskPath: path.join(ATTACHMENT_UPLOAD_BASE.commissionDeposit, parentId, d.id, f.filename), label: f.originalName || f.filename, ext };
+        })
+        .filter(r => isExtractable(r.ext)));
+      return [...invoices, ...depositFiles];
+    }
+  }
+}
+
+const ATTACHMENT_PARENT_LABEL: Record<AttachmentParentType, string> = {
+  inspection: '검품', claim: '클레임', purchaseorder: '발주', shipment: '선적', import: '수입통관', commission: '커미션',
+};
+
+/** 특정 부모 레코드가 현재 가지고 있는 인덱싱 가능한 첨부파일들의 sourceId 목록 —
+ * 부모 재인덱싱 시 이 목록으로 첨부파일도 함께 갱신한다. */
+export function listAttachmentSourceIdsForParent(parentType: AttachmentParentType, parentId: string): string[] {
+  return listAttachmentFiles(parentType, parentId).map(f => attachmentSourceId(parentType, parentId, f.key));
 }
 
 async function buildAttachmentDocument(sourceId: string): Promise<SourceDocument | null> {
   const parsed = parseAttachmentSourceId(sourceId);
   if (!parsed) return null;
-  const { parentType, parentId, filename } = parsed;
+  const { parentType, parentId, key } = parsed;
 
-  const validIds = new Set(listAttachmentSourceIdsForParent(parentType, parentId));
-  if (!validIds.has(sourceId)) return null; // 부모에서 이미 삭제된 첨부파일
+  const match = listAttachmentFiles(parentType, parentId).find(f => f.key === key);
+  if (!match) return null; // 부모에서 이미 삭제된 첨부파일
 
-  const filepath = path.join(ATTACHMENT_UPLOAD_BASE[parentType], parentId, 'reports', filename);
-  if (!fs.existsSync(filepath)) return null;
+  if (!fs.existsSync(match.diskPath)) return null;
 
-  const ext = path.extname(filename).slice(1);
-  const buf = fs.readFileSync(filepath);
-  const extracted = await extractFileText(buf, ext);
+  const buf = fs.readFileSync(match.diskPath);
+  const extracted = await extractFileText(buf, match.ext);
   if (!extracted || !extracted.text.trim()) return null;
 
-  const stat = fs.statSync(filepath);
-  const parentLabel = parentType === 'inspection' ? '검품' : '클레임';
+  const stat = fs.statSync(match.diskPath);
   return {
-    title: `첨부파일 - ${filename} (${parentLabel})`,
+    title: `첨부파일 - ${match.label} (${ATTACHMENT_PARENT_LABEL[parentType]})`,
     text: extracted.text,
     sourceUpdatedAt: stat.mtime.toISOString(),
   };
@@ -290,9 +386,10 @@ export function listAllSourceIds(sourceType: IndexableSourceType): string[] {
   const db = getDb();
   if (sourceType === 'attachment') {
     const ids: string[] = [];
-    for (const parentType of ['inspection', 'claim'] as const) {
-      const table = parentType === 'inspection' ? 'inspections' : 'claims';
-      const rows = db.prepare(`SELECT id FROM ${table}`).all() as { id: string }[];
+    for (const parentType of ATTACHMENT_PARENT_TYPES) {
+      const table = ATTACHMENT_PARENT_TABLE[parentType];
+      const where = ATTACHMENT_PARENT_SOFT_DELETE.has(parentType) ? ' WHERE local_deleted=0 OR local_deleted IS NULL' : '';
+      const rows = db.prepare(`SELECT id FROM ${table}${where}`).all() as { id: string }[];
       for (const r of rows) ids.push(...listAttachmentSourceIdsForParent(parentType, r.id));
     }
     return ids;

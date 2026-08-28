@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { parseDeposits } from '@/lib/deposits';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import fs from 'fs';
 import path from 'path';
 
@@ -24,6 +25,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   db.prepare('UPDATE commissions SET deposits_json=? WHERE id=?').run(JSON.stringify(remaining), id);
 
   try { fs.rmSync(path.join(UPLOAD_BASE, id, depositId), { recursive: true, force: true }); } catch { /* ignore */ }
+  syncIndexOnWrite('commission', id);
 
   return NextResponse.json({ data: { deposits: remaining } });
 }

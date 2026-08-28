@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       list.push(entry);
       db.prepare('UPDATE commissions SET invoice_files_json=?, updated_at=? WHERE id=?').run(JSON.stringify(list), now(), id);
     }
+    syncIndexOnWrite('commission', id);
 
     return NextResponse.json({ data: entry });
   } catch (e) {

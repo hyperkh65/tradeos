@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, now } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import fs from 'fs';
 import path from 'path';
 
@@ -53,6 +54,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       const list = (JSON.parse((row[col] as string) || '[]') as Array<{ filename: string }>).filter(f => f.filename !== realName);
       db.prepare(`UPDATE commissions SET ${col}=?, updated_at=? WHERE id=?`).run(JSON.stringify(list), now(), id);
     }
+    syncIndexOnWrite('commission', id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

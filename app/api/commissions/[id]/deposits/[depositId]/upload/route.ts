@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { parseDeposits } from '@/lib/deposits';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!dep) { fs.unlinkSync(filepath); return NextResponse.json({ error: '입금 항목을 찾을 수 없습니다.' }, { status: 404 }); }
     dep.files.push(entry);
     db.prepare('UPDATE commissions SET deposits_json=? WHERE id=?').run(JSON.stringify(deposits), id);
+    syncIndexOnWrite('commission', id);
 
     return NextResponse.json({ data: entry });
   } catch (e) {

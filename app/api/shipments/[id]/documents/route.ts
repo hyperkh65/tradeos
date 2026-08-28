@@ -5,6 +5,7 @@ import { newId } from '@/lib/db/sqlite';
 import type { ShipDocument } from '@/types';
 import fs from 'fs';
 import path from 'path';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 export const maxDuration = 120;
 
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const allDocs = [...existing, ...newDocs];
     db.prepare('UPDATE shipments SET documents_json=?, updated_at=? WHERE id=?')
       .run(JSON.stringify(allDocs), now(), id);
+    syncIndexOnWrite('shipment', id);
 
     return NextResponse.json({ data: newDocs });
   } catch (e) {
@@ -109,6 +111,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     db.prepare('UPDATE shipments SET documents_json=?, updated_at=? WHERE id=?')
       .run(JSON.stringify(updated), now(), id);
+    syncIndexOnWrite('shipment', id);
 
     return NextResponse.json({ success: true });
   } catch (e) {
@@ -136,6 +139,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const updated = docs.filter(d => d.id !== docId);
     db.prepare('UPDATE shipments SET documents_json=?, updated_at=? WHERE id=?')
       .run(JSON.stringify(updated), now(), id);
+    syncIndexOnWrite('shipment', id);
 
     return NextResponse.json({ success: true });
   } catch (e) {

@@ -3,6 +3,7 @@ import { getDb, newId, now } from '@/lib/db/sqlite';
 import type { ImportDocument, ImportDocType } from '@/types';
 import fs from 'fs';
 import path from 'path';
+import { syncIndexOnWrite } from '@/lib/ai/sync';
 
 const UPLOAD_BASE = process.env.UPLOAD_DIR
   ? path.join(process.env.UPLOAD_DIR, 'imports')
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const allDocs = [...existing, ...newDocs];
     db.prepare('UPDATE imports SET documents_json=?, updated_at=? WHERE id=?')
       .run(JSON.stringify(allDocs), now(), id);
+    syncIndexOnWrite('import', id);
 
     return NextResponse.json({ data: newDocs });
   } catch (e) {
@@ -85,6 +87,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
     db.prepare('UPDATE imports SET documents_json=?, updated_at=? WHERE id=?')
       .run(JSON.stringify(docs.filter(d => d.id !== docId)), now(), id);
+    syncIndexOnWrite('import', id);
 
     return NextResponse.json({ success: true });
   } catch (e) {
