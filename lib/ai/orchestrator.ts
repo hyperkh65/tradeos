@@ -103,7 +103,10 @@ export async function runChat(opts: {
   const history = listMessages(conversation.id, MAX_HISTORY_MESSAGES);
   addMessage({ conversationId: conversation.id, role: 'user', content: opts.message });
 
-  const draftInstruction = '\n\n사용자가 문서 초안 작성을 요청하면, 답변 마지막에 아래 형태의 코드블록을 포함하라'
+  // "이번 달/이번 주/최근 N일" 같은 상대적 기간 질문은 모델이 오늘 날짜를 알아야
+  // dateFrom/dateTo를 계산해서 도구를 호출할 수 있다(모르면 그냥 "찾지 못했다"고 답해버림).
+  const todayLine = `\n\n오늘 날짜는 ${new Date().toISOString().slice(0, 10)}이다. "이번 달/이번 주/최근 N일" 같은 상대적 기간 질문은 이 날짜를 기준으로 dateFrom/dateTo를 계산해서 검색 도구를 호출하라 (예: "이번 달"이면 이번 달 1일 ~ 오늘).`;
+  const draftInstruction = todayLine + '\n\n사용자가 문서 초안 작성을 요청하면, 답변 마지막에 아래 형태의 코드블록을 포함하라'
     + '(그 앞에 자연어로 간단히 설명해도 됨). 이 JSON은 사용자가 직접 확인 후 적용하는 미리보기용이며,'
     + ' 절대 스스로 최종 등록/발송된 것처럼 말하지 마라.\n'
     + '- 클레임 등록 초안: ```json\\n{"type":"claimDraft","title":"...",'

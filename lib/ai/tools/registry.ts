@@ -2,7 +2,7 @@ import { getDb } from '@/lib/db/sqlite';
 import { searchKnowledge } from '../rag';
 import type { ToolDefinition } from './types';
 
-const clampLimit = (n: unknown, def = 10, max = 30) => {
+const clampLimit = (n: unknown, def = 15, max = 50) => {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return def;
   return Math.min(Math.floor(v), max);
@@ -14,16 +14,38 @@ const clampLimit = (n: unknown, def = 10, max = 30) => {
  * requireAuth()로 이미 강제한다. 이후 특정 도구에 더 세밀한 권한이 필요해지면
  * 이 파일의 해당 handler 안에서만 검사를 추가하면 된다(다른 코드 영향 없음). */
 
-const searchProducts: ToolDefinition<{ query: string; limit?: number }> = {
+interface BaseArgs { query?: string; dateFrom?: string; dateTo?: string; limit?: number }
+
+/** "이번 달 발주 현황" 같은 질문은 키워드가 없다(query가 비어있어도 되어야 함) —
+ * 대신 날짜 컬럼으로 범위를 좁힌다. keywordColumns가 비어있거나 query가 없으면
+ * 키워드 조건 자체를 생략한다(전체 대상 + 날짜 필터만). */
+function buildWhere(args: BaseArgs, keywordColumns: string[], dateColumn?: string): { clause: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (args.query?.trim() && keywordColumns.length) {
+    const q = `%${args.query.trim()}%`;
+    conditions.push(`(${keywordColumns.map(c => `${c} LIKE ?`).join(' OR ')})`);
+    params.push(...keywordColumns.map(() => q));
+  }
+  if (dateColumn && args.dateFrom) { conditions.push(`${dateColumn} >= ?`); params.push(args.dateFrom); }
+  if (dateColumn && args.dateTo) { conditions.push(`${dateColumn} <= ?`); params.push(args.dateTo); }
+  return { clause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', params };
+}
+
+const dateParams = (dateColumnLabel: string) => ({
+  dateFrom: { type: 'string', description: `${dateColumnLabel} 시작일(YYYY-MM-DD, 생략 가능) — "이번 달"이면 이번 달 1일` },
+  dateTo: { type: 'string', description: `${dateColumnLabel} 종료일(YYYY-MM-DD, 생략 가능) — "이번 달"이면 오늘 날짜` },
+});
+
+const searchProducts: ToolDefinition<BaseArgs> = {
   name: 'searchProducts',
-  description: '제품명/코드/카테고리/공급업체명으로 제품을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '제품명/코드/카테고리/공급업체명으로 제품을 검색한다. query를 비워두면 최신순 전체 목록.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['name_ko', 'name_en', 'code', 'category', 'supplier_name']);
     const rows = db.prepare(`SELECT id, business_id, code, name_ko, name_en, category, supplier_name, status, purchase_price, selling_price, currency
-      FROM products WHERE name_ko LIKE ? OR name_en LIKE ? OR code LIKE ? OR category LIKE ? OR supplier_name LIKE ?
-      ORDER BY updated_at DESC LIMIT ?`).all(q, q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM products ${clause} ORDER BY updated_at DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -38,16 +60,15 @@ const getProduct: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchInspections: ToolDefinition<{ query: string; limit?: number }> = {
+const searchInspections: ToolDefinition<BaseArgs> = {
   name: 'searchInspections',
-  description: '검품번호/제품명/공급업체명/검품결과 요약으로 검품 기록을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '검품번호/제품명/공급업체명/검품결과 요약으로 검품 기록을 검색한다. dateFrom/dateTo로 검품일 범위 지정 가능(예: 이번 달 검품 현황).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('검품일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'product_name', 'supplier_name', 'summary'], 'inspection_date');
     const rows = db.prepare(`SELECT id, business_id, po_business_id, supplier_name, product_name, inspection_date, inspection_type, result, defect_rate, summary, status
-      FROM inspections WHERE business_id LIKE ? OR product_name LIKE ? OR supplier_name LIKE ? OR summary LIKE ?
-      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM inspections ${clause} ORDER BY inspection_date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -62,16 +83,15 @@ const getInspection: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchClaims: ToolDefinition<{ query: string; limit?: number }> = {
+const searchClaims: ToolDefinition<BaseArgs> = {
   name: 'searchClaims',
-  description: '클레임번호/고객사/공급업체/제품명/이슈유형/내용으로 클레임을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '클레임번호/고객사/공급업체/제품명/이슈유형/내용으로 클레임을 검색한다. dateFrom/dateTo로 접수일 범위 지정 가능.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('접수일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
-    const rows = db.prepare(`SELECT id, business_id, customer_name, supplier_name, product_name, issue_type, description, claim_amount, currency, status
-      FROM claims WHERE business_id LIKE ? OR customer_name LIKE ? OR supplier_name LIKE ? OR product_name LIKE ? OR issue_type LIKE ? OR description LIKE ?
-      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    const { clause, params } = buildWhere(args, ['business_id', 'customer_name', 'supplier_name', 'product_name', 'issue_type', 'description'], 'created_at');
+    const rows = db.prepare(`SELECT id, business_id, customer_name, supplier_name, product_name, issue_type, description, claim_amount, currency, status, created_at
+      FROM claims ${clause} ORDER BY created_at DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -86,24 +106,24 @@ const getClaim: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchCompanies: ToolDefinition<{ query: string; type?: string; limit?: number }> = {
+const searchCompanies: ToolDefinition<BaseArgs & { type?: string }> = {
   name: 'searchCompanies',
   description: '거래처(고객사/공급업체/포워더 등)를 이름으로 검색한다. type으로 업체 유형을 좁힐 수 있다.',
   parameters: {
     type: 'object',
     properties: {
-      query: { type: 'string', description: '검색어(업체명)' },
+      query: { type: 'string', description: '검색어(업체명, 생략 가능)' },
       type: { type: 'string', description: '업체 유형(예: 고객사, 공급업체, 포워더) — 생략 가능' },
-      limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' },
+      limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' },
     },
-    required: ['query'],
   },
-  handler: async ({ query, type, limit }) => {
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
-    const rows = type
-      ? db.prepare(`SELECT id, business_id, name, name_en, type, country, email, phone FROM companies WHERE (name LIKE ? OR name_en LIKE ?) AND type=? ORDER BY updated_at DESC LIMIT ?`).all(q, q, type, clampLimit(limit)) as Record<string, unknown>[]
-      : db.prepare(`SELECT id, business_id, name, name_en, type, country, email, phone FROM companies WHERE name LIKE ? OR name_en LIKE ? ORDER BY updated_at DESC LIMIT ?`).all(q, q, clampLimit(limit)) as Record<string, unknown>[];
+    const { clause: kwClause, params } = buildWhere(args, ['name', 'name_en']);
+    let clause = kwClause;
+    if (args.type) { clause = clause ? `${clause} AND type=?` : 'WHERE type=?'; params.push(args.type); }
+    const rows = db.prepare(`SELECT id, business_id, name, name_en, type, country, email, phone FROM companies ${clause} ORDER BY updated_at DESC LIMIT ?`)
+      .all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -118,16 +138,15 @@ const getCompany: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchPurchaseOrders: ToolDefinition<{ query: string; limit?: number }> = {
+const searchPurchaseOrders: ToolDefinition<BaseArgs> = {
   name: 'searchPurchaseOrders',
-  description: '발주번호/공급업체명/상태로 발주(PO)를 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '발주번호/공급업체명/상태로 발주(PO)를 검색한다. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 발주 현황"처럼 기간별 전체 목록을 가져올 수 있다(발주일 기준).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('발주일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'supplier_name', 'status'], 'order_date');
     const rows = db.prepare(`SELECT id, business_id, supplier_name, total_amount, currency, status, order_date, etd
-      FROM purchase_orders WHERE business_id LIKE ? OR supplier_name LIKE ? OR status LIKE ?
-      ORDER BY order_date DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM purchase_orders ${clause} ORDER BY order_date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -142,30 +161,28 @@ const getPurchaseOrder: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchShipments: ToolDefinition<{ query: string; limit?: number }> = {
+const searchShipments: ToolDefinition<BaseArgs> = {
   name: 'searchShipments',
-  description: '선적번호/포워더명/출발항/도착항/B/L번호로 선적을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '선적번호/포워더명/출발항/도착항/B/L번호로 선적을 검색한다. dateFrom/dateTo로 출항일(ETD) 범위 지정 가능.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('출항일(ETD)'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'forwarder_name', 'pol', 'pod', 'bl_no'], 'etd');
     const rows = db.prepare(`SELECT id, business_id, type, forwarder_name, pol, pod, etd, eta, bl_no, status
-      FROM shipments WHERE business_id LIKE ? OR forwarder_name LIKE ? OR pol LIKE ? OR pod LIKE ? OR bl_no LIKE ?
-      ORDER BY updated_at DESC LIMIT ?`).all(q, q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM shipments ${clause} ORDER BY etd DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
 
-const searchQuotes: ToolDefinition<{ query: string; limit?: number }> = {
+const searchQuotes: ToolDefinition<BaseArgs> = {
   name: 'searchQuotes',
-  description: '견적번호/거래처명/상태로 견적서를 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '견적번호/거래처명/상태로 견적서를 검색한다. dateFrom/dateTo로 작성일 범위 지정 가능.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('작성일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'company_name', 'status'], 'created_at');
     const rows = db.prepare(`SELECT id, business_id, type, company_name, currency, incoterm, status, created_at
-      FROM quotes WHERE business_id LIKE ? OR company_name LIKE ? OR status LIKE ?
-      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM quotes ${clause} ORDER BY created_at DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -180,16 +197,15 @@ const getQuote: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchSales: ToolDefinition<{ query: string; limit?: number }> = {
+const searchSales: ToolDefinition<BaseArgs> = {
   name: 'searchSales',
-  description: '매출번호/고객사명/PO번호로 매출(판매) 기록을 검색한다. 금액(net_amount/vat/total_amount)이 포함된다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(고객사명 등)' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '매출번호/고객사명/PO번호로 매출(판매) 기록을 검색한다. 금액(net_amount/vat/total_amount) 포함. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 매출 현황/총액"처럼 기간별 전체 목록을 가져올 수 있다(매출일 기준) — 합계는 반환된 행들의 total_amount를 직접 더해서 계산하라.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(고객사명 등, 생략 가능)' }, ...dateParams('매출일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'customer', 'po_no'], 'sale_date');
     const rows = db.prepare(`SELECT id, business_id, sale_date, customer, sale_type, salesperson, po_no, net_amount, vat, total_amount, currency
-      FROM sales WHERE business_id LIKE ? OR customer LIKE ? OR po_no LIKE ?
-      ORDER BY sale_date DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM sales ${clause} ORDER BY sale_date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -204,30 +220,28 @@ const getSale: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchInventory: ToolDefinition<{ query: string; limit?: number }> = {
+const searchInventory: ToolDefinition<BaseArgs> = {
   name: 'searchInventory',
-  description: '제품명/제품코드/보관위치로 현재 재고 수량을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '제품명/제품코드/보관위치로 현재 재고 수량을 검색한다. query를 비워두면 전체 재고 목록.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['product_name', 'product_code', 'location']);
     const rows = db.prepare(`SELECT id, product_name, product_code, qty, location, purchase_price, currency, updated_at
-      FROM inventory WHERE product_name LIKE ? OR product_code LIKE ? OR location LIKE ?
-      ORDER BY updated_at DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM inventory ${clause} ORDER BY updated_at DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
 
-const searchImports: ToolDefinition<{ query: string; limit?: number }> = {
+const searchImports: ToolDefinition<BaseArgs> = {
   name: 'searchImports',
-  description: '수입통관번호/선적번호/관세사명/신고번호로 수입통관 기록을 검색한다(관세/부가세/통관수수료 포함).',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '수입통관번호/선적번호/관세사명/신고번호로 수입통관 기록을 검색한다(관세/부가세/통관수수료 포함). dateFrom/dateTo로 통관일 범위 지정 가능.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('통관(반출)일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'shipment_business_id', 'broker_name', 'declaration_no'], 'release_date');
     const rows = db.prepare(`SELECT id, business_id, shipment_business_id, broker_name, declaration_no, release_date, hs_code, duty, vat, broker_fee, status
-      FROM imports WHERE business_id LIKE ? OR shipment_business_id LIKE ? OR broker_name LIKE ? OR declaration_no LIKE ?
-      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM imports ${clause} ORDER BY release_date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -242,30 +256,28 @@ const getImport: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchExpenses: ToolDefinition<{ query: string; limit?: number }> = {
+const searchExpenses: ToolDefinition<BaseArgs> = {
   name: 'searchExpenses',
-  description: '비용 항목(분류/내용/관련업체명)으로 지출 기록을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '비용 항목(분류/내용/관련업체명)으로 지출 기록을 검색한다. dateFrom/dateTo로 지급일 범위 지정 가능(예: 이번 달 비용 현황).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('지급일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'category', 'description', 'related_name'], 'paid_date');
     const rows = db.prepare(`SELECT id, business_id, category, description, amount, currency, amount_krw, related_name, paid_date, status
-      FROM expenses WHERE business_id LIKE ? OR category LIKE ? OR description LIKE ? OR related_name LIKE ?
-      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM expenses ${clause} ORDER BY paid_date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
 
-const searchCommissions: ToolDefinition<{ query: string; limit?: number }> = {
+const searchCommissions: ToolDefinition<BaseArgs> = {
   name: 'searchCommissions',
-  description: '커미션번호/해외거래처명으로 커미션(수수료) 입금 기록을 검색한다.',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '커미션번호/해외거래처명으로 커미션(수수료) 입금 기록을 검색한다. dateFrom/dateTo로 기간 지정 가능.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('일자'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['business_id', 'foreign_company'], 'date');
     const rows = db.prepare(`SELECT id, business_id, foreign_company, date, amount, currency, amount_krw, status
-      FROM commissions WHERE business_id LIKE ? OR foreign_company LIKE ?
-      ORDER BY date DESC LIMIT ?`).all(q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM commissions ${clause} ORDER BY date DESC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
@@ -280,23 +292,22 @@ const getCommission: ToolDefinition<{ id: string }> = {
   },
 };
 
-const searchEmployees: ToolDefinition<{ query: string; limit?: number }> = {
+const searchEmployees: ToolDefinition<BaseArgs> = {
   name: 'searchEmployees',
-  description: '이름/부서/직급으로 사내 직원을 검색한다(비밀번호 등 민감정보는 절대 포함하지 않음).',
-  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(이름/부서)' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
-  handler: async ({ query, limit }) => {
+  description: '이름/부서로 사내 직원을 검색한다(비밀번호 등 민감정보는 절대 포함하지 않음). query를 비워두면 전체 직원 목록.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(이름/부서, 생략 가능)' }, limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
+  handler: async (args) => {
     const db = getDb();
-    const q = `%${query}%`;
+    const { clause, params } = buildWhere(args, ['name', 'department']);
     const rows = db.prepare(`SELECT id, name, email, department, role, status
-      FROM users WHERE name LIKE ? OR department LIKE ?
-      ORDER BY name ASC LIMIT ?`).all(q, q, clampLimit(limit)) as Record<string, unknown>[];
+      FROM users ${clause} ORDER BY name ASC LIMIT ?`).all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
 };
 
 const searchKnowledgeTool: ToolDefinition<{ query: string; limit?: number }> = {
   name: 'searchKnowledge',
-  description: '제품/검품/클레임 등 사내 자료를 의미 기반(semantic)으로 검색한다. 키워드가 정확히 일치하지 않아도 관련 내용을 찾을 수 있다. 각 결과는 출처(sourceType/sourceId)를 포함한다.',
+  description: '제품/검품/클레임 등 사내 자료를 의미 기반(semantic)으로 검색한다. 키워드가 정확히 일치하지 않아도 관련 내용을 찾을 수 있다. 각 결과는 출처(sourceType/sourceId)를 포함한다. 정확한 금액/수량/기간 집계가 필요하면 이 도구 대신 해당 데이터의 search 도구(searchSales, searchPurchaseOrders 등)를 써라 — 이건 어디까지나 의미 검색이라 숫자 계산에는 부적합하다.',
   parameters: { type: 'object', properties: { query: { type: 'string', description: '자연어 질문 또는 검색어' }, limit: { type: 'number', description: '결과 개수(기본 8, 최대 20)' } }, required: ['query'] },
   handler: async ({ query, limit }) => {
     return searchKnowledge(query, { limit: clampLimit(limit, 8, 20) });
