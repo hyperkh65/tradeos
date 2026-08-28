@@ -7,7 +7,9 @@ import { ProfitAnalysisDoc } from './profit-analysis';
 import { OfficialDocumentDoc } from './official-document';
 import { ImportCostSettlementDoc } from './import-cost-settlement';
 import { TradeStatementCustomDoc } from './trade-statement-custom';
+import { SettlementStatementDoc, type SettlementItemPdf } from './settlement-statement';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
+import { calcSettlementTotals, type SettlementItem } from '@/lib/settlement-statement';
 import { CommissionsListDoc, type CommissionListRow } from './commissions-list';
 import { CompanyLedgerDoc, type LedgerEntryPdf } from './company-ledger';
 import { RfqDoc, type RfqItem } from './rfq';
@@ -302,6 +304,25 @@ export async function generateTradeStatementCustomPdf(saleId: string): Promise<B
     items: items.map(i => ({ productName: i.productName, specification: i.specification, unit: i.unit, qty: i.qty, unitPrice: i.unitPrice, amount: i.qty * i.unitPrice, remark: i.remark })),
     supplyAmount, vatAmount, totalAmount,
     stampPath: resolveCompanyAssetPath(company.stampUrl),
+  }));
+}
+
+export async function generateSettlementStatementPdf(saleId: string): Promise<Buffer | null> {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM documents WHERE doc_type='rmb_settlement_statement' AND related_type='sale' AND related_id=? ORDER BY updated_at DESC LIMIT 1`).get(saleId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const data = JSON.parse((row.data_json as string) || '{}') as {
+    title: string; issueDate: string; exchangeRate: number; items: SettlementItem[]; note: string;
+  };
+  const { computed, totals } = calcSettlementTotals(data.items || [], data.exchangeRate || 0);
+  const items: SettlementItemPdf[] = computed.map(it => ({
+    productName: it.productName, qty: it.qty, unitPriceRmb: it.unitPriceRmb, remark: it.remark,
+    balanceRmb: it.balanceRmb, convertedKrw: it.convertedKrw, vatKrw: it.vatKrw, totalKrw: it.totalKrw,
+  }));
+
+  return renderToBuffer(SettlementStatementDoc({
+    title: data.title, issueDate: data.issueDate, exchangeRate: data.exchangeRate || 0,
+    items, note: data.note, totals,
   }));
 }
 

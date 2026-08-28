@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-statement';
+import { calcSettlementTotals, emptySettlementItem, type SettlementItem } from '@/lib/settlement-statement';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { cn } from '@/lib/utils';
 
@@ -352,6 +353,7 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
   const [specModal, setSpecModal] = useState<{ open: boolean; idx: number; value: string }>({ open: false, idx: 0, value: '' });
   const [poPreview, setPoPreview] = useState<{ po: any; anchorRect: DOMRect } | null>(null);
   const [customStatementOpen, setCustomStatementOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const [deposits, setDeposits] = useState<DepositEntry[]>(sale?.deposits || []);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bankName: string; accountNumber: string; currency: string }>>([]);
   const depositManagerRef = useRef<DepositManagerHandle>(null);
@@ -838,6 +840,11 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
               별도 엑셀양식으로 작성
             </Button>
           )}
+          {sale && (
+            <Button type="button" variant="outline" className="w-full" onClick={() => setSettlementOpen(true)}>
+              입고 정산내역(RMB) 작성
+            </Button>
+          )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button type="submit" className="flex-1" disabled={saving}>
@@ -847,6 +854,9 @@ function SaleModal({ sale, companies, products, purchaseOrders, shipments, impor
         </form>
         {customStatementOpen && sale && (
           <CustomStatementModal sale={sale} companies={companies} onClose={() => setCustomStatementOpen(false)} />
+        )}
+        {settlementOpen && sale && (
+          <SettlementStatementModal sale={sale} onClose={() => setSettlementOpen(false)} />
         )}
       </div>
     </div>
@@ -1078,6 +1088,165 @@ function cnStatement(mismatch: boolean) {
   return mismatch
     ? 'text-xs rounded-lg px-3 py-2 bg-red-50 text-red-700 border border-red-200'
     : 'text-xs rounded-lg px-3 py-2 bg-green-50 text-green-700 border border-green-200';
+}
+
+/* ─── 입고 정산내역(RMB) 모달 ───────────────────────────────────────────────
+ * 중국 공급업체(예: 알프스21)로부터 받은 입고 건을 RMB 단가 기준으로 정산하는
+ * 별도 양식. 매출단가(고객에게 파는 가격)와는 무관한 별개 원가성 데이터라
+ * sale.items에서 자동으로 채우지 않고 빈 표에서 시작한다. */
+function SettlementStatementModal({ sale, onClose }: { sale: SalesRecord; onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(false);
+  const [title, setTitle] = useState(`${new Date().toISOString().slice(0, 10).replace(/-/g, '.')} 입고 정산내역`);
+  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exchangeRate, setExchangeRate] = useState(0);
+  const [items, setItems] = useState<SettlementItem[]>([emptySettlementItem()]);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    fetch(`/api/sales/${sale.id}/settlement-statement`).then(r => r.json()).then(j => {
+      if (j.data) {
+        setTitle(j.data.title || title); setIssueDate(j.data.issueDate || issueDate);
+        setExchangeRate(j.data.exchangeRate || 0);
+        setItems(j.data.items?.length ? j.data.items : [emptySettlementItem()]);
+        setNote(j.data.note || '');
+        setSavedOnce(true);
+      }
+    }).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const updateItem = (idx: number, field: keyof SettlementItem, val: string | number | null) => {
+    const next = [...items];
+    (next[idx] as any)[field] = val;
+    setItems(next);
+  };
+
+  const { computed, totals } = calcSettlementTotals(items, exchangeRate);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sales/${sale.id}/settlement-statement`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, issueDate, exchangeRate, items, note }),
+      });
+      const j = await res.json();
+      if (res.ok) setSavedOnce(true);
+      else alert(j.error || '저장 실패');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-2">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
+          <h2 className="font-semibold">입고 정산내역 (RMB)</h2>
+          <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">제목</label>
+                <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 8/27 입고 알프스21(평판) 정산내역" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">일자</label>
+                <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="w-48">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">적용환율</label>
+              <Input type="number" step="0.01" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value))} placeholder="예: 207.95" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-semibold">품목</p>
+                <button type="button" onClick={() => setItems([...items, emptySettlementItem()])} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> 품목 추가
+                </button>
+              </div>
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full text-sm min-w-[900px]">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">품목</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-20">수량</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">단가(RMB)</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-24">잔금(RMB)</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-28">환산금액(KRW)</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-28">부가세(KRW)<br /><span className="font-normal text-[9px]">수기 조정 가능</span></th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground w-28">부가세포함(KRW)</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">비고</th>
+                      <th className="w-6" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {computed.map((it, idx) => (
+                      <tr key={it.id}>
+                        <td className="px-1 py-2"><input value={it.productName} onChange={e => updateItem(idx, 'productName', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
+                        <td className="px-1 py-2"><input type="number" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-sm text-right" /></td>
+                        <td className="px-1 py-2"><input type="number" step="0.01" value={it.unitPriceRmb} onChange={e => updateItem(idx, 'unitPriceRmb', Number(e.target.value))} className="w-full bg-transparent border-none outline-none text-sm text-right" /></td>
+                        <td className="px-2 py-1 text-right text-muted-foreground">{it.balanceRmb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="px-2 py-1 text-right text-muted-foreground">{it.convertedKrw.toLocaleString()}</td>
+                        <td className="px-1 py-2">
+                          <input type="number" value={it.vatKrw}
+                            onChange={e => updateItem(idx, 'vatKrwOverride', e.target.value === '' ? null : Number(e.target.value))}
+                            className="w-full bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded px-1 outline-none text-sm text-right" />
+                        </td>
+                        <td className="px-2 py-1 text-right font-medium">{it.totalKrw.toLocaleString()}</td>
+                        <td className="px-1 py-2"><input value={it.remark} onChange={e => updateItem(idx, 'remark', e.target.value)} className="w-full bg-transparent border-none outline-none text-sm" /></td>
+                        <td className="px-1 py-2">
+                          <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/30 font-semibold">
+                    <tr>
+                      <td className="px-2 py-1.5">합계</td>
+                      <td className="px-2 py-1.5 text-right">{totals.qty.toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-right text-muted-foreground text-xs">N/A</td>
+                      <td className="px-2 py-1.5 text-right">{totals.balanceRmb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-2 py-1.5 text-right">{totals.convertedKrw.toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-right">{totals.vatKrw.toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-right">{totals.totalKrw.toLocaleString()}</td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">부가세(KRW) 칸은 기본으로 환산금액의 10%가 자동 입력되지만, 실제 세금계산서·통관 금액과 차이가 있으면 직접 값을 고쳐 넣을 수 있습니다(노란 배경 칸).</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">비고 (예: 최초 고시 송금 보낼 때 환율 안내)</label>
+              <Input value={note} onChange={e => setNote(e.target.value)} placeholder="* 8/27 최초 고시 송금 보낼 때 환율 : 207.95" />
+            </div>
+          </div>
+        )}
+        <div className="p-4 border-t shrink-0 flex flex-wrap gap-2 justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>닫기</Button>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/settlement-statement/excel`, '_blank')}>
+            엑셀 다운로드
+          </Button>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/settlement-statement/pdf`, '_blank')}>
+            인쇄(PDF)
+          </Button>
+          <Button type="button" onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ─── 거래명세표 인쇄 모달 ───────────────────────────────────────────────── */
