@@ -18,6 +18,7 @@ interface ForwarderRate {
 }
 interface Lane { pol: string; pod: string; count: number; forwarderCount: number; lastUpdated: string }
 interface Company { id: string; name: string; type: string }
+interface ForwarderSummary { forwarderId: string | null; forwarderName: string; lastQuoteDate: string; laneCount: number; totalCount: number }
 
 const CONTAINER_TYPES = ['20GP', '40GP', 'LCL'];
 const CURRENCIES = ['USD', 'CNY', 'KRW', 'EUR', 'JPY'];
@@ -34,6 +35,9 @@ export default function ForwarderRatesPage() {
   const [modalOpen, setModalOpen] = useState<{ open: boolean; item?: ForwarderRate | null }>({ open: false });
   const [historyFor, setHistoryFor] = useState<ForwarderRate | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkPrefill, setBulkPrefill] = useState<BulkPrefill | null>(null);
+  const [forwarderSummaries, setForwarderSummaries] = useState<ForwarderSummary[]>([]);
+  const [updatingForwarder, setUpdatingForwarder] = useState<string | null>(null);
 
   const loadLanes = useCallback(() => {
     setLoading(true);
@@ -43,6 +47,23 @@ export default function ForwarderRatesPage() {
   useEffect(() => {
     fetch('/api/companies?type=포워더').then(r => r.json()).then(j => setForwarders(j.data || []));
   }, []);
+
+  const loadForwarderSummaries = useCallback(() => {
+    fetch('/api/forwarder-rates/forwarders').then(r => r.json()).then(j => setForwarderSummaries(j.data || []));
+  }, []);
+  useEffect(loadForwarderSummaries, [loadForwarderSummaries]);
+
+  const openBulkNew = () => { setBulkPrefill(null); setBulkOpen(true); };
+  const startMonthlyUpdate = async (forwarderName: string) => {
+    setUpdatingForwarder(forwarderName);
+    try {
+      const res = await fetch(`/api/forwarder-rates/template?forwarderName=${encodeURIComponent(forwarderName)}`);
+      const j = await res.json();
+      if (!j.data) { alert('이전 견적을 찾을 수 없습니다.'); return; }
+      setBulkPrefill({ forwarderName, totalCurrency: j.data.totalCurrency, validUntil: j.data.validUntil, contactPerson: j.data.contactPerson, previousQuoteDate: j.data.previousQuoteDate, rows: j.data.rows });
+      setBulkOpen(true);
+    } finally { setUpdatingForwarder(null); }
+  };
 
   const loadCompare = useCallback(() => {
     if (!pol || !pod) { setCompareRows(null); return; }
@@ -71,7 +92,7 @@ export default function ForwarderRatesPage() {
   const removeRate = async (r: ForwarderRate) => {
     if (!confirm(`${r.forwarderName} / ${r.pol}→${r.pod} / ${r.containerType} 운임을 삭제할까요?`)) return;
     await fetch(`/api/forwarder-rates/${r.id}`, { method: 'DELETE' });
-    loadLanes(); loadCompare();
+    loadLanes(); loadCompare(); loadForwarderSummaries();
   };
 
   return (
@@ -100,10 +121,31 @@ export default function ForwarderRatesPage() {
             {(pol || pod) && <Button type="button" variant="outline" size="sm" onClick={clearFilter}>필터 초기화</Button>}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" onClick={() => setBulkOpen(true)} className="gap-1.5"><ClipboardPaste className="w-4 h-4" />엑셀에서 붙여넣기</Button>
+            <Button type="button" variant="outline" onClick={openBulkNew} className="gap-1.5"><ClipboardPaste className="w-4 h-4" />엑셀에서 붙여넣기</Button>
             <Button onClick={() => setModalOpen({ open: true })} className="gap-1.5"><Plus className="w-4 h-4" />운임 등록</Button>
           </div>
         </div>
+
+        {!pol && !pod && forwarderSummaries.length > 0 && (
+          <div className="border rounded-xl overflow-hidden">
+            <div className="px-4 py-2 border-b bg-muted/30 text-sm font-medium">포워더별 이번달 갱신</div>
+            <div className="divide-y">
+              {forwarderSummaries.map(f => (
+                <div key={f.forwarderName} className="flex items-center justify-between px-4 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium">{f.forwarderName}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">노선 {f.laneCount}개 · 최근 견적 {f.lastQuoteDate?.slice(0, 10)}</div>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" disabled={updatingForwarder === f.forwarderName}
+                    onClick={() => startMonthlyUpdate(f.forwarderName)} className="gap-1.5">
+                    {updatingForwarder === f.forwarderName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
+                    이번달 갱신
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!pol || !pod ? (
           loading ? (
@@ -173,14 +215,14 @@ export default function ForwarderRatesPage() {
       {modalOpen.open && (
         <RateModal item={modalOpen.item} forwarders={forwarders} defaultPol={pol} defaultPod={pod}
           onClose={() => setModalOpen({ open: false })}
-          onSaved={() => { setModalOpen({ open: false }); loadLanes(); loadCompare(); }} />
+          onSaved={() => { setModalOpen({ open: false }); loadLanes(); loadCompare(); loadForwarderSummaries(); }} />
       )}
       {historyFor && (
         <HistoryModal base={historyFor} onClose={() => setHistoryFor(null)} />
       )}
       {bulkOpen && (
-        <BulkPasteModal forwarders={forwarders} onClose={() => setBulkOpen(false)}
-          onSaved={() => { setBulkOpen(false); loadLanes(); loadCompare(); }} />
+        <BulkPasteModal forwarders={forwarders} prefill={bulkPrefill} onClose={() => setBulkOpen(false)}
+          onSaved={() => { setBulkOpen(false); loadLanes(); loadCompare(); loadForwarderSummaries(); }} />
       )}
     </div>
   );
@@ -453,17 +495,29 @@ interface BulkRow { pol: string; pod: string; rate20: string; rate40: string; ca
 function emptyBulkRow(): BulkRow { return { pol: '', pod: '', rate20: '', rate40: '', carrier: '' }; }
 const BULK_COLS: (keyof BulkRow)[] = ['pol', 'pod', 'rate20', 'rate40', 'carrier'];
 
+export interface BulkPrefill {
+  forwarderName: string; totalCurrency: string; validUntil: string; contactPerson: string;
+  previousQuoteDate?: string; rows: BulkRow[];
+}
+
 /** 포워더 견적서마다 형식이 완전히 달라 자동 파싱은 하지 않고, 대신 엑셀에서 복사한 표를
  * 이 그리드에 그대로 붙여넣으면(Cmd/Ctrl+V) 셀 단위로 채워지게 해서 타이핑량을 줄인다.
  * 한 문서 = 포워더 하나·통화 하나·견적일자 하나라는 실제 견적서 구조를 그대로 반영해
- * 그 값들은 공통 필드로 한 번만 입력하고, 노선/운임만 행마다 다르게 관리한다. */
-function BulkPasteModal({ forwarders, onClose, onSaved }: { forwarders: Company[]; onClose: () => void; onSaved: () => void }) {
-  const [forwarderName, setForwarderName] = useState('');
-  const [totalCurrency, setTotalCurrency] = useState('USD');
+ * 그 값들은 공통 필드로 한 번만 입력하고, 노선/운임만 행마다 다르게 관리한다.
+ *
+ * prefill이 있으면 "이번달 갱신" 진입 — 지난 견적의 노선·선사 구성을 그대로 불러와
+ * 금액 칸만 비워서 보여준다(같은 표를 다시 만들 필요 없이 숫자만 바꿔 넣게). */
+function BulkPasteModal({ forwarders, prefill, onClose, onSaved }: { forwarders: Company[]; prefill?: BulkPrefill | null; onClose: () => void; onSaved: () => void }) {
+  const [forwarderName, setForwarderName] = useState(prefill?.forwarderName || '');
+  const [totalCurrency, setTotalCurrency] = useState(prefill?.totalCurrency || 'USD');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
-  const [validUntil, setValidUntil] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [rows, setRows] = useState<BulkRow[]>(Array.from({ length: 8 }, emptyBulkRow));
+  const [validUntil, setValidUntil] = useState(prefill?.validUntil || '');
+  const [contactPerson, setContactPerson] = useState(prefill?.contactPerson || '');
+  const [rows, setRows] = useState<BulkRow[]>(
+    prefill?.rows?.length
+      ? [...prefill.rows, ...Array.from({ length: 3 }, emptyBulkRow)]
+      : Array.from({ length: 8 }, emptyBulkRow),
+  );
   const [saving, setSaving] = useState(false);
 
   const forwarderMatch = forwarders.find(f => f.name === forwarderName);
@@ -523,8 +577,12 @@ function BulkPasteModal({ forwarders, onClose, onSaved }: { forwarders: Company[
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <div>
-            <h2 className="font-semibold">엑셀에서 붙여넣기</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">아래 표의 아무 칸이나 클릭한 뒤, 엑셀에서 복사한 표를 그대로 붙여넣으세요(Cmd/Ctrl+V).</p>
+            <h2 className="font-semibold">{prefill ? `${prefill.forwarderName} — 이번달 갱신` : '엑셀에서 붙여넣기'}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {prefill
+                ? `지난 견적(${prefill.previousQuoteDate || '이전'}) 구성을 그대로 불러왔습니다. 바뀐 금액만 고쳐서 저장하세요 — 노선을 다시 입력할 필요 없습니다.`
+                : '아래 표의 아무 칸이나 클릭한 뒤, 엑셀에서 복사한 표를 그대로 붙여넣으세요(Cmd/Ctrl+V).'}
+            </p>
           </div>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
