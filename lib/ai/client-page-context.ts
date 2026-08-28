@@ -31,11 +31,14 @@ export function inferPageContext(pathname: string): ClientPageContext {
 export const SOURCE_TYPE_ROUTE: Record<string, string> = {
   product: '/products', inspection: '/inspections', claim: '/claims',
   company: '/companies', purchaseorder: '/purchase-orders', shipment: '/shipments',
+  quote: '/quotes', sale: '/crm', expense: '/costs',
+  inventory: '/inventory', import: '/imports', commission: '/commissions',
 };
 
 export const SOURCE_TYPE_LABEL: Record<string, string> = {
   product: '제품', inspection: '검품', claim: '클레임', company: '거래처', purchaseorder: '발주', shipment: '선적',
-  attachment: '첨부파일',
+  attachment: '첨부파일', quote: '견적', sale: '매출', expense: '비용', inventory: '재고',
+  import: '수입통관', commission: '커미션', employee: '직원',
 };
 
 export interface DraftBlock { type: string; title?: string; content?: string; fields?: Record<string, unknown> }

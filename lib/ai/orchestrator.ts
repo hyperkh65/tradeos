@@ -19,6 +19,13 @@ const TOOL_SOURCE_TYPE: Record<string, string> = {
   searchCompanies: 'company', getCompany: 'company',
   searchPurchaseOrders: 'purchaseorder', getPurchaseOrder: 'purchaseorder',
   searchShipments: 'shipment',
+  searchQuotes: 'quote', getQuote: 'quote',
+  searchSales: 'sale', getSale: 'sale',
+  searchInventory: 'inventory',
+  searchImports: 'import', getImport: 'import',
+  searchExpenses: 'expense',
+  searchCommissions: 'commission', getCommission: 'commission',
+  searchEmployees: 'employee',
 };
 
 /** 도구 호출을 몇 번까지 왕복할지 상한 — 비용 제어 겸 무한루프 방지.
@@ -46,7 +53,8 @@ function toolResultToSources(name: string, result: unknown): AISourceRef[] {
       };
     }
     const sourceType = TOOL_SOURCE_TYPE[name] || name;
-    const title = row.name_ko ?? row.name ?? row.business_id ?? row.title ?? row.id;
+    const title = row.name_ko ?? row.name ?? row.company_name ?? row.customer ?? row.product_name
+      ?? row.foreign_company ?? row.description ?? row.business_id ?? row.title ?? row.id;
     return { sourceType, sourceId: String(row.id ?? ''), title: String(title ?? ''), businessId: row.business_id as string | undefined };
   }).filter(s => s.sourceId);
 }

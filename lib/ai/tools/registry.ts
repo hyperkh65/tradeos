@@ -156,6 +156,144 @@ const searchShipments: ToolDefinition<{ query: string; limit?: number }> = {
   },
 };
 
+const searchQuotes: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchQuotes',
+  description: '견적번호/거래처명/상태로 견적서를 검색한다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, business_id, type, company_name, currency, incoterm, status, created_at
+      FROM quotes WHERE business_id LIKE ? OR company_name LIKE ? OR status LIKE ?
+      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const getQuote: ToolDefinition<{ id: string }> = {
+  name: 'getQuote',
+  description: '견적서 id로 상세 정보를 조회한다(품목 포함).',
+  parameters: { type: 'object', properties: { id: { type: 'string', description: '견적서 id' } }, required: ['id'] },
+  handler: async ({ id }) => {
+    const db = getDb();
+    return db.prepare(`SELECT * FROM quotes WHERE id=?`).get(id) as Record<string, unknown> | undefined ?? null;
+  },
+};
+
+const searchSales: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchSales',
+  description: '매출번호/고객사명/PO번호로 매출(판매) 기록을 검색한다. 금액(net_amount/vat/total_amount)이 포함된다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(고객사명 등)' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, business_id, sale_date, customer, sale_type, salesperson, po_no, net_amount, vat, total_amount, currency
+      FROM sales WHERE business_id LIKE ? OR customer LIKE ? OR po_no LIKE ?
+      ORDER BY sale_date DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const getSale: ToolDefinition<{ id: string }> = {
+  name: 'getSale',
+  description: '매출 id로 상세 정보를 조회한다(품목 포함).',
+  parameters: { type: 'object', properties: { id: { type: 'string', description: '매출 id' } }, required: ['id'] },
+  handler: async ({ id }) => {
+    const db = getDb();
+    return db.prepare(`SELECT * FROM sales WHERE id=?`).get(id) as Record<string, unknown> | undefined ?? null;
+  },
+};
+
+const searchInventory: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchInventory',
+  description: '제품명/제품코드/보관위치로 현재 재고 수량을 검색한다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, product_name, product_code, qty, location, purchase_price, currency, updated_at
+      FROM inventory WHERE product_name LIKE ? OR product_code LIKE ? OR location LIKE ?
+      ORDER BY updated_at DESC LIMIT ?`).all(q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const searchImports: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchImports',
+  description: '수입통관번호/선적번호/관세사명/신고번호로 수입통관 기록을 검색한다(관세/부가세/통관수수료 포함).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, business_id, shipment_business_id, broker_name, declaration_no, release_date, hs_code, duty, vat, broker_fee, status
+      FROM imports WHERE business_id LIKE ? OR shipment_business_id LIKE ? OR broker_name LIKE ? OR declaration_no LIKE ?
+      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const getImport: ToolDefinition<{ id: string }> = {
+  name: 'getImport',
+  description: '수입통관 id로 상세 정보를 조회한다.',
+  parameters: { type: 'object', properties: { id: { type: 'string', description: '수입통관 id' } }, required: ['id'] },
+  handler: async ({ id }) => {
+    const db = getDb();
+    return db.prepare(`SELECT * FROM imports WHERE id=?`).get(id) as Record<string, unknown> | undefined ?? null;
+  },
+};
+
+const searchExpenses: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchExpenses',
+  description: '비용 항목(분류/내용/관련업체명)으로 지출 기록을 검색한다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, business_id, category, description, amount, currency, amount_krw, related_name, paid_date, status
+      FROM expenses WHERE business_id LIKE ? OR category LIKE ? OR description LIKE ? OR related_name LIKE ?
+      ORDER BY created_at DESC LIMIT ?`).all(q, q, q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const searchCommissions: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchCommissions',
+  description: '커미션번호/해외거래처명으로 커미션(수수료) 입금 기록을 검색한다.',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, business_id, foreign_company, date, amount, currency, amount_krw, status
+      FROM commissions WHERE business_id LIKE ? OR foreign_company LIKE ?
+      ORDER BY date DESC LIMIT ?`).all(q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
+const getCommission: ToolDefinition<{ id: string }> = {
+  name: 'getCommission',
+  description: '커미션 id로 상세 정보를 조회한다.',
+  parameters: { type: 'object', properties: { id: { type: 'string', description: '커미션 id' } }, required: ['id'] },
+  handler: async ({ id }) => {
+    const db = getDb();
+    return db.prepare(`SELECT * FROM commissions WHERE id=?`).get(id) as Record<string, unknown> | undefined ?? null;
+  },
+};
+
+const searchEmployees: ToolDefinition<{ query: string; limit?: number }> = {
+  name: 'searchEmployees',
+  description: '이름/부서/직급으로 사내 직원을 검색한다(비밀번호 등 민감정보는 절대 포함하지 않음).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(이름/부서)' }, limit: { type: 'number', description: '결과 개수(기본 10, 최대 30)' } }, required: ['query'] },
+  handler: async ({ query, limit }) => {
+    const db = getDb();
+    const q = `%${query}%`;
+    const rows = db.prepare(`SELECT id, name, email, department, role, status
+      FROM users WHERE name LIKE ? OR department LIKE ?
+      ORDER BY name ASC LIMIT ?`).all(q, q, clampLimit(limit)) as Record<string, unknown>[];
+    return rows;
+  },
+};
+
 const searchKnowledgeTool: ToolDefinition<{ query: string; limit?: number }> = {
   name: 'searchKnowledge',
   description: '제품/검품/클레임 등 사내 자료를 의미 기반(semantic)으로 검색한다. 키워드가 정확히 일치하지 않아도 관련 내용을 찾을 수 있다. 각 결과는 출처(sourceType/sourceId)를 포함한다.',
@@ -173,6 +311,13 @@ export const TOOL_REGISTRY: ToolDefinition<any, any>[] = [
   searchCompanies, getCompany,
   searchPurchaseOrders, getPurchaseOrder,
   searchShipments,
+  searchQuotes, getQuote,
+  searchSales, getSale,
+  searchInventory,
+  searchImports, getImport,
+  searchExpenses,
+  searchCommissions, getCommission,
+  searchEmployees,
   searchKnowledgeTool,
 ];
 
