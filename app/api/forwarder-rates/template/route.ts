@@ -4,9 +4,12 @@ import { getSessionUser } from '@/lib/auth/session';
 
 interface TemplateRow { pol: string; pod: string; rate20: string; rate40: string; carrier: string }
 
-/** 특정 포워더의 "가장 최근 견적 묶음"(같은 견적일자로 등록된 행들)을 그리드 모양으로
+/** 특정 포워더의 "가장 최근 견적 묶음"(같은 달=quote_month로 등록된 행들)을 그리드 모양으로
  * 돌려준다 — "이번달 갱신"이 이 결과를 그대로 프리필해서, 노선·컨테이너타입·선사를
- * 다시 입력하지 않고 금액만 새로 채워 넣게 하기 위함. */
+ * 다시 입력하지 않고 금액만 새로 채워 넣게 하기 위함.
+ * quote_month 기준으로 묶으므로, 같은 달 안에 여러 번 나눠 입력됐어도 그 달 전체가
+ * 하나의 배치로 인식된다(예전엔 정확히 같은 quote_date 값만 인식해서 같은 달의
+ * 다른 날짜에 입력된 행은 프리필에서 누락됐었음). */
 export async function GET(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
@@ -16,14 +19,14 @@ export async function GET(req: NextRequest) {
   if (!forwarderName) return NextResponse.json({ error: '포워더명은 필수입니다.' }, { status: 400 });
 
   const db = getDb();
-  const latest = db.prepare(`SELECT MAX(COALESCE(quote_date, created_at)) as d FROM forwarder_rates WHERE forwarder_name=?`).get(forwarderName) as { d: string | null };
-  if (!latest?.d) return NextResponse.json({ data: null });
+  const latest = db.prepare(`SELECT MAX(quote_month) as m FROM forwarder_rates WHERE forwarder_name=?`).get(forwarderName) as { m: string | null };
+  if (!latest?.m) return NextResponse.json({ data: null });
 
   const rows = db.prepare(`
     SELECT * FROM forwarder_rates
-    WHERE forwarder_name=? AND COALESCE(quote_date, created_at)=?
+    WHERE forwarder_name=? AND quote_month=?
     ORDER BY pol, pod, carrier, container_type
-  `).all(forwarderName, latest.d) as Record<string, unknown>[];
+  `).all(forwarderName, latest.m) as Record<string, unknown>[];
   if (rows.length === 0) return NextResponse.json({ data: null });
 
   const grid = new Map<string, TemplateRow>();
@@ -36,13 +39,18 @@ export async function GET(req: NextRequest) {
   }
 
   const first = rows[0];
+  const latestDate = rows.reduce<string>((max, r) => {
+    const d = (r.quote_date as string) || (r.created_at as string);
+    return d > max ? d : max;
+  }, '');
   return NextResponse.json({
     data: {
       forwarderId: first.forwarder_id || undefined,
       totalCurrency: first.total_currency,
       validUntil: first.valid_until || '',
       contactPerson: first.contact_person || '',
-      previousQuoteDate: latest.d,
+      previousQuoteDate: latestDate,
+      previousQuoteMonth: latest.m,
       rows: Array.from(grid.values()),
     },
   });

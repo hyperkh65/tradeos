@@ -13,11 +13,12 @@ export async function GET(_req: NextRequest) {
     SELECT pol, pod,
       COUNT(*) as count,
       COUNT(DISTINCT COALESCE(forwarder_id, forwarder_name)) as forwarderCount,
-      MAX(COALESCE(quote_date, created_at)) as lastUpdated
+      MAX(COALESCE(quote_date, created_at)) as lastUpdated,
+      MAX(quote_month) as lastQuoteMonth
     FROM forwarder_rates
     GROUP BY pol, pod
     ORDER BY lastUpdated DESC
-  `).all() as { pol: string; pod: string; count: number; forwarderCount: number; lastUpdated: string }[];
+  `).all() as { pol: string; pod: string; count: number; forwarderCount: number; lastUpdated: string; lastQuoteMonth: string | null }[];
 
   return NextResponse.json({ data: rows });
 }

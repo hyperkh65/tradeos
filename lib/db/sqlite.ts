@@ -710,6 +710,9 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN linked_sales_json TEXT DEFAULT '[]'`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN paid_amount_krw REAL`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE cost_records ADD COLUMN payment_memo TEXT`); } catch { /* already exists */ }
+  // 매입원가(purchase_cogs) 처리방향 결제확인 시 자동 생성되는 전표(journal_entries)를
+  // 역참조 — commissions.journal_entry_id와 동일한 패턴.
+  try { db.exec(`ALTER TABLE cost_records ADD COLUMN journal_entry_id TEXT`); } catch { /* already exists */ }
   // foreign_invoices 컬럼 확장
   try { db.exec(`ALTER TABLE foreign_invoices ADD COLUMN vat_amount REAL DEFAULT 0`); } catch { /* already exists */ }
 
@@ -1720,6 +1723,13 @@ function runMigrations(db: Database.Database) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_forwarder_rates_lane ON forwarder_rates(pol, pod)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_forwarder_rates_forwarder ON forwarder_rates(forwarder_id)`);
   } catch { /* already exists */ }
+  // "몇월 견적"인지 조회/그룹핑하기 위한 컬럼 — quote_date는 원시 날짜 문자열이라
+  // 같은 달 안에 여러 번 나눠 입력되면 "이번달 갱신"이 그 중 하나만 인식하던 문제가 있었다.
+  try { db.exec(`ALTER TABLE forwarder_rates ADD COLUMN quote_month TEXT`); } catch { /* already exists */ }
+  try {
+    db.exec(`UPDATE forwarder_rates SET quote_month = substr(COALESCE(quote_date, created_at), 1, 7) WHERE quote_month IS NULL`);
+  } catch { /* ignore */ }
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_forwarder_rates_month ON forwarder_rates(forwarder_name, quote_month)`); } catch { /* already exists */ }
   // ── 포워더운임(해상운임 견적) 관리 끝 ────────────────────────────────────────
 
   // ── 사내 AI Assistant 시작 ──────────────────────────────────────────────────

@@ -9,7 +9,7 @@ export function dbToRate(row: Record<string, unknown>) {
     carrier: row.carrier || undefined, rateType: row.rate_type || undefined,
     totalAmount: row.total_amount, totalCurrency: row.total_currency,
     breakdown: JSON.parse((row.breakdown_json as string) || '[]'),
-    quoteDate: row.quote_date || undefined, validUntil: row.valid_until || undefined,
+    quoteDate: row.quote_date || undefined, quoteMonth: row.quote_month || undefined, validUntil: row.valid_until || undefined,
     docNo: row.doc_no || undefined, contactPerson: row.contact_person || undefined,
     sourceFileUrl: row.source_file_url || undefined, memo: row.memo || undefined,
     createdByName: row.created_by_name || undefined,
@@ -49,16 +49,18 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const id = newId();
   const ts = now();
+  const quoteDate = body.quoteDate || null;
+  const quoteMonth = body.quoteMonth || (quoteDate ? String(quoteDate).slice(0, 7) : ts.slice(0, 7));
   db.prepare(`INSERT INTO forwarder_rates
     (id, forwarder_id, forwarder_name, pol, pod, container_type, carrier, rate_type,
-     total_amount, total_currency, breakdown_json, quote_date, valid_until, doc_no,
+     total_amount, total_currency, breakdown_json, quote_date, quote_month, valid_until, doc_no,
      contact_person, source_file_url, memo, created_by, created_by_name, created_at, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, body.forwarderId || null, body.forwarderName.trim(),
     body.pol.trim().toUpperCase(), body.pod.trim().toUpperCase(), body.containerType,
     body.carrier || null, body.rateType || null,
     body.totalAmount, body.totalCurrency || 'USD', JSON.stringify(body.breakdown || []),
-    body.quoteDate || null, body.validUntil || null, body.docNo || null,
+    quoteDate, quoteMonth, body.validUntil || null, body.docNo || null,
     body.contactPerson || null, body.sourceFileUrl || null, body.memo || null,
     user.id, user.name, ts, ts,
   );

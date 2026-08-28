@@ -13,12 +13,13 @@ export async function GET(_req: NextRequest) {
   const rows = db.prepare(`
     SELECT forwarder_id as forwarderId, forwarder_name as forwarderName,
       MAX(COALESCE(quote_date, created_at)) as lastQuoteDate,
+      MAX(quote_month) as lastQuoteMonth,
       COUNT(DISTINCT pol || '|' || pod || '|' || container_type || '|' || COALESCE(carrier, '')) as laneCount,
       COUNT(*) as totalCount
     FROM forwarder_rates
     GROUP BY forwarder_name
     ORDER BY lastQuoteDate DESC
-  `).all() as { forwarderId: string | null; forwarderName: string; lastQuoteDate: string; laneCount: number; totalCount: number }[];
+  `).all() as { forwarderId: string | null; forwarderName: string; lastQuoteDate: string; lastQuoteMonth: string | null; laneCount: number; totalCount: number }[];
 
   return NextResponse.json({ data: rows });
 }
