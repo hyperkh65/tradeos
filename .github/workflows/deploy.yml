@@ -58,7 +58,15 @@ jobs:
             mkdir -p /volume1/web/tradeos
             mkdir -p /volume1/web/tradeos/data
             mkdir -p /volume1/web/tradeos/data/uploads
-            rm -rf /volume1/web/tradeos/.next/standalone/.next
+            # 이전 배포의 서버 프로세스가 아직 그 디렉토리의 파일을 서빙 중일 때
+            # rm -rf가 "Directory not empty"로 실패하는 경우가 있다(경합) — 몇 번
+            # 재시도하고, 그래도 안 되면 다음 배포 단계(cp -r로 덮어씀)가 대부분
+            # 커버하므로 전체 배포를 막지 않고 넘어간다.
+            for i in 1 2 3 4 5; do
+              rm -rf /volume1/web/tradeos/.next/standalone/.next && break
+              echo "rm -rf attempt $i failed (dir busy), retrying in 3s..."
+              sleep 3
+            done
 
       - name: Copy build to NAS
         uses: appleboy/scp-action@v0.1.7
