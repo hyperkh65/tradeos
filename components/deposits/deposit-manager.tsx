@@ -132,11 +132,15 @@ export function DepositManager({ apiBase, totalDue, deposits, accounts, onChange
       <div className="flex items-end gap-2 border-t pt-2">
         <div className="flex-1">
           <label className="text-[10px] text-muted-foreground block mb-0.5">날짜</label>
-          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
+          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
         </div>
         <div className="flex-1">
           <label className="text-[10px] text-muted-foreground block mb-0.5">금액</label>
-          <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
+          <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between mb-0.5">
