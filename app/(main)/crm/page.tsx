@@ -1107,11 +1107,23 @@ function SettlementStatementModal({ sale, onClose }: { sale: SalesRecord; onClos
   useEffect(() => {
     fetch(`/api/sales/${sale.id}/settlement-statement`).then(r => r.json()).then(j => {
       if (j.data) {
+        // 이미 저장된 정산내역이 있으면 그대로 불러온다(수기로 조정한 내용을 덮어쓰지 않음).
         setTitle(j.data.title || title); setIssueDate(j.data.issueDate || issueDate);
         setExchangeRate(j.data.exchangeRate || 0);
         setItems(j.data.items?.length ? j.data.items : [emptySettlementItem()]);
         setNote(j.data.note || '');
         setSavedOnce(true);
+      } else {
+        // 처음 여는 경우 — 품목명/수량/환율은 이 매출 건에 이미 입력된 값을 그대로 가져와서
+        // 다시 타이핑할 필요 없게 하고, RMB 단가만 새로 채워 넣으면 되게 한다(요청사항).
+        // 매출단가(고객 판매가)는 RMB 원가와 무관하므로 단가는 비워둔다.
+        if (sale.items?.length) {
+          setItems(sale.items.map((i, idx) => ({
+            id: i.id || `${sale.id}-${idx}`, productName: i.product, qty: i.qty, unitPriceRmb: 0, vatKrwOverride: null, remark: '',
+          })));
+        }
+        const defaultRate = (sale.exchangeRate && sale.exchangeRate !== 1) ? sale.exchangeRate : (sale.items?.[0]?.exRate || 0);
+        if (defaultRate) setExchangeRate(defaultRate);
       }
     }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
