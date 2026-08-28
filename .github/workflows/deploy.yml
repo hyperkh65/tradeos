@@ -156,9 +156,19 @@ jobs:
             NOTION_DB_COMMISSIONS="${{ secrets.NOTION_DB_COMMISSIONS }}" \
             $NODE /volume1/web/tradeos/.next/standalone/server.js >> /tmp/tradeos.log 2>&1 &
             echo $! > /tmp/tradeos.pid
-            sleep 5
-            if $NODE -e "require('http').get('http://localhost:3103',(r)=>{console.log('HTTP',r.statusCode);process.exit(0)}).on('error',(e)=>{console.error('FAIL',e.message);process.exit(1)})"; then
-              echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3103"
+            # NAS 부하에 따라 포트 바인딩까지 걸리는 시간이 들쭉날쭉하다(5초로는
+            # 부족해서 실제로는 뜬 서버를 "실패"로 오판하고 배포를 중단시킨 적 있음)
+            # — 고정 sleep 대신 최대 30초까지 반복 확인한다.
+            OK=0
+            for i in $(seq 1 15); do
+              sleep 2
+              if $NODE -e "require('http').get('http://localhost:3103',(r)=>{process.exit(0)}).on('error',()=>process.exit(1))"; then
+                OK=1
+                break
+              fi
+            done
+            if [ "$OK" = "1" ]; then
+              echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3103 (attempt $i)"
             else
               echo "ERROR: server failed" && tail -30 /tmp/tradeos.log && exit 1
             fi
