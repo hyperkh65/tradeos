@@ -1689,6 +1689,39 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 제품 승인서·제품 사양서 작성 및 관리 시스템 끝 ────────────────────────────
 
+  // ── 포워더운임(해상운임 견적) 관리 시작 ──────────────────────────────────────
+  // 포워딩 업체마다 견적서 형식이 완전히 달라 자동파싱 대신 수동입력+붙여넣기로
+  // 기록하되, 매달 새로 받는 견적은 기존 행을 덮어쓰지 않고 새 행으로 계속
+  // 쌓는다(append-only) — "이력이 남아야 한다"는 요구사항의 핵심.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS forwarder_rates (
+      id TEXT PRIMARY KEY,
+      forwarder_id TEXT,
+      forwarder_name TEXT NOT NULL,
+      pol TEXT NOT NULL,
+      pod TEXT NOT NULL,
+      container_type TEXT NOT NULL,
+      carrier TEXT,
+      rate_type TEXT,
+      total_amount REAL NOT NULL,
+      total_currency TEXT NOT NULL DEFAULT 'USD',
+      breakdown_json TEXT DEFAULT '[]',
+      quote_date TEXT,
+      valid_until TEXT,
+      doc_no TEXT,
+      contact_person TEXT,
+      source_file_url TEXT,
+      memo TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_forwarder_rates_lane ON forwarder_rates(pol, pod)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_forwarder_rates_forwarder ON forwarder_rates(forwarder_id)`);
+  } catch { /* already exists */ }
+  // ── 포워더운임(해상운임 견적) 관리 끝 ────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
