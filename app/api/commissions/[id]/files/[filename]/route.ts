@@ -36,13 +36,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!user) return NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });
   try {
     const { id, filename } = await params;
+    const db = getDb();
+    const statusRow = db.prepare('SELECT status FROM commissions WHERE id=?').get(id) as { status: string } | undefined;
+    if (!statusRow) return NextResponse.json({ error: '커미션을 찾을 수 없습니다.' }, { status: 404 });
+    if (statusRow.status === 'closed') return NextResponse.json({ error: '마감된 건은 수정할 수 없습니다. 먼저 마감을 취소하세요.' }, { status: 409 });
+
     const safeName = path.basename(filename);
     const subdir = safeName.startsWith('deposit_') ? 'deposit' : 'invoice';
     const realName = safeName.replace(/^(deposit_|invoice_)/, '');
     const filepath = path.join(UPLOAD_BASE, id, subdir, realName);
     if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
 
-    const db = getDb();
     const col = subdir === 'deposit' ? 'deposit_files_json' : 'invoice_files_json';
     const row = db.prepare(`SELECT ${col} FROM commissions WHERE id=?`).get(id) as Record<string, unknown> | undefined;
     if (row) {

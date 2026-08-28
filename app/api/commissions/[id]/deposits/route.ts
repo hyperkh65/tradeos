@@ -13,8 +13,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const db = getDb();
-  const row = db.prepare('SELECT deposits_json, amount FROM commissions WHERE id=?').get(id) as Record<string, unknown> | undefined;
+  const row = db.prepare('SELECT deposits_json, amount, status FROM commissions WHERE id=?').get(id) as Record<string, unknown> | undefined;
   if (!row) return NextResponse.json({ error: '커미션을 찾을 수 없습니다.' }, { status: 404 });
+  if (row.status === 'closed') return NextResponse.json({ error: '마감된 건은 수정할 수 없습니다. 먼저 마감을 취소하세요.' }, { status: 409 });
 
   const deposits = parseDeposits(row.deposits_json as string);
   const entry: DepositEntry = {

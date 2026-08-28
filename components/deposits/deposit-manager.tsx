@@ -21,7 +21,10 @@ export const DepositManager = forwardRef<DepositManagerHandle, {
   apiBase: string; totalDue: number; deposits: DepositEntry[]; accounts: BankAccount[];
   onChange: (deposits: DepositEntry[]) => void;
   onAccountsRefresh: () => void;
-}>(function DepositManager({ apiBase, totalDue, deposits, accounts, onChange, onAccountsRefresh }, ref) {
+  /** 마감된 건 등 더 이상 수정하면 안 되는 경우 — 입금 내역 자체(세부내역)는 계속
+   * 보여주되 추가/삭제/파일첨부/계좌등록은 막는다. 목록은 절대 숨기지 않는다. */
+  disabled?: boolean;
+}>(function DepositManager({ apiBase, totalDue, deposits, accounts, onChange, onAccountsRefresh, disabled }, ref) {
   const [manageAccountsOpen, setManageAccountsOpen] = useState(false);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: 0, accountId: '' });
   const [saving, setSaving] = useState(false);
@@ -53,9 +56,9 @@ export const DepositManager = forwardRef<DepositManagerHandle, {
 
   useImperativeHandle(ref, () => ({
     flushPending: async () => {
-      if (form.date && form.amount) await addEntry();
+      if (!disabled && form.date && form.amount) await addEntry();
     },
-  }), [form]);
+  }), [form, disabled]);
 
   const removeEntry = async (depositId: string) => {
     setConfirmingId(null);
@@ -112,23 +115,25 @@ export const DepositManager = forwardRef<DepositManagerHandle, {
                   <span className="ml-2">{d.amount.toLocaleString()}</span>
                   <span className="ml-2 text-muted-foreground">{accountLabel(d.accountId)}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-primary hover:underline cursor-pointer flex items-center gap-1">
-                    {uploadingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                    <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(d.id, f); e.target.value = ''; }} />
-                  </label>
-                  {confirmingId === d.id ? (
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => removeEntry(d.id)} disabled={deletingId === d.id}
-                        className="text-[10px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded px-1.5 py-0.5 flex items-center gap-1">
-                        {deletingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '삭제확정'}
-                      </button>
-                      <button type="button" onClick={() => setConfirmingId(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-1">취소</button>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => setConfirmingId(d.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
-                  )}
-                </div>
+                {!disabled && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-primary hover:underline cursor-pointer flex items-center gap-1">
+                      {uploadingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(d.id, f); e.target.value = ''; }} />
+                    </label>
+                    {confirmingId === d.id ? (
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => removeEntry(d.id)} disabled={deletingId === d.id}
+                          className="text-[10px] font-semibold text-white bg-red-500 hover:bg-red-600 rounded px-1.5 py-0.5 flex items-center gap-1">
+                          {deletingId === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '삭제확정'}
+                        </button>
+                        <button type="button" onClick={() => setConfirmingId(null)} className="text-[10px] text-muted-foreground hover:text-foreground px-1">취소</button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmingId(d.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                    )}
+                  </div>
+                )}
               </div>
               {d.files.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -142,43 +147,49 @@ export const DepositManager = forwardRef<DepositManagerHandle, {
         </div>
       )}
 
-      <div className="flex items-end gap-2 border-t pt-2">
-        <div className="flex-1">
-          <label className="text-[10px] text-muted-foreground block mb-0.5">날짜</label>
-          <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
-            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
-        </div>
-        <div className="flex-1">
-          <label className="text-[10px] text-muted-foreground block mb-0.5">금액</label>
-          <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
-            className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-0.5">
-            <label className="text-[10px] text-muted-foreground">계좌</label>
-            <button type="button" onClick={() => setManageAccountsOpen(true)} className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
-              <CreditCard className="w-2.5 h-2.5" /> 계좌 등록
-            </button>
+      {disabled ? (
+        deposits.length === 0 && <p className="text-[10px] text-muted-foreground">입금 내역이 없습니다.</p>
+      ) : (
+        <>
+          <div className="flex items-end gap-2 border-t pt-2">
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground block mb-0.5">날짜</label>
+              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] text-muted-foreground block mb-0.5">금액</label>
+              <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEntry(); } }}
+                className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[10px] text-muted-foreground">계좌</label>
+                <button type="button" onClick={() => setManageAccountsOpen(true)} className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                  <CreditCard className="w-2.5 h-2.5" /> 계좌 등록
+                </button>
+              </div>
+              <select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="">-</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.bankName} {a.accountNumber}</option>)}
+              </select>
+            </div>
+            <Button type="button" size="sm" onClick={addEntry} disabled={saving} className="h-8 gap-1">
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}추가
+            </Button>
           </div>
-          <select value={form.accountId} onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))} className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs">
-            <option value="">-</option>
-            {accounts.map(a => <option key={a.id} value={a.id}>{a.bankName} {a.accountNumber}</option>)}
-          </select>
-        </div>
-        <Button type="button" size="sm" onClick={addEntry} disabled={saving} className="h-8 gap-1">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}추가
-        </Button>
-      </div>
-      {form.amount > 0 && (
-        <p className="text-[10px] text-amber-600 flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3 shrink-0" />
-          위 금액은 아직 입금 내역에 추가되지 않았습니다. &quot;추가&quot; 버튼을 눌러야 반영됩니다(하단의 저장 버튼과는 별개입니다).
-        </p>
-      )}
-      {accounts.length === 0 && (
-        <p className="text-[10px] text-muted-foreground">등록된 입금 계좌가 없습니다. 위 &quot;계좌 등록&quot;을 눌러 먼저 계좌를 등록하세요.</p>
+          {form.amount > 0 && (
+            <p className="text-[10px] text-amber-600 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 shrink-0" />
+              위 금액은 아직 입금 내역에 추가되지 않았습니다. &quot;추가&quot; 버튼을 눌러야 반영됩니다(하단의 저장 버튼과는 별개입니다).
+            </p>
+          )}
+          {accounts.length === 0 && (
+            <p className="text-[10px] text-muted-foreground">등록된 입금 계좌가 없습니다. 위 &quot;계좌 등록&quot;을 눌러 먼저 계좌를 등록하세요.</p>
+          )}
+        </>
       )}
 
       {manageAccountsOpen && (

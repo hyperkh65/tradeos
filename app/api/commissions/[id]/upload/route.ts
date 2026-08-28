@@ -24,6 +24,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let filepath = '';
   try {
     const { id } = await params;
+    const statusRow = getDb().prepare('SELECT status FROM commissions WHERE id=?').get(id) as { status: string } | undefined;
+    if (!statusRow) return NextResponse.json({ error: '커미션 기록을 찾을 수 없습니다.' }, { status: 404 });
+    if (statusRow.status === 'closed') return NextResponse.json({ error: '마감된 건은 수정할 수 없습니다. 먼저 마감을 취소하세요.' }, { status: 409 });
     if (!req.headers.get('content-type')?.includes('multipart/form-data')) {
       return NextResponse.json({ error: '멀티파트 요청만 지원합니다' }, { status: 400 });
     }

@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
+import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, Eye, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
@@ -156,9 +156,11 @@ export default function CommissionsPage() {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-end gap-2">
-                          {c.status === 'open' && (
-                            <button onClick={() => setModalOpen({ open: true, item: c })} className="text-muted-foreground hover:text-foreground" title="수정"><Pencil className="w-3.5 h-3.5" /></button>
-                          )}
+                          {/* 마감된 건도 세부내역(입금 기록·첨부파일)은 항상 볼 수 있어야 한다 —
+                              수정만 막고 조회는 항상 열어둔다. */}
+                          <button onClick={() => setModalOpen({ open: true, item: c })} className="text-muted-foreground hover:text-foreground" title={c.status === 'closed' ? '세부내역 보기' : '수정'}>
+                            {c.status === 'closed' ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                          </button>
                           <button onClick={() => toggleClose(c)} className={c.status === 'closed' ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'} title={c.status === 'closed' ? '마감취소' : '전표마감'}>
                             {c.status === 'closed' ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                           </button>
@@ -210,6 +212,8 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
   const [savedId, setSavedId] = useState(item?.id || '');
   const [uploading, setUploading] = useState<'invoice' | null>(null);
   const depositManagerRef = useRef<DepositManagerHandle>(null);
+  // 마감된 건은 세부내역(입금 기록·첨부파일)은 그대로 보여주되 수정/삭제/추가는 막는다.
+  const readOnly = item?.status === 'closed';
 
   const amountKrw = form.currency === 'KRW' ? Math.round(form.amount) : Math.round(form.amount * form.exchangeRate);
 
@@ -256,12 +260,14 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
     <div>
       <div className="flex items-center justify-between mb-1">
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
-        <label className="text-xs text-primary hover:underline cursor-pointer flex items-center gap-1">
-          {uploading === type ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-          파일 추가
-          <input type="file" className="hidden" multiple
-            onChange={e => { Array.from(e.target.files || []).forEach(f => uploadFile(f, type)); e.target.value = ''; }} />
-        </label>
+        {!readOnly && (
+          <label className="text-xs text-primary hover:underline cursor-pointer flex items-center gap-1">
+            {uploading === type ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+            파일 추가
+            <input type="file" className="hidden" multiple
+              onChange={e => { Array.from(e.target.files || []).forEach(f => uploadFile(f, type)); e.target.value = ''; }} />
+          </label>
+        )}
       </div>
       {files.length === 0 ? (
         <p className="text-xs text-muted-foreground border rounded-lg px-3 py-2">첨부된 파일 없음</p>
@@ -270,7 +276,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
           {files.map((f, i) => (
             <div key={i} className="flex items-center justify-between text-xs border rounded-lg px-2.5 py-1.5">
               <a href={f.url} target="_blank" rel="noreferrer" className="truncate max-w-[220px] hover:underline">{f.originalName}</a>
-              <button onClick={() => removeFile(type, f)} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
+              {!readOnly && <button onClick={() => removeFile(type, f)} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>}
             </div>
           ))}
         </div>
@@ -282,35 +288,40 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-2">
       <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b shrink-0">
-          <h2 className="font-semibold">{item ? '커미션 수정' : '커미션 등록'}</h2>
+          <h2 className="font-semibold">{readOnly ? '커미션 세부내역 (마감됨)' : item ? '커미션 수정' : '커미션 등록'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {readOnly && (
+            <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+              마감된 건이라 조회만 가능합니다. 수정하려면 먼저 마감을 취소하세요.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">해외업체명 *</label>
-              <Input list="foreign-companies" value={form.foreignCompany} onChange={e => setForm(f => ({ ...f, foreignCompany: e.target.value }))} placeholder="Foreign Co., Ltd." />
+              <Input list="foreign-companies" value={form.foreignCompany} disabled={readOnly} onChange={e => setForm(f => ({ ...f, foreignCompany: e.target.value }))} placeholder="Foreign Co., Ltd." />
               <datalist id="foreign-companies">
                 {knownCompanies.map(n => <option key={n} value={n} />)}
               </datalist>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">일자 *</label>
-              <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+              <Input type="date" value={form.date} disabled={readOnly} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">화폐단위</label>
-              <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={form.currency} disabled={readOnly} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
                 {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">금액 *</label>
-              <Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))} />
+              <Input type="number" value={form.amount} disabled={readOnly} onChange={e => setForm(f => ({ ...f, amount: Number(e.target.value) }))} />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">환율 {form.currency === 'KRW' && '(원화는 1)'}</label>
-              <Input type="number" step="0.01" value={form.currency === 'KRW' ? 1 : form.exchangeRate} disabled={form.currency === 'KRW'} onChange={e => setForm(f => ({ ...f, exchangeRate: Number(e.target.value) }))} />
+              <Input type="number" step="0.01" value={form.currency === 'KRW' ? 1 : form.exchangeRate} disabled={readOnly || form.currency === 'KRW'} onChange={e => setForm(f => ({ ...f, exchangeRate: Number(e.target.value) }))} />
             </div>
             <div className="col-span-2 bg-muted/30 rounded-lg px-3 py-2 text-sm flex justify-between">
               <span className="text-muted-foreground">원화 환산액</span>
@@ -318,7 +329,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
             </div>
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1 block">비고</label>
-              <Input value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="참고사항" />
+              <Input value={form.memo} disabled={readOnly} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="참고사항" />
             </div>
           </div>
 
@@ -326,7 +337,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
             <>
               <FileZone label="해외 인보이스" files={invoiceFiles} type="invoice" />
               <div className="pt-2 border-t">
-                <DepositManager ref={depositManagerRef} apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} onAccountsRefresh={onAccountsRefresh} />
+                <DepositManager ref={depositManagerRef} apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} onAccountsRefresh={onAccountsRefresh} disabled={readOnly} />
               </div>
             </>
           ) : (
@@ -335,9 +346,11 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
         </div>
         <div className="p-4 border-t shrink-0 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>닫기</Button>
-          <Button onClick={save} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (savedId ? '수정 저장' : '등록')}
-          </Button>
+          {!readOnly && (
+            <Button onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (savedId ? '수정 저장' : '등록')}
+            </Button>
+          )}
         </div>
       </div>
     </div>
