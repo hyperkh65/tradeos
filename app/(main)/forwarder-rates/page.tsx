@@ -38,6 +38,8 @@ export default function ForwarderRatesPage() {
   const [bulkPrefill, setBulkPrefill] = useState<BulkPrefill | null>(null);
   const [forwarderSummaries, setForwarderSummaries] = useState<ForwarderSummary[]>([]);
   const [updatingForwarder, setUpdatingForwarder] = useState<string | null>(null);
+  const [fxRates, setFxRates] = useState<Record<string, number>>({ KRW: 1 });
+  const [fxLoading, setFxLoading] = useState(false);
 
   const loadLanes = useCallback(() => {
     setLoading(true);
@@ -77,14 +79,40 @@ export default function ForwarderRatesPage() {
   const selectLane = (l: Lane) => { setPol(l.pol); setPod(l.pod); };
   const clearFilter = () => { setPol(''); setPod(''); setContainerType(''); };
 
-  // 통화가 다르면 숫자를 그대로 비교할 수 없다(예: $80 vs ₩229,429) — 실시간 환율 연동은
-  // 이번 범위 밖이라, 같은 통화끼리만 "최저" 표시를 비교한다(다른 통화 섞인 노선은
-  // 컨테이너타입별로 통화별 최저가 각각 뜸).
-  const minByTypeCurrency: Record<string, number> = {};
-  (compareRows || []).forEach(r => {
-    const key = `${r.containerType}|${r.totalCurrency}`;
-    if (minByTypeCurrency[key] === undefined || r.totalAmount < minByTypeCurrency[key]) minByTypeCurrency[key] = r.totalAmount;
-  });
+  // 해상운임(USD 등)과 부대비용(KRW+USD 혼합)을 그날그날 실제 환율로 전부 원화 환산해
+  // "총 얼마"까지 한 번에 계산·비교하기 위한 환율 로딩 — 기존 /api/utils/fx-rate(당일
+  // 환율, 1시간 캐시)를 그대로 재사용한다(costs 페이지와 동일 패턴).
+  useEffect(() => {
+    const needed = new Set<string>();
+    (compareRows || []).forEach(r => {
+      if (r.totalCurrency !== 'KRW') needed.add(r.totalCurrency);
+      r.breakdown.forEach(b => { if (b.currency !== 'KRW') needed.add(b.currency); });
+    });
+    const missing = Array.from(needed).filter(c => !(c in fxRates));
+    if (missing.length === 0) return;
+    setFxLoading(true);
+    Promise.all(missing.map(c => fetch(`/api/utils/fx-rate?base=${c}&target=KRW`).then(r => r.json()).then(d => [c, d.rate as number] as const).catch(() => [c, 0] as const)))
+      .then(pairs => setFxRates(prev => ({ ...prev, ...Object.fromEntries(pairs) })))
+      .finally(() => setFxLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareRows]);
+
+  const toKrw = (amount: number, currency: string) => Math.round(amount * (fxRates[currency] ?? 0));
+  const grandTotalKrw = (r: ForwarderRate) => toKrw(r.totalAmount, r.totalCurrency) + r.breakdown.reduce((s, b) => s + toKrw(b.amount, b.currency), 0);
+  const ratesReady = (compareRows || []).every(r => [r.totalCurrency, ...r.breakdown.map(b => b.currency)].every(c => c === 'KRW' || (fxRates[c] ?? 0) > 0));
+
+  // 컨테이너타입이 다르면(20GP vs 40GP) 애초에 비교 대상이 아니므로, 타입별로 묶어서
+  // 그 안에서만 총액(원화) 오름차순 정렬하고 "최저"도 타입별로 매긴다.
+  const sortedCompareRows = ratesReady && compareRows
+    ? [...compareRows].sort((a, b) => a.containerType !== b.containerType ? a.containerType.localeCompare(b.containerType) : grandTotalKrw(a) - grandTotalKrw(b))
+    : compareRows;
+  const minByType: Record<string, number> = {};
+  if (ratesReady) {
+    (compareRows || []).forEach(r => {
+      const t = grandTotalKrw(r);
+      if (minByType[r.containerType] === undefined || t < minByType[r.containerType]) minByType[r.containerType] = t;
+    });
+  }
 
   const polOptions = Array.from(new Set(lanes.map(l => l.pol))).sort();
   const podOptions = Array.from(new Set(lanes.map(l => l.pod))).sort();
@@ -165,7 +193,15 @@ export default function ForwarderRatesPage() {
           )
         ) : (
           <div className="border rounded-xl overflow-hidden">
-            <div className="px-4 py-2 border-b bg-muted/30 text-sm font-medium">{pol} → {pod}</div>
+            <div className="px-4 py-2 border-b bg-muted/30 text-sm font-medium flex items-center justify-between">
+              <span>{pol} → {pod}</span>
+              {(compareRows?.length ?? 0) > 0 && (
+                <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+                  {fxLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                  적용환율(오늘): {Object.entries(fxRates).filter(([c]) => c !== 'KRW').map(([c, r]) => `${c} ${r ? r.toLocaleString() : '조회중'}`).join(' · ') || '-'}
+                </span>
+              )}
+            </div>
             {compareLoading ? (
               <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : !compareRows || compareRows.length === 0 ? (
@@ -177,45 +213,55 @@ export default function ForwarderRatesPage() {
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">포워더</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">선사</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">컨테이너</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">해상운임·부대비용</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">해상운임 + 부대비용 = 총액(원화, 낮은 순)</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">견적일자</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">담당자</th>
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">작업</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {compareRows.map(r => (
-                    <tr key={r.id} className="hover:bg-muted/30 align-top">
-                      <td className="px-3 py-2.5 font-medium">{r.forwarderName}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{r.carrier || '-'}</td>
-                      <td className="px-3 py-2.5">{r.containerType}</td>
-                      <td className="px-3 py-2.5 min-w-[260px]">
-                        <div className={cn('font-semibold whitespace-nowrap', r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && 'text-green-600')}>
-                          해상운임 {r.totalCurrency} {r.totalAmount.toLocaleString()}
-                          {r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && <span className="ml-1.5 text-[10px] font-semibold bg-green-100 text-green-700 rounded-full px-1.5 py-0.5">최저({r.totalCurrency})</span>}
-                        </div>
-                        {r.breakdown.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {r.breakdown.map((b, i) => (
-                              <span key={i} className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">
-                                {b.label} {b.currency} {b.amount.toLocaleString()}
-                              </span>
-                            ))}
+                  {!ratesReady ? (
+                    <tr><td colSpan={7} className="text-center py-10"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground inline-block" /> 환율 조회 중...</td></tr>
+                  ) : (sortedCompareRows || []).map(r => {
+                    const ocean = toKrw(r.totalAmount, r.totalCurrency);
+                    const surcharge = r.breakdown.reduce((s, b) => s + toKrw(b.amount, b.currency), 0);
+                    const total = ocean + surcharge;
+                    const isMin = total === minByType[r.containerType];
+                    return (
+                      <tr key={r.id} className="hover:bg-muted/30 align-top">
+                        <td className="px-3 py-2.5 font-medium">{r.forwarderName}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{r.carrier || '-'}</td>
+                        <td className="px-3 py-2.5">{r.containerType}</td>
+                        <td className="px-3 py-2.5 min-w-[300px]">
+                          <div className={cn('font-semibold whitespace-nowrap', isMin && 'text-green-600')}>
+                            해상운임 {r.totalCurrency} {r.totalAmount.toLocaleString()}(₩{ocean.toLocaleString()})
+                            {r.breakdown.length > 0 && <> + 부대비용 ₩{surcharge.toLocaleString()}</>}
+                            {' '}= <span className="text-base">총 ₩{total.toLocaleString()}</span>
+                            {isMin && <span className="ml-1.5 text-[10px] font-semibold bg-green-100 text-green-700 rounded-full px-1.5 py-0.5">최저</span>}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.quoteDate || '-'}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{r.contactPerson || '-'}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center justify-end gap-2">
-                          {r.sourceFileUrl && <a href={r.sourceFileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline text-xs whitespace-nowrap">원본</a>}
-                          <button type="button" onClick={() => setHistoryFor(r)} title="이력 보기" className="text-muted-foreground hover:text-foreground"><History className="w-3.5 h-3.5" /></button>
-                          <button type="button" onClick={() => setModalOpen({ open: true, item: r })} title="수정" className="text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button type="button" onClick={() => removeRate(r)} title="삭제" className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          {r.breakdown.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {r.breakdown.map((b, i) => (
+                                <span key={i} className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">
+                                  {b.label} {b.currency} {b.amount.toLocaleString()}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.quoteDate || '-'}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{r.contactPerson || '-'}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center justify-end gap-2">
+                            {r.sourceFileUrl && <a href={r.sourceFileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline text-xs whitespace-nowrap">원본</a>}
+                            <button type="button" onClick={() => setHistoryFor(r)} title="이력 보기" className="text-muted-foreground hover:text-foreground"><History className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={() => setModalOpen({ open: true, item: r })} title="수정" className="text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+                            <button type="button" onClick={() => removeRate(r)} title="삭제" className="text-red-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
