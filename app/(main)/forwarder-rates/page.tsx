@@ -177,7 +177,7 @@ export default function ForwarderRatesPage() {
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">포워더</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">선사</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">컨테이너</th>
-                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">총운임</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">해상운임·부대비용</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">견적일자</th>
                     <th className="text-left px-3 py-2 font-medium text-muted-foreground">담당자</th>
                     <th className="text-right px-3 py-2 font-medium text-muted-foreground">작업</th>
@@ -185,17 +185,28 @@ export default function ForwarderRatesPage() {
                 </thead>
                 <tbody className="divide-y">
                   {compareRows.map(r => (
-                    <tr key={r.id} className="hover:bg-muted/30">
-                      <td className="px-3 py-2 font-medium">{r.forwarderName}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.carrier || '-'}</td>
-                      <td className="px-3 py-2">{r.containerType}</td>
-                      <td className={cn('px-3 py-2 text-right font-semibold whitespace-nowrap', r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && 'text-green-600')}>
-                        {r.totalCurrency} {r.totalAmount.toLocaleString()}
-                        {r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && <span className="ml-1.5 text-[10px] font-semibold bg-green-100 text-green-700 rounded-full px-1.5 py-0.5">최저({r.totalCurrency})</span>}
+                    <tr key={r.id} className="hover:bg-muted/30 align-top">
+                      <td className="px-3 py-2.5 font-medium">{r.forwarderName}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{r.carrier || '-'}</td>
+                      <td className="px-3 py-2.5">{r.containerType}</td>
+                      <td className="px-3 py-2.5 min-w-[260px]">
+                        <div className={cn('font-semibold whitespace-nowrap', r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && 'text-green-600')}>
+                          해상운임 {r.totalCurrency} {r.totalAmount.toLocaleString()}
+                          {r.totalAmount === minByTypeCurrency[`${r.containerType}|${r.totalCurrency}`] && <span className="ml-1.5 text-[10px] font-semibold bg-green-100 text-green-700 rounded-full px-1.5 py-0.5">최저({r.totalCurrency})</span>}
+                        </div>
+                        {r.breakdown.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {r.breakdown.map((b, i) => (
+                              <span key={i} className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">
+                                {b.label} {b.currency} {b.amount.toLocaleString()}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{r.quoteDate || '-'}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{r.contactPerson || '-'}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.quoteDate || '-'}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{r.contactPerson || '-'}</td>
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center justify-end gap-2">
                           {r.sourceFileUrl && <a href={r.sourceFileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline text-xs whitespace-nowrap">원본</a>}
                           <button type="button" onClick={() => setHistoryFor(r)} title="이력 보기" className="text-muted-foreground hover:text-foreground"><History className="w-3.5 h-3.5" /></button>
