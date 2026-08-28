@@ -89,39 +89,13 @@ jobs:
               echo "docverify container already running"
             fi
 
-      # 이 스텝은 AI 도우미(기본 OFF)에만 필요하고, 핵심 그룹웨어 배포를 절대 막으면
-      # 안 된다 — 이 NAS는 최초 이미지 pull(레이어 추출)이 몇 분씩 걸리는 게 관측되어,
-      # 백그라운드로 던져놓고(SSH 세션은 바로 반환) continue-on-error로 이중 안전장치를 둔다.
-      - name: Ensure Qdrant container running
-        continue-on-error: true
-        uses: appleboy/ssh-action@v1
-        with:
-          host: hy64.synology.me
-          username: urjent
-          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 30s
-          script: |
-            DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
-            mkdir -p /volume1/web/tradeos/data/qdrant
-            if ! $DOCKER ps --format '{{.Names}}' | grep -qx tradeos-qdrant; then
-              $DOCKER rm -f tradeos-qdrant 2>/dev/null || true
-              nohup $DOCKER run -d --name tradeos-qdrant --restart unless-stopped \
-                -p 127.0.0.1:6333:6333 \
-                -v /volume1/web/tradeos/data/qdrant:/qdrant/storage \
-                qdrant/qdrant:latest > /tmp/tradeos-qdrant-start.log 2>&1 &
-              disown
-              echo "qdrant container start requested in background(pull은 계속 진행됨, 이 배포를 막지 않음)"
-            else
-              echo "qdrant container already running"
-            fi
-
       - name: Deploy on NAS
         uses: appleboy/ssh-action@v1
         with:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 2m
+          command_timeout: 3m
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
             mkdir -p /volume1/web/tradeos/.next/standalone/.next
@@ -179,4 +153,31 @@ jobs:
               echo "TradeOS OK - PID=$(cat /tmp/tradeos.pid) port=3103"
             else
               echo "ERROR: server failed" && tail -30 /tmp/tradeos.log && exit 1
+            fi
+
+      # 핵심 그룹웨어 배포가 끝난 뒤에만 실행한다 — 이 NAS는 디스크 I/O가 느려서,
+      # 앞선 배포 스텝과 동시에 이미지를 pull하면 그 스텝의 파일 복사가 I/O 경합으로
+      # 타임아웃나는 사고가 실제로 있었다(이 스텝은 AI 도우미 전용, 기본 OFF라
+      # 언제 끝나든 핵심 배포에는 영향이 없어야 함 — continue-on-error + 백그라운드).
+      - name: Ensure Qdrant container running
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          command_timeout: 30s
+          script: |
+            DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
+            mkdir -p /volume1/web/tradeos/data/qdrant
+            if ! $DOCKER ps --format '{{.Names}}' | grep -qx tradeos-qdrant; then
+              $DOCKER rm -f tradeos-qdrant 2>/dev/null || true
+              nohup $DOCKER run -d --name tradeos-qdrant --restart unless-stopped \
+                -p 127.0.0.1:6333:6333 \
+                -v /volume1/web/tradeos/data/qdrant:/qdrant/storage \
+                qdrant/qdrant:latest > /tmp/tradeos-qdrant-start.log 2>&1 &
+              disown
+              echo "qdrant container start requested in background(핵심 배포는 이미 끝났음)"
+            else
+              echo "qdrant container already running"
             fi
