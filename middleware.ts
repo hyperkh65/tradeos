@@ -12,6 +12,8 @@ const PUBLIC_PATHS = [
   // (lib/supplier-form/token.ts의 resolveProjectByToken). 이 prefix는 "누구나 화면은 열 수 있다"만
   // 의미하고, 실제 데이터 접근 여부는 라우트 핸들러가 결정한다.
   '/supplier-form', '/api/supplier-form',
+  // 제품 승인서·사양서 외부 작성 화면 — 동일한 토큰 기반 보안 정책(lib/approval-doc/token.ts).
+  '/approval-form', '/api/approval-form',
 ];
 // 다운로드된 문서(Word 등)가 세션 쿠키 없이도 첨부 이미지를 불러올 수 있도록 개별 파일 서빙 경로만 공개
 const PUBLIC_PATTERNS = [/^\/api\/documents\/[^/]+\/files\/[^/]+\/[^/]+$/];

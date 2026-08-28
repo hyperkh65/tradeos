@@ -68,7 +68,6 @@ async function extractWithPdfJs(buf: Buffer): Promise<string> {
   const pdf = await pdfjs.getDocument({
     data: new Uint8Array(buf),
     useWorkerFetch: false,
-    isEvalSupported: false,
     useSystemFonts: true,
   }).promise;
 

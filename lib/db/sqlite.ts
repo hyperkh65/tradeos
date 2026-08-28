@@ -612,6 +612,12 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE quotes ADD COLUMN created_by_email TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN created_by_name TEXT`,
     `ALTER TABLE purchase_orders ADD COLUMN created_by_email TEXT`,
+    // 출하검사(outgoing_inspection) 섹션도 evaluation_test와 같은 approval_doc_test_items
+    // 테이블을 section_id로만 구분해 재사용 — 출하검사에만 필요한 4개 컬럼을 추가.
+    `ALTER TABLE approval_doc_test_items ADD COLUMN inspector TEXT`,
+    `ALTER TABLE approval_doc_test_items ADD COLUMN inspection_date TEXT`,
+    `ALTER TABLE approval_doc_test_items ADD COLUMN sampling_criteria TEXT`,
+    `ALTER TABLE approval_doc_test_items ADD COLUMN equipment TEXT`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
@@ -1292,6 +1298,396 @@ function runMigrations(db: Database.Database) {
     )`);
   } catch { /* already exists */ }
   // ── 중국 공급업체 자료 요청 시스템 끝 ─────────────────────────────────────────
+
+  // ── 제품 승인서·제품 사양서 작성 및 관리 시스템 시작 ──────────────────────────
+  // 목적/설계는 위 supplier_* 시스템(HEE 인증용 고정 좌표 양식)과 다르다 — 여기는 섹션을
+  // 껐다 켜면 장번호·목차·페이지번호가 자동 재계산되는 동적 문서 시스템이라 완전히 새
+  // 테이블군으로 분리했다(접두사 approval_doc_). lib/approval-doc/*.ts 참고.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS company_brand_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      company_name_ko TEXT,
+      company_name_en TEXT,
+      logo_url TEXT,
+      watermark_url TEXT,
+      watermark_opacity REAL NOT NULL DEFAULT 0.08,
+      primary_color TEXT,
+      secondary_color TEXT,
+      accent_color TEXT,
+      footer_text TEXT,
+      cover_layout_variant TEXT NOT NULL DEFAULT 'standard',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted INTEGER NOT NULL DEFAULT 0
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      style_key TEXT NOT NULL DEFAULT 'classic',
+      is_builtin INTEGER NOT NULL DEFAULT 0,
+      base_font TEXT,
+      heading_font TEXT,
+      toc_leader_style TEXT NOT NULL DEFAULT 'dot',
+      header_layout_json TEXT,
+      footer_layout_json TEXT,
+      cover_layout_json TEXT,
+      table_style_json TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_projects (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      product_name TEXT NOT NULL,
+      model_name TEXT NOT NULL,
+      doc_type TEXT NOT NULL DEFAULT 'approval',
+      revision TEXT NOT NULL DEFAULT 'A',
+      customer_name TEXT,
+      supplier_name TEXT,
+      contact_person TEXT,
+      internal_ref_no TEXT,
+      product_category TEXT,
+      has_converter INTEGER,
+      template_id TEXT,
+      brand_profile_id TEXT,
+      default_language TEXT NOT NULL DEFAULT 'zh',
+      final_language TEXT NOT NULL DEFAULT 'ko',
+      status TEXT NOT NULL DEFAULT 'draft',
+      due_date TEXT,
+      memo TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // supplier_request_links와 완전히 동일한 보안 패턴(토큰 해시만 인증 경로로 사용,
+  // token_encrypted는 내부 재조회 편의용) — lib/approval-doc/token.ts 참고.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_links (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      token_encrypted TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoked_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 프로젝트별 "장(챕터)" 인스턴스 — 동적 목차/채번의 핵심 테이블. chapter_number_cache는
+  // 화면 미리보기 전용이며 실제 문서 생성 시에는 항상 numbering.ts로 새로 계산한다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_sections (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_type TEXT NOT NULL,
+      included INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      custom_title TEXT,
+      chapter_number_cache TEXT,
+      data_json TEXT NOT NULL DEFAULT '{}',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_general_spec_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      division TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      inspection_item TEXT NOT NULL,
+      unit TEXT,
+      spec_value_original TEXT,
+      spec_value_korean TEXT,
+      min_value_original TEXT,
+      min_value_korean TEXT,
+      max_value_original TEXT,
+      max_value_korean TEXT,
+      is_reference_only INTEGER NOT NULL DEFAULT 0,
+      measured_value_original TEXT,
+      measured_value_korean TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_product_models (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      model_code TEXT NOT NULL,
+      description_original TEXT,
+      description_korean TEXT,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_dimension_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      item_label TEXT NOT NULL,
+      value_mm_original TEXT,
+      value_mm_korean TEXT,
+      tolerance_original TEXT,
+      tolerance_korean TEXT,
+      weight_g_original TEXT,
+      weight_g_korean TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_packing_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      packing_type TEXT NOT NULL,
+      field_key TEXT NOT NULL,
+      value_original TEXT,
+      value_korean TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_test_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      test_category TEXT NOT NULL,
+      item_label TEXT,
+      spec_value_original TEXT,
+      spec_value_korean TEXT,
+      measured_value_original TEXT,
+      measured_value_korean TEXT,
+      unit TEXT,
+      pass_fail TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_certification_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      cert_type TEXT NOT NULL,
+      cert_number TEXT,
+      issuing_body TEXT,
+      issue_date TEXT,
+      expiry_date TEXT,
+      attachment_id TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 핵심부품 사양서(key_component) + 컨버터 부품표(converter_bom) 공용 — 열 이름을
+  // supplier_component_items와 최대한 통일해 입력 그리드 UI를 재사용/포크하기 쉽게 했다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_component_items (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      list_type TEXT NOT NULL,
+      row_key TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      part_name TEXT,
+      model_name TEXT,
+      spec_text TEXT,
+      manufacturer TEXT,
+      qty TEXT,
+      unit_price_original TEXT,
+      unit_price_korean TEXT,
+      material TEXT,
+      width_mm TEXT,
+      depth_mm TEXT,
+      height_mm TEXT,
+      remark TEXT,
+      original_json TEXT NOT NULL DEFAULT '{}',
+      korean_json TEXT NOT NULL DEFAULT '{}',
+      deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_attachments (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT,
+      category_key TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT,
+      description TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      is_current INTEGER NOT NULL DEFAULT 1,
+      uploaded_by TEXT NOT NULL,
+      uploaded_by_name TEXT,
+      submission_version INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 원본(attachments)은 절대 덮어쓰지 않고, 자르기/회전/배경제거 결과만 별도 보관 —
+  // 하나의 원본에서 여러 번 다시 편집해도 원본 파일은 그대로 남는다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_image_placements (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      source_attachment_id TEXT NOT NULL,
+      source_pdf_page INTEGER,
+      crop_rect_json TEXT,
+      rotation_deg INTEGER NOT NULL DEFAULT 0,
+      bg_removed INTEGER NOT NULL DEFAULT 0,
+      edited_file_path TEXT,
+      caption_original TEXT,
+      caption_korean TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_revision_history (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      version_label TEXT NOT NULL,
+      revision_date TEXT,
+      note_original TEXT,
+      note_korean TEXT,
+      traced_by TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_submission_versions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      version_no INTEGER NOT NULL,
+      submitted_at TEXT NOT NULL,
+      submitted_by_name TEXT,
+      status_at_submission TEXT,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_closure_snapshots (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      closed_by_user_id TEXT NOT NULL,
+      closed_by_user_name TEXT,
+      closed_at TEXT NOT NULL,
+      submission_version_at_closure INTEGER,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      reason_memo TEXT,
+      reopened_at TEXT,
+      reopened_by_user_id TEXT,
+      reopened_by_user_name TEXT,
+      reopen_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 2-pass 문서 생성 파이프라인(lib/approval-doc/generate-pipeline.ts)의 산출물 이력 —
+  // pass_number 1/2 두 행이 매 생성마다 남아, 목차 페이지번호가 어떻게 확정됐는지 추적 가능.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_generated_documents (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      submission_version INTEGER,
+      pass_number INTEGER NOT NULL,
+      file_type TEXT NOT NULL,
+      stored_path TEXT,
+      page_count INTEGER,
+      toc_page_map_json TEXT,
+      template_id TEXT,
+      brand_profile_id TEXT,
+      generated_by TEXT,
+      generated_by_name TEXT,
+      generated_at TEXT NOT NULL,
+      is_final INTEGER NOT NULL DEFAULT 0
+    )`);
+  } catch { /* already exists */ }
+
+  // 교차검증(validate.ts)이 불일치를 찾아도 자동으로 고치지 않고 "확인(승인)" 처리만
+  // 가능하게 하는 테이블 — 이 승인 자체도 감사로그에 남는다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_validation_acknowledgements (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      issue_key TEXT NOT NULL,
+      acknowledged_by TEXT,
+      acknowledged_by_name TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_doc_audit_logs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_type TEXT NOT NULL,
+      actor_user_id TEXT,
+      actor_user_name TEXT,
+      actor_token_hash TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      submission_version INTEGER,
+      related_attachment_id TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  // ── 제품 승인서·제품 사양서 작성 및 관리 시스템 끝 ────────────────────────────
 
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
