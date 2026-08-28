@@ -31,8 +31,8 @@ export class StubProvider implements AIProvider {
   async generate(_prompt: string, _options?: ChatOptions): Promise<ChatResult> { this.notImplemented(); }
   async embed(_texts: string[]): Promise<EmbedResult> { this.notImplemented(); }
 
-  async healthCheck(): Promise<{ ok: boolean; message: string }> {
-    return { ok: false, message: `${this.providerType}는 아직 구현되지 않은 어댑터입니다.` };
+  async healthCheck(): Promise<{ ok: boolean; message: string; retryable?: boolean }> {
+    return { ok: false, message: `${this.providerType}는 아직 구현되지 않은 어댑터입니다.`, retryable: false };
   }
 
   async getUsage(): Promise<ProviderUsageInfo> {

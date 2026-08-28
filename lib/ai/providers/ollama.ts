@@ -77,12 +77,12 @@ export class OllamaProvider implements AIProvider {
     return { vectors: result.embeddings, model: this.embeddingModel, dimensions: result.embeddings[0]?.length || 0 };
   }
 
-  async healthCheck(): Promise<{ ok: boolean; message: string }> {
+  async healthCheck(): Promise<{ ok: boolean; message: string; retryable?: boolean }> {
     try {
       const result = await this.chat([{ role: 'user', content: 'ping' }], { maxTokens: 4 });
       return { ok: true, message: `정상 응답 (모델: ${result.model})` };
     } catch (e) {
-      return { ok: false, message: (e as Error).message };
+      return { ok: false, message: (e as Error).message, retryable: e instanceof AIProviderError ? e.retryable : false };
     }
   }
 

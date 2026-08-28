@@ -22,7 +22,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       recordProviderSuccess(id);
       return NextResponse.json({ ok: true, message: result.message });
     }
-    recordProviderFailure(id, { retryable: false, message: result.message });
+    recordProviderFailure(id, { retryable: result.retryable ?? false, message: result.message });
     return NextResponse.json({ ok: false, message: result.message }, { status: 200 });
   } catch (e) {
     const err = e instanceof AIProviderError ? e : new AIProviderError((e as Error).message, { retryable: false });

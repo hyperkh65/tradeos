@@ -105,7 +105,7 @@ export interface AIProvider {
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResult>;
   generate(prompt: string, options?: ChatOptions): Promise<ChatResult>;
   embed(texts: string[]): Promise<EmbedResult>;
-  healthCheck(): Promise<{ ok: boolean; message: string }>;
+  healthCheck(): Promise<{ ok: boolean; message: string; retryable?: boolean }>;
   getUsage(): Promise<ProviderUsageInfo>;
 
   supportsStreaming(): boolean;

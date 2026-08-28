@@ -95,7 +95,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 3m
+          command_timeout: 5m
           script: |
             NODE=/volume1/homes/urjent/runtime/node-v22.16.0-linux-x64/bin/node
             mkdir -p /volume1/web/tradeos/.next/standalone/.next
