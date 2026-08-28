@@ -89,23 +89,28 @@ jobs:
               echo "docverify container already running"
             fi
 
+      # 이 스텝은 AI 도우미(기본 OFF)에만 필요하고, 핵심 그룹웨어 배포를 절대 막으면
+      # 안 된다 — 이 NAS는 최초 이미지 pull(레이어 추출)이 몇 분씩 걸리는 게 관측되어,
+      # 백그라운드로 던져놓고(SSH 세션은 바로 반환) continue-on-error로 이중 안전장치를 둔다.
       - name: Ensure Qdrant container running
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 5m
+          command_timeout: 30s
           script: |
             DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
             mkdir -p /volume1/web/tradeos/data/qdrant
             if ! $DOCKER ps --format '{{.Names}}' | grep -qx tradeos-qdrant; then
               $DOCKER rm -f tradeos-qdrant 2>/dev/null || true
-              $DOCKER run -d --name tradeos-qdrant --restart unless-stopped \
+              nohup $DOCKER run -d --name tradeos-qdrant --restart unless-stopped \
                 -p 127.0.0.1:6333:6333 \
                 -v /volume1/web/tradeos/data/qdrant:/qdrant/storage \
-                qdrant/qdrant:latest
-              echo "qdrant container started"
+                qdrant/qdrant:latest > /tmp/tradeos-qdrant-start.log 2>&1 &
+              disown
+              echo "qdrant container start requested in background(pull은 계속 진행됨, 이 배포를 막지 않음)"
             else
               echo "qdrant container already running"
             fi
