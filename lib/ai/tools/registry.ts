@@ -16,16 +16,33 @@ const clampLimit = (n: unknown, def = 15, max = 50) => {
 
 interface BaseArgs { query?: string; dateFrom?: string; dateTo?: string; limit?: number }
 
+/** LLM이 넘기는 query에는 "(주)/㈜/주식회사" 같은 법인 표기나 "주소가 뭐야" 같은
+ * 질문 자체의 조사·단어가 섞여 들어올 수 있다(예: "(주)알프스21 회사주소"). 이런 노이즈를
+ * 지우고 남는 토큰들로 쪼갠다 — 원본 그대로 하나의 LIKE로 묶으면 DB에는 "(주) 알프스21"처럼
+ * 띄어쓰기가 다르거나, "주소" 같은 단어가 실제 값엔 없어서 통째로 매칭이 실패해버린다. */
+function tokenizeQuery(raw: string): string[] {
+  const cleaned = raw.replace(/\(주\)|㈜|주식회사/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.split(' ').filter(Boolean);
+}
+
 /** "이번 달 발주 현황" 같은 질문은 키워드가 없다(query가 비어있어도 되어야 함) —
  * 대신 날짜 컬럼으로 범위를 좁힌다. keywordColumns가 비어있거나 query가 없으면
- * 키워드 조건 자체를 생략한다(전체 대상 + 날짜 필터만). */
+ * 키워드 조건 자체를 생략한다(전체 대상 + 날짜 필터만).
+ * 토큰 단위로 OR 매칭한다 — "알프스21 주소"처럼 실제 값에 없는 단어가 섞여 있어도,
+ * "알프스21" 토큰 하나만 일치하면 찾아낸다(엄격한 AND-단일문자열 매칭보다 관대하게). */
 function buildWhere(args: BaseArgs, keywordColumns: string[], dateColumn?: string): { clause: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
   if (args.query?.trim() && keywordColumns.length) {
-    const q = `%${args.query.trim()}%`;
-    conditions.push(`(${keywordColumns.map(c => `${c} LIKE ?`).join(' OR ')})`);
-    params.push(...keywordColumns.map(() => q));
+    const tokens = tokenizeQuery(args.query);
+    if (tokens.length) {
+      const tokenConds = tokens.map(t => {
+        const q = `%${t}%`;
+        params.push(...keywordColumns.map(() => q));
+        return `(${keywordColumns.map(c => `${c} LIKE ?`).join(' OR ')})`;
+      });
+      conditions.push(`(${tokenConds.join(' OR ')})`);
+    }
   }
   if (dateColumn && args.dateFrom) { conditions.push(`${dateColumn} >= ?`); params.push(args.dateFrom); }
   if (dateColumn && args.dateTo) { conditions.push(`${dateColumn} <= ?`); params.push(args.dateTo); }
@@ -108,11 +125,11 @@ const getClaim: ToolDefinition<{ id: string }> = {
 
 const searchCompanies: ToolDefinition<BaseArgs & { type?: string }> = {
   name: 'searchCompanies',
-  description: '거래처(고객사/공급업체/포워더 등)를 이름으로 검색한다. type으로 업체 유형을 좁힐 수 있다.',
+  description: '거래처(고객사/공급업체/포워더 등)를 이름으로 검색한다. 회사 주소/대표자/사업자번호/담당자/은행계좌/연락처 등 거래처 상세정보를 물어보는 질문에는 반드시 이 도구를 사용하라(예: "OO 주소가 뭐야", "OO 회사 대표자는?", "OO 담당자 연락처"). type으로 업체 유형을 좁힐 수 있다.',
   parameters: {
     type: 'object',
     properties: {
-      query: { type: 'string', description: '검색어(업체명, 생략 가능)' },
+      query: { type: 'string', description: '검색어(업체명만 넣는다 — "주소", "회사" 같은 질문 단어는 빼고 순수 업체명만, 예: "알프스21")' },
       type: { type: 'string', description: '업체 유형(예: 고객사, 공급업체, 포워더) — 생략 가능' },
       limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' },
     },
@@ -122,7 +139,7 @@ const searchCompanies: ToolDefinition<BaseArgs & { type?: string }> = {
     const { clause: kwClause, params } = buildWhere(args, ['name', 'name_en']);
     let clause = kwClause;
     if (args.type) { clause = clause ? `${clause} AND type=?` : 'WHERE type=?'; params.push(args.type); }
-    const rows = db.prepare(`SELECT id, business_id, name, name_en, type, country, email, phone FROM companies ${clause} ORDER BY updated_at DESC LIMIT ?`)
+    const rows = db.prepare(`SELECT id, business_id, name, name_en, type, country, email, phone, address, ceo, contact_person, business_no FROM companies ${clause} ORDER BY updated_at DESC LIMIT ?`)
       .all(...params, clampLimit(args.limit)) as Record<string, unknown>[];
     return rows;
   },
@@ -130,7 +147,7 @@ const searchCompanies: ToolDefinition<BaseArgs & { type?: string }> = {
 
 const getCompany: ToolDefinition<{ id: string }> = {
   name: 'getCompany',
-  description: '거래처 id로 상세 정보를 조회한다.',
+  description: '거래처 id로 주소/대표자/사업자번호/은행계좌 등 전체 상세 정보를 조회한다.',
   parameters: { type: 'object', properties: { id: { type: 'string', description: '거래처 id' } }, required: ['id'] },
   handler: async ({ id }) => {
     const db = getDb();

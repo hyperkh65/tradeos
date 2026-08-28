@@ -489,7 +489,17 @@ export default function AISettingsPage() {
         <ProviderModal
           initial={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); loadProviders(); }}
+          onSaved={(saved) => {
+            setEditing(null);
+            // 서버가 방금 반환한 최신 값으로 즉시 반영한다 — 별도 재조회(loadProviders)에
+            // 의존하면 그 요청이 아직 안 끝난 사이 "수정" 버튼을 다시 눌렀을 때 구버전
+            // 데이터로 모달이 열려서 방금 저장한 값이 안 먹힌 것처럼 보이는 문제가 있었다.
+            setProviders(prev => {
+              const exists = prev.some(p => p.id === saved.id);
+              return exists ? prev.map(p => (p.id === saved.id ? saved : p)) : [...prev, saved];
+            });
+            loadProviders();
+          }}
           showMsg={showMsg}
         />
       )}
@@ -500,7 +510,7 @@ export default function AISettingsPage() {
 function ProviderModal({ initial, onClose, onSaved, showMsg }: {
   initial: ProviderRow | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (saved: ProviderRow) => void;
   showMsg: (type: 'success' | 'error', text: string) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
@@ -534,7 +544,7 @@ function ProviderModal({ initial, onClose, onSaved, showMsg }: {
         method: initial ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const j = await res.json();
-      if (res.ok) { showMsg('success', '저장됐습니다.'); onSaved(); }
+      if (res.ok && j.data) { showMsg('success', '저장됐습니다.'); onSaved(j.data as ProviderRow); }
       else showMsg('error', j.error ?? '저장 실패');
     } finally { setSaving(false); }
   };
