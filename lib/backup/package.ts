@@ -161,7 +161,10 @@ export async function createCompleteRecoveryPackage(
     for (const [name, content] of Object.entries(docs)) fs.writeFileSync(path.join(stagingDir, 'documentation', name), content);
 
     // 9) 복구 스크립트(Phase 11에서 실제 내용 채움 — 있으면 그대로 복사)
-    const recoveryScriptsDir = path.join(process.cwd(), 'recovery');
+    // process.cwd()가 아니라 getAppRootDir()를 기준으로 찾는다 — standalone 서버는
+    // 배포 스크립트가 실행되는 위치에 따라 cwd가 앱 루트가 아닐 수 있다(실제로
+    // process.cwd() 기준으로 하면 프로덕션에서 항상 못 찾는 버그가 있었음).
+    const recoveryScriptsDir = path.join(getAppRootDir(), 'recovery');
     if (fs.existsSync(recoveryScriptsDir)) {
       await execFileAsync('cp', ['-R', recoveryScriptsDir + '/.', path.join(stagingDir, 'recovery')]);
     } else {
