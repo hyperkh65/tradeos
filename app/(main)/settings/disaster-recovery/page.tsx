@@ -61,6 +61,7 @@ export default function DisasterRecoveryPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [pwForm, setPwForm] = useState('');
   const [recoverySheet, setRecoverySheet] = useState<string | null>(null);
+  const [serverSaveInfo, setServerSaveInfo] = useState<{ savedPath: string; location: string; note: string } | null>(null);
   const [dryRunResult, setDryRunResult] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(j => setMe(j.user ?? null)); }, []);
@@ -117,7 +118,12 @@ export default function DisasterRecoveryPage() {
     try {
       const res = await fetch('/api/settings/backup/recovery-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwForm }) });
       const j = await res.json();
-      if (res.ok) { setRecoverySheet(j.data.recoverySheet); setHasRecoveryPw(true); setPwForm(''); showMsg('success', 'Recovery Password가 설정됐습니다. 아래 복구 시트를 반드시 다운로드해서 백업과 다른 곳에 보관하세요.'); }
+      if (res.ok) {
+        setRecoverySheet(j.data.recoverySheet);
+        setServerSaveInfo(j.data.serverSave ?? null);
+        setHasRecoveryPw(true); setPwForm('');
+        showMsg('success', 'Recovery Password가 설정됐습니다. 서버에도 자동 저장했지만, 다운로드한 사본을 반드시 NAS 밖 별도 장소에도 보관하세요.');
+      }
       else showMsg('error', j.error ?? '실패');
     } finally { setBusy(null); }
   };
@@ -260,8 +266,15 @@ export default function DisasterRecoveryPage() {
                 </div>
                 {recoverySheet && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-                    <p className="text-xs text-blue-800">복구 시트를 다운로드해서 <b>백업이 저장되는 외장 HDD와 다른 곳</b>에 보관하세요.</p>
+                    <p className="text-xs text-blue-800">이 브라우저(PC)로도 다운로드해서 <b>NAS 밖 별도 장소</b>에 보관하세요.</p>
                     <Button size="sm" variant="outline" onClick={downloadRecoverySheet} className="gap-1.5"><Download className="w-3.5 h-3.5" />YNK-RECOVERY-KEY.txt 다운로드</Button>
+                    {serverSaveInfo && (
+                      serverSaveInfo.location === 'failed' ? (
+                        <p className="text-xs text-red-700">서버 저장 실패: {serverSaveInfo.note}</p>
+                      ) : (
+                        <p className="text-xs text-blue-700">서버에도 자동 저장됨: <code className="bg-blue-100 px-1 rounded">{serverSaveInfo.savedPath}</code><br />{serverSaveInfo.note}</p>
+                      )
+                    )}
                   </div>
                 )}
               </div>

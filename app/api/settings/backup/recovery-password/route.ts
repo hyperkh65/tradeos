@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { setRecoveryPassword, hasRecoveryPassword } from '@/lib/backup/secrets';
+import { setRecoveryPassword, hasRecoveryPassword, saveRecoverySheetToServer } from '@/lib/backup/secrets';
 
 export async function GET() {
   const user = await getSessionUser();
@@ -33,10 +33,24 @@ export async function POST(req: NextRequest) {
     '',
     `Recovery Password: ${password}`,
     '',
-    '※ 이 파일은 백업이 저장된 외장 HDD와 절대 같은 곳에 보관하지 마세요.',
-    '   이 비밀번호를 잃어버리면 암호화된 백업 안의 시크릿(API 토큰 등)을 복구할 수 없습니다.',
+    '※ 이 비밀번호를 잃어버리면 암호화된 백업 안의 시크릿(API 토큰 등)을 복구할 수 없습니다.',
     '   (DB/첨부파일/애플리케이션 자체 복원에는 이 비밀번호가 필요 없습니다 — 시크릿 파트에만 필요합니다.)',
   ].join('\n');
 
-  return NextResponse.json({ data: { success: true, recoverySheet: sheet } });
+  let serverSave: { savedPath: string; location: string; note: string } | null = null;
+  try {
+    const saved = saveRecoverySheetToServer(sheet);
+    serverSave = {
+      savedPath: saved.savedPath,
+      location: saved.location,
+      note: saved.location === 'other-external-drive'
+        ? '백업이 저장되는 드라이브와 다른 외장 드라이브에 저장했습니다.'
+        : 'NAS 내장 볼륨(백업용 외장 HDD와는 별개 장치)에 저장했습니다 — 다만 NAS 본체 자체가 통째로 파괴되면 이 사본도 함께 소실되니, 다운로드한 사본은 반드시 NAS 밖에도 별도 보관하세요.',
+    };
+  } catch (e) {
+    // 서버 저장이 실패해도 관리자가 받는 다운로드 사본은 정상 동작해야 하므로 여기서 요청 자체를 실패시키지 않는다.
+    serverSave = { savedPath: '', location: 'failed', note: `서버 저장 실패: ${(e as Error).message} — 다운로드 사본을 반드시 보관하세요.` };
+  }
+
+  return NextResponse.json({ data: { success: true, recoverySheet: sheet, serverSave } });
 }
