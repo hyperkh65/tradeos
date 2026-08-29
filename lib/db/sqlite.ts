@@ -618,6 +618,15 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE approval_doc_test_items ADD COLUMN inspection_date TEXT`,
     `ALTER TABLE approval_doc_test_items ADD COLUMN sampling_criteria TEXT`,
     `ALTER TABLE approval_doc_test_items ADD COLUMN equipment TEXT`,
+    // 메신저: 텍스트 외에 파일(사진/동영상/문서) 첨부 지원
+    `ALTER TABLE messages ADD COLUMN attachment_url TEXT`,
+    `ALTER TABLE messages ADD COLUMN attachment_name TEXT`,
+    `ALTER TABLE messages ADD COLUMN attachment_type TEXT`,
+    `ALTER TABLE messages ADD COLUMN attachment_size INTEGER`,
+    // 메신저: 대화방 삭제는 물리 삭제가 아니라 소프트 삭제 — 관리자는 이후에도 계속 조회 가능해야 함
+    `ALTER TABLE channels ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE channels ADD COLUMN deleted_at TEXT`,
+    `ALTER TABLE channels ADD COLUMN deleted_by TEXT`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (

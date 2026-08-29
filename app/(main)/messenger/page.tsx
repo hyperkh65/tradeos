@@ -3,7 +3,7 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Hash, MessageSquare, ArrowLeft, Plus, X } from 'lucide-react';
+import { Send, Hash, MessageSquare, ArrowLeft, Plus, X, Paperclip, Trash2, FileText, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -15,6 +15,8 @@ interface Channel {
   member_ids_json?: string;
   created_by: string;
   created_at: string;
+  status?: string;
+  deleted_at?: string | null;
 }
 
 interface Message {
@@ -24,6 +26,42 @@ interface Message {
   sender_name: string;
   content: string;
   created_at: string;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
+  attachment_size?: number | null;
+}
+
+function formatFileSize(bytes?: number | null): string {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function AttachmentView({ msg }: { msg: Message }) {
+  if (!msg.attachment_url) return null;
+  const isImage = msg.attachment_type?.startsWith('image/');
+  const isVideo = msg.attachment_type?.startsWith('video/');
+  if (isImage) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"><img src={msg.attachment_url} alt={msg.attachment_name || '첨부 이미지'} className="max-w-xs md:max-w-sm rounded-lg mt-1" /></a>;
+  }
+  if (isVideo) {
+    return <video src={msg.attachment_url} controls className="max-w-xs md:max-w-sm rounded-lg mt-1" />;
+  }
+  return (
+    <a
+      href={msg.attachment_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 mt-1 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted transition-colors max-w-xs md:max-w-sm"
+    >
+      <FileText className="w-5 h-5 shrink-0 text-muted-foreground" />
+      <span className="text-xs truncate flex-1">{msg.attachment_name}</span>
+      <span className="text-[10px] text-muted-foreground shrink-0">{formatFileSize(msg.attachment_size)}</span>
+      <Download className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+    </a>
+  );
 }
 
 const colors = ['bg-blue-100 text-blue-700', 'bg-green-100 text-green-700', 'bg-purple-100 text-purple-700', 'bg-orange-100 text-orange-700'];
@@ -39,8 +77,11 @@ function ChatArea({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDeleted = channel.status === 'deleted';
 
   const loadMessages = useCallback(async () => {
     const data = await fetch(`/api/messenger/messages?channelId=${channel.id}`).then(r => r.json());
@@ -71,6 +112,25 @@ function ChatArea({
     await loadMessages();
   };
 
+  const handleFilePick = () => fileInputRef.current?.click();
+
+  const sendFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('channelId', channel.id);
+      formData.append('file', file);
+      const res = await fetch('/api/messenger/messages/upload', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || '파일 업로드에 실패했습니다.');
+      }
+      await loadMessages();
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -94,10 +154,13 @@ function ChatArea({
                     {new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className={cn(
-                  'text-sm mt-0.5 px-3 py-2 rounded-xl inline-block max-w-xs md:max-w-sm break-words',
-                  isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                )}>{msg.content}</p>
+                {msg.content && (
+                  <p className={cn(
+                    'text-sm mt-0.5 px-3 py-2 rounded-xl inline-block max-w-xs md:max-w-sm break-words',
+                    isMine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
+                  )}>{msg.content}</p>
+                )}
+                <AttachmentView msg={msg} />
               </div>
             </div>
           );
@@ -105,18 +168,26 @@ function ChatArea({
         <div ref={bottomRef} />
       </div>
       <div className="shrink-0 p-3 border-t border-border">
-        <div className="flex gap-2">
-          <Input
-            placeholder="메시지를 입력하세요..."
-            className="flex-1 h-9"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-          />
-          <Button size="icon" className="h-9 w-9 shrink-0" onClick={send} disabled={sending}>
-            <Send className="w-4 h-4" />
-          </Button>
-        </div>
+        {isDeleted ? (
+          <p className="text-xs text-muted-foreground text-center py-1.5">삭제된 대화방입니다. 더 이상 메시지를 보낼 수 없습니다.</p>
+        ) : (
+          <div className="flex gap-2">
+            <input ref={fileInputRef} type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
+            <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={handleFilePick} disabled={uploading} title="사진/동영상/문서 첨부">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+            </Button>
+            <Input
+              placeholder="메시지를 입력하세요..."
+              className="flex-1 h-9"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            />
+            <Button size="icon" className="h-9 w-9 shrink-0" onClick={send} disabled={sending}>
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -130,6 +201,8 @@ export default function MessengerPage() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [myId, setMyId] = useState('');
+  const [myRole, setMyRole] = useState('');
+  const isAdmin = myRole === 'admin';
 
   const loadChannels = useCallback(async () => {
     const data = await fetch('/api/messenger/channels').then(r => r.json());
@@ -140,7 +213,7 @@ export default function MessengerPage() {
 
   useEffect(() => {
     loadChannels();
-    fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) setMyId(j.user.id); }).catch(() => {});
+    fetch('/api/auth/me').then(r => r.json()).then(j => { if (j.user) { setMyId(j.user.id); setMyRole(j.user.role || ''); } }).catch(() => {});
   }, []);
 
   const handleCreate = async () => {
@@ -158,6 +231,20 @@ export default function MessengerPage() {
 
   const handleSelect = (ch: Channel) => { setActive(ch); setMobileDetail(true); };
 
+  const canDelete = (ch: Channel) => isAdmin || ch.created_by === myId;
+
+  const handleDelete = async (ch: Channel) => {
+    if (!confirm(`"${ch.name}" 대화방을 삭제할까요?\n\n대화 내용은 실제로 지워지지 않고, 일반 사용자에게만 더 이상 보이지 않습니다(관리자는 계속 조회 가능).`)) return;
+    const res = await fetch(`/api/messenger/channels/${ch.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error || '삭제에 실패했습니다.');
+      return;
+    }
+    if (active?.id === ch.id) { setActive(null); setMobileDetail(false); }
+    await loadChannels();
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="메신저" />
@@ -168,6 +255,12 @@ export default function MessengerPage() {
             <button onClick={() => setMobileDetail(false)}><ArrowLeft className="w-4 h-4 text-primary" /></button>
             <Hash className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="font-semibold text-sm">{active.name}</span>
+            {active.status === 'deleted' && <span className="text-[10px] text-red-600 border border-red-200 bg-red-50 rounded px-1.5 py-0.5">삭제됨</span>}
+            {canDelete(active) && active.status !== 'deleted' && (
+              <button onClick={() => handleDelete(active)} className="ml-auto text-muted-foreground hover:text-red-600" title="대화방 삭제">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <ChatArea channel={active} myId={myId} />
         </div>
@@ -220,7 +313,8 @@ export default function MessengerPage() {
                 )}
               >
                 <Hash className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">{ch.name}</span>
+                <span className={cn('truncate', ch.status === 'deleted' && 'line-through opacity-60')}>{ch.name}</span>
+                {ch.status === 'deleted' && <span className="text-[9px] text-red-600 shrink-0">삭제됨</span>}
               </button>
             ))}
           </div>
@@ -233,6 +327,12 @@ export default function MessengerPage() {
                 <Hash className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-sm font-semibold">{active.name}</span>
                 {active.description && <span className="text-xs text-muted-foreground">— {active.description}</span>}
+                {active.status === 'deleted' && <span className="text-[10px] text-red-600 border border-red-200 bg-red-50 rounded px-1.5 py-0.5">삭제됨</span>}
+                {canDelete(active) && active.status !== 'deleted' && (
+                  <button onClick={() => handleDelete(active)} className="ml-auto text-muted-foreground hover:text-red-600" title="대화방 삭제">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               <ChatArea channel={active} myId={myId} />
             </>

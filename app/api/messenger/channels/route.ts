@@ -7,7 +7,11 @@ export async function GET() {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const db = getDb();
-    const rows = db.prepare('SELECT * FROM channels ORDER BY created_at ASC').all();
+    // 삭제된 대화방은 만든 사람이 지운 것이므로 일반 사용자에게는 더 이상 보이지 않는다 —
+    // 다만 관리자는 나중에도 전부(삭제된 것 포함) 조회할 수 있어야 한다(감사 목적).
+    const rows = user.role === 'admin'
+      ? db.prepare('SELECT * FROM channels ORDER BY created_at ASC').all()
+      : db.prepare(`SELECT * FROM channels WHERE status <> 'deleted' ORDER BY created_at ASC`).all();
     return NextResponse.json(rows);
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
