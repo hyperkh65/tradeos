@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { countDocumentIndexByStatus, countJobsByStatus, listDocumentIndex } from '@/lib/ai/db';
+import { countDocumentIndexByStatus, countJobsByStatus, listDocumentIndex, getActiveVectorCollection } from '@/lib/ai/db';
 import { getQdrantConfig } from '@/lib/ai/qdrant-config';
 import { qdrantGetCollectionInfo } from '@/lib/ai/vectorstore/qdrant';
 
@@ -22,12 +22,18 @@ export async function GET() {
     }
   }
 
+  const activeCollection = getActiveVectorCollection();
+
   return NextResponse.json({
     data: {
       documentIndex: countDocumentIndexByStatus(),
       jobs: countJobsByStatus(),
       recentFailed: listDocumentIndex({ status: 'failed', limit: 20 }),
       qdrant,
+      activeCollection: activeCollection ? {
+        name: activeCollection.collectionName, embeddingModel: activeCollection.embeddingModel,
+        dimension: activeCollection.embeddingDimension, createdAt: activeCollection.createdAt,
+      } : null,
     },
   });
 }

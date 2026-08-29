@@ -181,6 +181,9 @@ export interface AISettingsRow {
   qdrantUrl: string | null;
   qdrantApiKey: string | null;
   qdrantCollection: string;
+  rerankerModel: string;
+  relevanceThreshold: number;
+  rerankThreshold: number;
   updatedAt: string;
   updatedBy: string | null;
 }
@@ -203,6 +206,9 @@ export function getAISettings(): AISettingsRow {
     qdrantUrl: row.qdrant_url as string | null,
     qdrantApiKey: row.qdrant_api_key_encrypted ? decryptPassword(row.qdrant_api_key_encrypted as string) : null,
     qdrantCollection: row.qdrant_collection as string,
+    rerankerModel: (row.reranker_model as string) || '@cf/baai/bge-reranker-base',
+    relevanceThreshold: (row.relevance_threshold as number) ?? 0.5,
+    rerankThreshold: (row.rerank_threshold as number) ?? 0.3,
     updatedAt: row.updated_at as string,
     updatedBy: row.updated_by as string | null,
   };
@@ -212,6 +218,7 @@ export function updateAISettings(input: Partial<{
   enabled: boolean; defaultChatProviderId: string | null; defaultEmbeddingProviderId: string | null;
   rateLimitPerUserPerHour: number; searchTopK: number;
   qdrantUrl: string | null; qdrantApiKey: string | null; qdrantCollection: string;
+  rerankerModel: string; relevanceThreshold: number; rerankThreshold: number;
   updatedBy: string;
 }>): AISettingsRow {
   const existing = getAISettings();
@@ -220,7 +227,7 @@ export function updateAISettings(input: Partial<{
   db.prepare(`UPDATE ai_settings SET
       enabled=?, default_chat_provider_id=?, default_embedding_provider_id=?,
       rate_limit_per_user_per_hour=?, search_top_k=?, qdrant_url=?, qdrant_api_key_encrypted=?,
-      qdrant_collection=?, updated_at=?, updated_by=?
+      qdrant_collection=?, reranker_model=?, relevance_threshold=?, rerank_threshold=?, updated_at=?, updated_by=?
     WHERE id='default'`
   ).run(
     input.enabled === undefined ? (existing.enabled ? 1 : 0) : (input.enabled ? 1 : 0),
@@ -231,9 +238,75 @@ export function updateAISettings(input: Partial<{
     input.qdrantUrl !== undefined ? input.qdrantUrl : existing.qdrantUrl,
     input.qdrantApiKey !== undefined ? (input.qdrantApiKey ? encryptPassword(input.qdrantApiKey) : null) : (existing.qdrantApiKey ? encryptPassword(existing.qdrantApiKey) : null),
     input.qdrantCollection ?? existing.qdrantCollection,
+    input.rerankerModel ?? existing.rerankerModel,
+    input.relevanceThreshold ?? existing.relevanceThreshold,
+    input.rerankThreshold ?? existing.rerankThreshold,
     ts, input.updatedBy || null,
   );
   return getAISettings();
+}
+
+export interface VectorCollectionRow {
+  id: string; collectionName: string; embeddingProvider: string; embeddingModel: string;
+  embeddingDimension: number; embeddingVersion: string; status: 'building' | 'active' | 'legacy' | 'failed';
+  createdAt: string; updatedAt: string;
+}
+
+function rowToVectorCollection(r: Record<string, unknown>): VectorCollectionRow {
+  return {
+    id: r.id as string, collectionName: r.collection_name as string, embeddingProvider: r.embedding_provider as string,
+    embeddingModel: r.embedding_model as string, embeddingDimension: r.embedding_dimension as number,
+    embeddingVersion: r.embedding_version as string, status: r.status as VectorCollectionRow['status'],
+    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+  };
+}
+
+export function getActiveVectorCollection(): VectorCollectionRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM ai_vector_collections WHERE status='active' ORDER BY created_at DESC LIMIT 1`).get() as Record<string, unknown> | undefined;
+  return row ? rowToVectorCollection(row) : null;
+}
+
+export function listVectorCollections(): VectorCollectionRow[] {
+  const db = getDb();
+  return (db.prepare(`SELECT * FROM ai_vector_collections ORDER BY created_at DESC`).all() as Record<string, unknown>[]).map(rowToVectorCollection);
+}
+
+export function getVectorCollection(id: string): VectorCollectionRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM ai_vector_collections WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  return row ? rowToVectorCollection(row) : null;
+}
+
+export function createVectorCollection(input: {
+  collectionName: string; embeddingProvider: string; embeddingModel: string;
+  embeddingDimension: number; embeddingVersion: string; status?: VectorCollectionRow['status'];
+}): VectorCollectionRow {
+  const db = getDb();
+  const id = newId();
+  const ts = now();
+  db.prepare(`INSERT INTO ai_vector_collections
+    (id, collection_name, embedding_provider, embedding_model, embedding_dimension, embedding_version, status, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`
+  ).run(id, input.collectionName, input.embeddingProvider, input.embeddingModel, input.embeddingDimension, input.embeddingVersion, input.status || 'building', ts, ts);
+  return getVectorCollection(id)!;
+}
+
+export function setVectorCollectionStatus(id: string, status: VectorCollectionRow['status']): void {
+  const db = getDb();
+  db.prepare(`UPDATE ai_vector_collections SET status=?, updated_at=? WHERE id=?`).run(status, now(), id);
+}
+
+/** 새 컬렉션(v2)이 완전히 인덱싱된 뒤에만 호출한다 — 이전 active를 legacy로,
+ * 대상을 active로 바꾸는 것을 한 트랜잭션으로 묶어 "일부만 전환됨" 상태가 생기지 않게 한다. */
+export function activateVectorCollection(id: string): void {
+  const db = getDb();
+  const ts = now();
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE ai_vector_collections SET status='legacy', updated_at=? WHERE status='active' AND id<>?`).run(ts, id);
+    db.prepare(`UPDATE ai_vector_collections SET status='active', updated_at=? WHERE id=?`).run(ts, id);
+  });
+  tx();
 }
 
 export type PromptKey = 'base' | 'rag_answer' | 'draft_writing' | 'tool_selection';
@@ -262,7 +335,7 @@ export function setPromptOverride(key: PromptKey, value: string | null, updatedB
 }
 
 export interface DocumentIndexRow {
-  id: string; sourceType: string; sourceId: string; title: string | null; contentHash: string | null;
+  id: string; sourceType: string; sourceId: string; collectionId: string | null; title: string | null; contentHash: string | null;
   chunkCount: number; embeddingModel: string | null; embeddingVersion: string | null;
   departmentId: string | null; visibility: string | null; securityLevel: string | null;
   sourceUpdatedAt: string | null; indexedAt: string | null; status: 'pending' | 'indexed' | 'failed';
@@ -272,6 +345,7 @@ export interface DocumentIndexRow {
 function rowToDocIndex(r: Record<string, unknown>): DocumentIndexRow {
   return {
     id: r.id as string, sourceType: r.source_type as string, sourceId: r.source_id as string,
+    collectionId: r.collection_id as string | null,
     title: r.title as string | null, contentHash: r.content_hash as string | null,
     chunkCount: r.chunk_count as number, embeddingModel: r.embedding_model as string | null,
     embeddingVersion: r.embedding_version as string | null, departmentId: r.department_id as string | null,
@@ -282,38 +356,52 @@ function rowToDocIndex(r: Record<string, unknown>): DocumentIndexRow {
   };
 }
 
-export function getDocumentIndexRow(sourceType: string, sourceId: string): DocumentIndexRow | null {
+/** collectionId를 안 넘기면 현재 활성 컬렉션 기준(=기존 코드 대부분의 정상 경로).
+ * 재인덱싱 마이그레이션(Phase 3)만 building 상태인 v2 컬렉션 id를 명시적으로 넘겨서,
+ * 같은 source가 v1(active)과 v2(building)에 동시에 별도 행으로 존재할 수 있게 한다 —
+ * 그래야 마이그레이션 도중에도 v1이 계속 정상 서비스된다. */
+function resolveCollectionId(collectionId?: string | null): string | null {
+  if (collectionId !== undefined) return collectionId;
+  return getActiveVectorCollection()?.id ?? null;
+}
+
+export function getDocumentIndexRow(sourceType: string, sourceId: string, collectionId?: string): DocumentIndexRow | null {
   const db = getDb();
-  const row = db.prepare(`SELECT * FROM ai_document_index WHERE source_type=? AND source_id=?`).get(sourceType, sourceId) as Record<string, unknown> | undefined;
+  const cid = resolveCollectionId(collectionId);
+  const row = (cid
+    ? db.prepare(`SELECT * FROM ai_document_index WHERE source_type=? AND source_id=? AND collection_id=?`).get(sourceType, sourceId, cid)
+    : db.prepare(`SELECT * FROM ai_document_index WHERE source_type=? AND source_id=? AND collection_id IS NULL`).get(sourceType, sourceId)
+  ) as Record<string, unknown> | undefined;
   return row ? rowToDocIndex(row) : null;
 }
 
 export function upsertDocumentIndexRow(input: {
-  sourceType: string; sourceId: string; title: string; contentHash: string; chunkCount: number;
+  sourceType: string; sourceId: string; collectionId?: string; title: string; contentHash: string; chunkCount: number;
   embeddingModel: string; embeddingVersion: string; sourceUpdatedAt: string;
   departmentId?: string | null; visibility?: string | null; securityLevel?: string | null;
   status: 'pending' | 'indexed' | 'failed'; error?: string | null;
 }): void {
   const db = getDb();
   const ts = now();
-  const existing = getDocumentIndexRow(input.sourceType, input.sourceId);
+  const cid = resolveCollectionId(input.collectionId);
+  const existing = getDocumentIndexRow(input.sourceType, input.sourceId, input.collectionId);
   if (existing) {
     db.prepare(`UPDATE ai_document_index SET title=?, content_hash=?, chunk_count=?, embedding_model=?,
         embedding_version=?, source_updated_at=?, department_id=?, visibility=?, security_level=?,
-        indexed_at=?, status=?, error=?, updated_at=? WHERE source_type=? AND source_id=?`
+        indexed_at=?, status=?, error=?, updated_at=? WHERE id=?`
     ).run(
       input.title, input.contentHash, input.chunkCount, input.embeddingModel, input.embeddingVersion,
       input.sourceUpdatedAt, input.departmentId || null, input.visibility || null, input.securityLevel || null,
       input.status === 'indexed' ? ts : existing.indexedAt, input.status, input.error || null, ts,
-      input.sourceType, input.sourceId,
+      existing.id,
     );
   } else {
     db.prepare(`INSERT INTO ai_document_index
-      (id, source_type, source_id, title, content_hash, chunk_count, embedding_model, embedding_version,
+      (id, source_type, source_id, collection_id, title, content_hash, chunk_count, embedding_model, embedding_version,
        department_id, visibility, security_level, source_updated_at, indexed_at, status, error, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
-      newId(), input.sourceType, input.sourceId, input.title, input.contentHash, input.chunkCount,
+      newId(), input.sourceType, input.sourceId, cid, input.title, input.contentHash, input.chunkCount,
       input.embeddingModel, input.embeddingVersion, input.departmentId || null, input.visibility || null,
       input.securityLevel || null, input.sourceUpdatedAt, input.status === 'indexed' ? ts : null,
       input.status, input.error || null, ts, ts,
@@ -321,23 +409,33 @@ export function upsertDocumentIndexRow(input: {
   }
 }
 
-export function deleteDocumentIndexRow(sourceType: string, sourceId: string): void {
+export function deleteDocumentIndexRow(sourceType: string, sourceId: string, collectionId?: string): void {
   const db = getDb();
-  db.prepare(`DELETE FROM ai_document_index WHERE source_type=? AND source_id=?`).run(sourceType, sourceId);
+  const cid = resolveCollectionId(collectionId);
+  if (cid) db.prepare(`DELETE FROM ai_document_index WHERE source_type=? AND source_id=? AND collection_id=?`).run(sourceType, sourceId, cid);
+  else db.prepare(`DELETE FROM ai_document_index WHERE source_type=? AND source_id=? AND collection_id IS NULL`).run(sourceType, sourceId);
 }
 
-export function listDocumentIndex(opts?: { status?: string; limit?: number }): DocumentIndexRow[] {
+export function listDocumentIndex(opts?: { status?: string; limit?: number; collectionId?: string }): DocumentIndexRow[] {
   const db = getDb();
   const limit = opts?.limit ?? 50;
-  const rows = opts?.status
-    ? db.prepare(`SELECT * FROM ai_document_index WHERE status=? ORDER BY updated_at DESC LIMIT ?`).all(opts.status, limit) as Record<string, unknown>[]
-    : db.prepare(`SELECT * FROM ai_document_index ORDER BY updated_at DESC LIMIT ?`).all(limit) as Record<string, unknown>[];
+  const cid = resolveCollectionId(opts?.collectionId);
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (cid) { conditions.push('collection_id=?'); params.push(cid); } else { conditions.push('collection_id IS NULL'); }
+  if (opts?.status) { conditions.push('status=?'); params.push(opts.status); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT * FROM ai_document_index ${where} ORDER BY updated_at DESC LIMIT ?`).all(...params, limit) as Record<string, unknown>[];
   return rows.map(rowToDocIndex);
 }
 
-export function countDocumentIndexByStatus(): Record<string, number> {
+export function countDocumentIndexByStatus(collectionId?: string): Record<string, number> {
   const db = getDb();
-  const rows = db.prepare(`SELECT status, COUNT(*) as n FROM ai_document_index GROUP BY status`).all() as { status: string; n: number }[];
+  const cid = resolveCollectionId(collectionId);
+  const rows = (cid
+    ? db.prepare(`SELECT status, COUNT(*) as n FROM ai_document_index WHERE collection_id=? GROUP BY status`).all(cid)
+    : db.prepare(`SELECT status, COUNT(*) as n FROM ai_document_index WHERE collection_id IS NULL GROUP BY status`).all()
+  ) as { status: string; n: number }[];
   const out: Record<string, number> = { pending: 0, indexed: 0, failed: 0 };
   for (const r of rows) out[r.status] = r.n;
   return out;
@@ -345,6 +443,7 @@ export function countDocumentIndexByStatus(): Record<string, number> {
 
 export interface IndexJobRow {
   id: string; sourceType: string; sourceId: string; action: 'create' | 'update' | 'delete';
+  targetCollectionId: string | null;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'retrying';
   attempts: number; lastError: string | null; createdAt: string; updatedAt: string; processedAt: string | null;
 }
@@ -352,17 +451,20 @@ export interface IndexJobRow {
 function rowToJob(r: Record<string, unknown>): IndexJobRow {
   return {
     id: r.id as string, sourceType: r.source_type as string, sourceId: r.source_id as string,
-    action: r.action as IndexJobRow['action'], status: r.status as IndexJobRow['status'],
+    action: r.action as IndexJobRow['action'], targetCollectionId: r.target_collection_id as string | null,
+    status: r.status as IndexJobRow['status'],
     attempts: r.attempts as number, lastError: r.last_error as string | null,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string, processedAt: r.processed_at as string | null,
   };
 }
 
-export function enqueueIndexJob(sourceType: string, sourceId: string, action: 'create' | 'update' | 'delete'): void {
+/** targetCollectionId를 안 넘기면(=undefined) 기존처럼 "현재 활성 컬렉션" 대상 잡 —
+ * 재인덱싱 마이그레이션(Phase 3)만 명시적으로 building 컬렉션 id를 넘긴다. */
+export function enqueueIndexJob(sourceType: string, sourceId: string, action: 'create' | 'update' | 'delete', targetCollectionId?: string): void {
   const db = getDb();
   const ts = now();
-  db.prepare(`INSERT INTO ai_index_jobs (id, source_type, source_id, action, status, attempts, created_at, updated_at)
-    VALUES (?,?,?,?, 'pending', 0, ?,?)`).run(newId(), sourceType, sourceId, action, ts, ts);
+  db.prepare(`INSERT INTO ai_index_jobs (id, source_type, source_id, action, target_collection_id, status, attempts, created_at, updated_at)
+    VALUES (?,?,?,?,?, 'pending', 0, ?,?)`).run(newId(), sourceType, sourceId, action, targetCollectionId ?? null, ts, ts);
 }
 
 export function claimNextJobs(batchSize: number): IndexJobRow[] {
@@ -393,15 +495,23 @@ export function failJob(id: string, message: string): void {
   db.prepare(`UPDATE ai_index_jobs SET status=?, attempts=?, last_error=?, updated_at=? WHERE id=?`).run(status, attempts, message, ts, id);
 }
 
-export function hasActiveJob(sourceType: string, sourceId: string): boolean {
+/** targetCollectionId를 안 넘기면 "일반(활성 컬렉션 대상) 잡만" 확인한다 — 마이그레이션 잡은
+ * target_collection_id가 채워져 있어 별도로 취급되고, 서로의 큐잉을 막지 않는다(같은
+ * source가 v1 동기화와 v2 마이그레이션에 동시에 큐잉될 수 있어야 함). */
+export function hasActiveJob(sourceType: string, sourceId: string, targetCollectionId?: string): boolean {
   const db = getDb();
-  const row = db.prepare(`SELECT 1 FROM ai_index_jobs WHERE source_type=? AND source_id=? AND status IN ('pending','processing','retrying') LIMIT 1`).get(sourceType, sourceId);
+  const row = targetCollectionId
+    ? db.prepare(`SELECT 1 FROM ai_index_jobs WHERE source_type=? AND source_id=? AND target_collection_id=? AND status IN ('pending','processing','retrying') LIMIT 1`).get(sourceType, sourceId, targetCollectionId)
+    : db.prepare(`SELECT 1 FROM ai_index_jobs WHERE source_type=? AND source_id=? AND target_collection_id IS NULL AND status IN ('pending','processing','retrying') LIMIT 1`).get(sourceType, sourceId);
   return !!row;
 }
 
-export function countJobsByStatus(): Record<string, number> {
+export function countJobsByStatus(targetCollectionId?: string): Record<string, number> {
   const db = getDb();
-  const rows = db.prepare(`SELECT status, COUNT(*) as n FROM ai_index_jobs GROUP BY status`).all() as { status: string; n: number }[];
+  const rows = (targetCollectionId
+    ? db.prepare(`SELECT status, COUNT(*) as n FROM ai_index_jobs WHERE target_collection_id=? GROUP BY status`).all(targetCollectionId)
+    : db.prepare(`SELECT status, COUNT(*) as n FROM ai_index_jobs GROUP BY status`).all()
+  ) as { status: string; n: number }[];
   const out: Record<string, number> = { pending: 0, processing: 0, completed: 0, failed: 0, retrying: 0 };
   for (const r of rows) out[r.status] = r.n;
   return out;
@@ -467,15 +577,26 @@ export function addMessage(input: {
   };
 }
 
+/** 최신 limit개를 가져와서(=대화가 길어져도 항상 "최근" 맥락) 반환 전에 시간순으로
+ * 뒤집는다 — 예전엔 ORDER BY ASC LIMIT이라 limit을 넘는 대화에서 항상 "가장 오래된"
+ * 메시지만 보이고 최근 내용은 영영 안 보이는 문제가 있었다. */
 export function listMessages(conversationId: string, limit = 30): MessageRow[] {
   const db = getDb();
-  const rows = db.prepare(`SELECT * FROM ai_messages WHERE conversation_id=? ORDER BY created_at ASC LIMIT ?`).all(conversationId, limit) as Record<string, unknown>[];
+  const rows = (db.prepare(`SELECT * FROM ai_messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT ?`).all(conversationId, limit) as Record<string, unknown>[]).reverse();
   return rows.map(row => ({
     id: row.id as string, conversationId: row.conversation_id as string, role: row.role as string, content: row.content as string | null,
     providerId: row.provider_id as string | null, model: row.model as string | null,
     toolCallsJson: row.tool_calls_json as string | null, sourcesJson: row.sources_json as string | null,
     tokenUsageJson: row.token_usage_json as string | null, createdAt: row.created_at as string,
   }));
+}
+
+/** listMessages가 limit으로 잘라내기 전에 실제로 이 대화에 메시지가 몇 개 있었는지 —
+ * orchestrator가 "이전 대화 N건 생략됨"을 모델에 알릴지 판단하는 데만 쓰는 가벼운 COUNT. */
+export function countMessages(conversationId: string): number {
+  const db = getDb();
+  const row = db.prepare(`SELECT COUNT(*) as n FROM ai_messages WHERE conversation_id=?`).get(conversationId) as { n: number };
+  return row.n;
 }
 
 /** 대화 왕복 중간에 생기는 provider 재시도/도구 호출용 내부 usage 로그가 아니라,
@@ -508,18 +629,23 @@ export function logToolCall(entry: {
 export function logUsage(entry: {
   conversationId?: string | null; messageId?: string | null; userId?: string | null; userName?: string | null;
   providerId?: string | null; providerType?: string | null; model?: string | null;
-  requestType: 'chat' | 'embed' | 'tool'; success: boolean; error?: string | null;
+  requestType: 'chat' | 'embed' | 'tool' | 'rerank'; success: boolean; error?: string | null;
   latencyMs?: number | null; fallbackFromProviderId?: string | null;
+  embeddingCalls?: number | null; rerankerCalls?: number | null; ragChunks?: number | null;
+  fallbackCount?: number | null; estimatedNeurons?: number | null;
 }): void {
   const db = getDb();
   db.prepare(`INSERT INTO ai_usage_logs
     (id, conversation_id, message_id, user_id, user_name, provider_id, provider_type, model,
-     request_type, success, error, latency_ms, fallback_from_provider_id, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     request_type, success, error, latency_ms, fallback_from_provider_id,
+     embedding_calls, reranker_calls, rag_chunks, fallback_count, estimated_neurons, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(
     newId(), entry.conversationId || null, entry.messageId || null, entry.userId || null, entry.userName || null,
     entry.providerId || null, entry.providerType || null, entry.model || null,
     entry.requestType, entry.success ? 1 : 0, entry.error || null, entry.latencyMs ?? null,
-    entry.fallbackFromProviderId || null, now(),
+    entry.fallbackFromProviderId || null,
+    entry.embeddingCalls ?? null, entry.rerankerCalls ?? null, entry.ragChunks ?? null,
+    entry.fallbackCount ?? null, entry.estimatedNeurons ?? null, now(),
   );
 }

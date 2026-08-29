@@ -21,6 +21,9 @@ export async function GET() {
       qdrantUrl: s.qdrantUrl,
       hasQdrantApiKey: !!s.qdrantApiKey,
       qdrantCollection: s.qdrantCollection,
+      rerankerModel: s.rerankerModel,
+      relevanceThreshold: s.relevanceThreshold,
+      rerankThreshold: s.rerankThreshold,
       updatedAt: s.updatedAt,
     },
   });
@@ -37,6 +40,7 @@ export async function PUT(req: NextRequest) {
     defaultEmbeddingProviderId: body.defaultEmbeddingProviderId,
     rateLimitPerUserPerHour: body.rateLimitPerUserPerHour, searchTopK: body.searchTopK,
     qdrantUrl: body.qdrantUrl, qdrantApiKey: body.qdrantApiKey, qdrantCollection: body.qdrantCollection,
+    rerankerModel: body.rerankerModel, relevanceThreshold: body.relevanceThreshold, rerankThreshold: body.rerankThreshold,
     updatedBy: user.id,
   });
   return NextResponse.json({ data: { ...updated, qdrantApiKey: undefined, hasQdrantApiKey: !!updated.qdrantApiKey } });

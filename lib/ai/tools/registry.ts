@@ -403,6 +403,27 @@ export function getToolByName(name: string): ToolDefinition | undefined {
   return TOOL_REGISTRY.find(t => t.name === name);
 }
 
-export function listToolSchemas() {
-  return TOOL_REGISTRY.map(t => ({ name: t.name, description: t.description, parameters: t.parameters }));
+/** Intent Router(lib/ai/intent.ts)가 질문 종류에 따라 필요한 그룹만 골라 넘기게 하기
+ * 위한 매핑 — 매 요청마다 27개 도구 스키마를 전부 모델에 보내던 것을 줄이는 핵심 장치.
+ * TOOL_REGISTRY 자체는 건드리지 않고 이름만 그룹으로 묶는다(도구 추가 시 이 표에도
+ * 한 줄 추가하는 것만 잊지 않으면 됨). company/employee는 여러 업무에서 자주 같이
+ * 조회되므로 db 계열 그룹에는 항상 자동으로 포함시킨다(registry.ts 밖, intent.ts에서 처리). */
+export const TOOL_GROUPS: Record<string, string[]> = {
+  inventory: ['searchProducts', 'getProduct', 'searchInventory'],
+  trade: ['searchImports', 'getImport', 'searchShipments', 'searchPurchaseOrders', 'getPurchaseOrder', 'getPurchaseOrdersTotal'],
+  sales: ['searchQuotes', 'getQuote', 'searchSales', 'getSale', 'getSalesTotal'],
+  quality: ['searchInspections', 'getInspection', 'searchClaims', 'getClaim', 'searchKnowledge'],
+  accounting: ['searchExpenses', 'getExpensesTotal', 'searchCommissions', 'getCommission', 'getCommissionsTotal'],
+  company: ['searchCompanies', 'getCompany'],
+  hr: ['searchEmployees'],
+};
+
+/** groups를 안 넘기면(undefined) 기존처럼 전체 도구를 반환한다(하위호환 — 기존
+ * 호출부나 draft 같은 고비용/저빈도 요청은 여전히 전체 접근이 필요). groups를
+ * 넘기면 그 그룹들에 속한 도구만 필터링한다. */
+export function listToolSchemas(groups?: string[]) {
+  const names = groups ? new Set(groups.flatMap(g => TOOL_GROUPS[g] || [])) : null;
+  return TOOL_REGISTRY
+    .filter(t => !names || names.has(t.name))
+    .map(t => ({ name: t.name, description: t.description, parameters: t.parameters }));
 }

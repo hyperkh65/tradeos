@@ -9,6 +9,7 @@ import {
   Sparkles, Sliders, MessageSquareText, RotateCcw, AlertTriangle, Database, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DEFAULT_CLOUDFLARE_CHAT_MODEL, DEFAULT_CLOUDFLARE_EMBEDDING_MODEL } from '@/lib/ai/models';
 
 type Tab = 'providers' | 'flags' | 'prompts' | 'indexing';
 type ProviderType = 'cloudflare' | 'gemini' | 'anthropic' | 'openai' | 'ollama' | 'openai_compatible';
@@ -42,6 +43,7 @@ interface AISettings {
   enabled: boolean; effectiveEnabled: boolean; serverForcedDisabled: boolean;
   rateLimitPerUserPerHour: number; searchTopK: number;
   qdrantUrl: string | null; hasQdrantApiKey: boolean; qdrantCollection: string;
+  rerankerModel: string; relevanceThreshold: number; rerankThreshold: number;
 }
 
 interface PromptItem { key: string; default: string; custom: string | null; effective: string }
@@ -54,6 +56,14 @@ interface IndexStatus {
   documentIndex: Record<string, number>; jobs: Record<string, number>;
   recentFailed: { sourceType: string; sourceId: string; title: string | null; error: string | null; updatedAt: string }[];
   qdrant: { configured: boolean; connected: boolean; pointsCount: number; vectorSize: number | null; error?: string };
+  activeCollection: { name: string; embeddingModel: string; dimension: number; createdAt: string } | null;
+}
+interface VectorCollection { id: string; collectionName: string; embeddingModel: string; embeddingDimension: number; status: 'building' | 'active' | 'legacy' | 'failed'; createdAt: string }
+interface MigrationStatus {
+  inProgress: boolean;
+  collection?: VectorCollection;
+  total?: number; done?: number; failed?: number; remaining?: number; percent?: number;
+  collections: VectorCollection[];
 }
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   product: '제품', inspection: '검품', claim: '클레임', attachment: '첨부파일',
@@ -84,6 +94,9 @@ export default function AISettingsPage() {
 
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
   const [indexEstimate, setIndexEstimate] = useState<IndexEstimate | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [usageSummary, setUsageSummary] = useState<{ sinceHours: number; byType: { requestType: string; success: boolean; count: number; avgLatencyMs: number | null; totalRagChunks: number }[]; fallbackCount: number } | null>(null);
   const [indexBusy, setIndexBusy] = useState<'reindex' | 'retry' | 'qdrant-test' | null>(null);
   const [qdrantTestResult, setQdrantTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -174,15 +187,47 @@ export default function AISettingsPage() {
     Promise.all([
       fetch('/api/ai/index/status').then(r => r.json()),
       fetch('/api/ai/index/estimate').then(r => r.json()),
-    ]).then(([s, e]) => {
+      fetch('/api/ai/usage/summary').then(r => r.json()),
+    ]).then(([s, e, u]) => {
       if (s.data) setIndexStatus(s.data);
       if (e.data) setIndexEstimate(e.data);
+      if (u.data) setUsageSummary(u.data);
     });
   }, []);
 
   useEffect(() => {
-    if (tab === 'indexing' && me?.role === 'admin') loadIndexStatus();
+    // providers 탭에서도 activeCollection 정보(임베딩 모델 불일치 경고용)가 필요해서 함께 로드한다.
+    if ((tab === 'indexing' || tab === 'providers') && me?.role === 'admin') loadIndexStatus();
   }, [tab, me, loadIndexStatus]);
+
+  const loadMigrationStatus = useCallback(() => {
+    fetch('/api/ai/index/migration-status').then(r => r.json()).then(j => { if (j.data) setMigrationStatus(j.data); });
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'indexing' || me?.role !== 'admin') return;
+    loadMigrationStatus();
+    // 진행 중일 때만 짧은 주기로 polling — 끝나면(inProgress:false) 자동으로 멈춘다.
+    const interval = setInterval(() => {
+      setMigrationStatus(prev => {
+        if (prev && !prev.inProgress) return prev; // 이미 끝났으면 polling 중단(다음 tick에서 clearInterval)
+        loadMigrationStatus();
+        return prev;
+      });
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [tab, me, loadMigrationStatus]);
+
+  const runMigrateEmbedding = async () => {
+    if (!confirm('새 Embedding 모델로 전체 자료를 재인덱싱할까요?\n\n기존 자료는 삭제되지 않습니다. 새 Qdrant Collection을 생성하여 백그라운드에서 다시 인덱싱합니다. 완료 후 자동으로 새 Collection으로 전환됩니다.')) return;
+    setMigrating(true);
+    try {
+      const res = await fetch('/api/ai/index/migrate-embedding', { method: 'POST' });
+      const j = await res.json();
+      if (res.ok) { showMsg('success', `재인덱싱을 시작했습니다 (${j.data.enqueued}건 큐 등록).`); loadMigrationStatus(); loadIndexStatus(); }
+      else showMsg('error', j.error ?? '재인덱싱 시작 실패');
+    } finally { setMigrating(false); }
+  };
 
   const runReindexAll = async () => {
     if (!confirm('전체 재인덱싱을 큐에 등록할까요? 변경되지 않은 문서는 자동으로 건너뜁니다.')) return;
@@ -299,7 +344,16 @@ export default function AISettingsPage() {
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5 space-x-3">
                           {p.chatModel && <span>채팅: {p.chatModel}</span>}
-                          {p.embeddingModel && <span>임베딩: {p.embeddingModel}</span>}
+                          {p.embeddingModel && (
+                            <span>
+                              임베딩: {p.embeddingModel}
+                              {p.supportsEmbedding && indexStatus?.activeCollection && p.embeddingModel !== indexStatus.activeCollection.embeddingModel && (
+                                <span className="ml-1 text-amber-600" title={`활성 컬렉션(${indexStatus.activeCollection.name})은 ${indexStatus.activeCollection.embeddingModel}을 씁니다`}>
+                                  ⚠ 활성 컬렉션 모델과 다름
+                                </span>
+                              )}
+                            </span>
+                          )}
                           {p.apiTokenMasked && <span>토큰: {p.apiTokenMasked}</span>}
                         </div>
                         {p.lastError && p.status !== 'healthy' && (
@@ -357,6 +411,27 @@ export default function AISettingsPage() {
                   <Input type="number" min={1} max={30} className="w-28" defaultValue={settings.searchTopK}
                     onBlur={e => { const v = Number(e.target.value); if (v > 0) saveSettings({ searchTopK: v }); }} />
                   <span className="text-sm text-muted-foreground">건</span>
+                </div>
+              </div>
+
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="font-medium text-sm">Reranker (검색 결과 재정렬)</div>
+                <div className="text-xs text-muted-foreground -mt-2">Qdrant 검색 결과를 곧바로 AI에 전달하지 않고, 이 모델로 재정렬한 뒤 관련도가 낮은 결과는 걸러냅니다.</div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">모델</label>
+                  <Input defaultValue={settings.rerankerModel} onBlur={e => { if (e.target.value.trim()) saveSettings({ rerankerModel: e.target.value.trim() }); }} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">벡터 관련도 threshold (0~1)</label>
+                    <Input type="number" min={0} max={1} step={0.05} defaultValue={settings.relevanceThreshold}
+                      onBlur={e => { const v = Number(e.target.value); if (v >= 0 && v <= 1) saveSettings({ relevanceThreshold: v }); }} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Rerank 점수 threshold (0~1)</label>
+                    <Input type="number" min={0} max={1} step={0.05} defaultValue={settings.rerankThreshold}
+                      onBlur={e => { const v = Number(e.target.value); if (v >= 0 && v <= 1) saveSettings({ rerankThreshold: v }); }} />
+                  </div>
                 </div>
               </div>
 
@@ -433,6 +508,46 @@ export default function AISettingsPage() {
                 )}
               </div>
 
+              <div className="border border-border rounded-lg p-4 space-y-2">
+                <div className="font-medium text-sm">Embedding 컬렉션</div>
+                {indexStatus?.activeCollection ? (
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <div>Active Collection: <span className="font-mono text-foreground">{indexStatus.activeCollection.name}</span></div>
+                    <div>Embedding: <span className="font-mono text-foreground">{indexStatus.activeCollection.embeddingModel}</span></div>
+                    <div>Dimension: <span className="text-foreground">{indexStatus.activeCollection.dimension}</span></div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">아직 활성 컬렉션 정보가 없습니다.</div>
+                )}
+
+                {migrationStatus?.inProgress ? (
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">재인덱싱 진행 중 — {migrationStatus.collection?.collectionName}</span>
+                      <span className="font-medium">{migrationStatus.percent ?? 0}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary transition-all" style={{ width: `${migrationStatus.percent ?? 0}%` }} />
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      전체 {migrationStatus.total ?? 0} · 완료 {migrationStatus.done ?? 0} · 실패 {migrationStatus.failed ?? 0} · 남은 건 {migrationStatus.remaining ?? 0}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2 flex items-center gap-2">
+                    <Button size="sm" variant="outline" disabled={migrating} onClick={runMigrateEmbedding}>
+                      {migrating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+                      새 Embedding 모델로 재인덱싱
+                    </Button>
+                    {migrationStatus?.collection?.status === 'failed' && (
+                      <span className="text-xs text-red-600">
+                        {migrationStatus.collection.collectionName} 재인덱싱 중 {migrationStatus.failed ?? 0}건 실패 — 기존 컬렉션이 계속 서비스 중입니다.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {indexEstimate && (
                 <div className="border border-border rounded-lg p-4 space-y-3">
                   <div className="font-medium text-sm">인덱싱 대상 현황</div>
@@ -466,6 +581,25 @@ export default function AISettingsPage() {
                     변경되지 않은 문서는 자동으로 건너뛰어 불필요한 재임베딩을 하지 않습니다.
                     각 데이터를 저장·삭제하면 자동으로 이 목록에 반영됩니다(백그라운드에서 10초 주기로 처리).
                   </p>
+                </div>
+              )}
+
+              {usageSummary && usageSummary.byType.length > 0 && (
+                <div className="border border-border rounded-lg p-4 space-y-2">
+                  <div className="font-medium text-sm">최근 {usageSummary.sinceHours}시간 사용량</div>
+                  <div className="text-xs text-muted-foreground -mt-1">요청 유형별 호출 횟수 — 무료 한도가 왜 빨리 소진되는지 확인할 때 참고하세요.</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {usageSummary.byType.map((r, i) => (
+                      <div key={i} className={cn('border rounded-md p-2', r.success ? 'border-border' : 'border-red-200 bg-red-50')}>
+                        <div className="text-muted-foreground">{r.requestType}{!r.success && ' (실패)'}</div>
+                        <div className="font-semibold">{r.count}회</div>
+                        {r.avgLatencyMs != null && <div className="text-[10px] text-muted-foreground">평균 {r.avgLatencyMs}ms</div>}
+                      </div>
+                    ))}
+                  </div>
+                  {usageSummary.fallbackCount > 0 && (
+                    <div className="text-xs text-amber-600">Provider failover(다른 계정으로 재시도) {usageSummary.fallbackCount}회 발생</div>
+                  )}
                 </div>
               )}
 
@@ -520,8 +654,8 @@ function ProviderModal({ initial, onClose, onSaved, showMsg }: {
   const [accountId, setAccountId] = useState(initial?.accountId ?? '');
   const [apiToken, setApiToken] = useState('');
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? '');
-  const [chatModel, setChatModel] = useState(initial?.chatModel ?? '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-  const [embeddingModel, setEmbeddingModel] = useState(initial?.embeddingModel ?? '@cf/baai/bge-base-en-v1.5');
+  const [chatModel, setChatModel] = useState(initial?.chatModel ?? DEFAULT_CLOUDFLARE_CHAT_MODEL);
+  const [embeddingModel, setEmbeddingModel] = useState(initial?.embeddingModel ?? DEFAULT_CLOUDFLARE_EMBEDDING_MODEL);
   const [supportsChat, setSupportsChat] = useState(initial?.supportsChat ?? true);
   const [supportsEmbedding, setSupportsEmbedding] = useState(initial?.supportsEmbedding ?? (initial ? initial.supportsEmbedding : true));
   const [saving, setSaving] = useState(false);

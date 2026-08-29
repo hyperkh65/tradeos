@@ -184,7 +184,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          command_timeout: 30s
+          command_timeout: 45s
           script: |
             DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
             mkdir -p /volume1/web/tradeos/data/qdrant
@@ -196,6 +196,25 @@ jobs:
                 qdrant/qdrant:latest > /tmp/tradeos-qdrant-start.log 2>&1 &
               disown
               echo "qdrant container start requested in background(핵심 배포는 이미 끝났음)"
+              # "컨테이너가 떴다"와 "Qdrant가 실제로 요청을 받을 준비가 됐다"는 다르다 —
+              # 앱이 QDRANT_URL로 곧바로 질의했을 때 "fetch failed"가 나던 원인이 이 차이였다.
+              # 이미지가 이미 로컬에 있으면(재배포) 보통 수 초 안에 뜨므로, command_timeout
+              # 안에서 짧게(최대 20초) 기다려보고 로그를 남긴다 — 최초 pull처럼 오래 걸리면
+              # 그냥 백그라운드로 계속 진행(재시도는 앱의 Qdrant 클라이언트 자체가 처리함).
+              READY=0
+              for i in $(seq 1 10); do
+                sleep 2
+                if curl -sf -o /dev/null http://127.0.0.1:6333/ ; then READY=1; break; fi
+              done
+              if [ "$READY" = "1" ]; then
+                echo "qdrant ready after ~$((i*2))s"
+              else
+                echo "qdrant not ready yet within 20s — 계속 백그라운드에서 기동 중(다음 요청부터 앱 쪽 재시도 로직이 흡수함)"
+              fi
             else
-              echo "qdrant container already running"
+              if curl -sf -o /dev/null http://127.0.0.1:6333/ ; then
+                echo "qdrant container already running and healthy"
+              else
+                echo "WARNING: qdrant container is running but not responding on :6333 — 재시작이 필요할 수 있음"
+              fi
             fi

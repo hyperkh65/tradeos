@@ -1826,6 +1826,7 @@ function runMigrations(db: Database.Database) {
       id TEXT PRIMARY KEY,
       source_type TEXT NOT NULL,
       source_id TEXT NOT NULL,
+      collection_id TEXT,
       title TEXT,
       content_hash TEXT,
       chunk_count INTEGER NOT NULL DEFAULT 0,
@@ -1871,6 +1872,58 @@ function runMigrations(db: Database.Database) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_tool_logs_created ON ai_tool_logs(created_at)`);
   } catch { /* already exists */ }
   // ── 사내 AI Assistant 끝 ────────────────────────────────────────────────────
+
+  // ── AI Qdrant 컬렉션 버전 관리 시작 ──────────────────────────────────────────
+  // Embedding 모델이 바뀌면 기존 벡터(다른 차원/의미공간)와 섞이면 안 되므로 컬렉션을
+  // 통째로 새로 만든다. 이 테이블이 "지금 검색에 실제로 쓰이는 컬렉션이 무엇인지"를
+  // 관리하고, 재인덱싱이 끝나기 전까지는 기존(active) 컬렉션이 계속 서비스된다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS ai_vector_collections (
+      id TEXT PRIMARY KEY,
+      collection_name TEXT NOT NULL UNIQUE,
+      embedding_provider TEXT NOT NULL,
+      embedding_model TEXT NOT NULL,
+      embedding_dimension INTEGER NOT NULL,
+      embedding_version TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'building',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_vector_collections_status ON ai_vector_collections(status)`);
+  } catch { /* already exists */ }
+  // 이 테이블이 비어있으면(=이번이 첫 실행) 기존 단일 컬렉션 설정을 v1(active)으로 등록한다 —
+  // 그래야 v2로 전환하기 전까지 기존 검색이 끊기지 않는다.
+  try {
+    const existingCount = (db.prepare(`SELECT COUNT(*) as n FROM ai_vector_collections`).get() as { n: number }).n;
+    if (existingCount === 0) {
+      const settingsRow = db.prepare(`SELECT qdrant_collection FROM ai_settings WHERE id='default'`).get() as { qdrant_collection?: string } | undefined;
+      const collectionName = settingsRow?.qdrant_collection || 'tradeos_knowledge';
+      const ts = now();
+      db.prepare(`INSERT INTO ai_vector_collections
+        (id, collection_name, embedding_provider, embedding_model, embedding_dimension, embedding_version, status, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`
+      ).run(
+        'legacy-v1', collectionName, 'cloudflare', '@cf/baai/bge-base-en-v1.5', 768,
+        '@cf/baai/bge-base-en-v1.5:768d', 'active', ts, ts,
+      );
+    }
+  } catch { /* already migrated or ai_settings not ready yet */ }
+  try { db.exec(`ALTER TABLE ai_index_jobs ADD COLUMN target_collection_id TEXT`); } catch { /* already exists */ }
+  // ai_document_index를 컬렉션별로 구분한다 — 마이그레이션 도중 같은 source가 v1(active)과
+  // v2(building)에 동시에 별도 행으로 존재해야 v1이 계속 정상 서비스된다.
+  try { db.exec(`ALTER TABLE ai_document_index ADD COLUMN collection_id TEXT`); } catch { /* already exists */ }
+  try { db.exec(`UPDATE ai_document_index SET collection_id='legacy-v1' WHERE collection_id IS NULL`); } catch { /* ignore */ }
+  try { db.exec(`DROP INDEX IF EXISTS idx_ai_document_index_source`); } catch { /* ignore */ }
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_document_index_source_collection ON ai_document_index(source_type, source_id, collection_id)`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_settings ADD COLUMN reranker_model TEXT DEFAULT '@cf/baai/bge-reranker-base'`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_settings ADD COLUMN relevance_threshold REAL DEFAULT 0.5`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_settings ADD COLUMN rerank_threshold REAL DEFAULT 0.3`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN embedding_calls INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN reranker_calls INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN rag_chunks INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN fallback_count INTEGER`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN estimated_neurons REAL`); } catch { /* already exists */ }
+  // ── AI Qdrant 컬렉션 버전 관리 끝 ────────────────────────────────────────────
 
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
