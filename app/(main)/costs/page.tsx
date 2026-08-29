@@ -17,6 +17,7 @@ import type { Import } from '@/types';
 // ── 상수 ────────────────────────────────────────────────────────────────────
 
 const COST_TYPE_LABELS: Record<string, string> = {
+  goods_purchase: '상품매입',
   duty: '관세', vat: '수입부가세', customs_broker: '관세사비',
   inspection: '세관검사비', warehouse: '창고료(장치료)',
   demurrage: '체화료(DEM)', detention: '지체료(DET)',
@@ -663,7 +664,7 @@ interface RefData {
   shipments: FullShipment[];
   imports: Import[];
   companies: { id: string; name: string; type?: string }[];
-  purchaseOrders: { id: string; businessId: string; supplierName: string; totalAmount?: number; currency?: string; items?: { productName?: string }[] }[];
+  purchaseOrders: { id: string; businessId: string; supplierName: string; totalAmount?: number; currency?: string; orderDate?: string; items?: { productName?: string }[] }[];
   sales: { id: string; businessId: string; customer?: string; totalAmount?: number; saleDate?: string }[];
 }
 
@@ -767,7 +768,7 @@ function CostModal({ record, onClose, onSave }: {
         companies: (co.data || []).map((c: Record<string, unknown>) => ({ id: c.id, name: c.name, type: c.type } as { id: string; name: string; type?: string })),
         purchaseOrders: (po.data || []).map((p: Record<string, unknown>) => ({
           id: p.id, businessId: p.businessId, supplierName: p.supplierName,
-          totalAmount: p.totalAmount, currency: p.currency, items: p.items,
+          totalAmount: p.totalAmount, currency: p.currency, orderDate: p.orderDate, items: p.items,
         } as RefData['purchaseOrders'][0])),
         sales: (sa.data || []).map((s: Record<string, unknown>) => ({
           id: s.id, businessId: s.businessId, customer: s.customer, totalAmount: s.totalAmount, saleDate: s.saleDate,
@@ -957,10 +958,17 @@ function CostModal({ record, onClose, onSave }: {
     setPoSearch('');
   };
 
-  const filteredPos = ref.purchaseOrders.filter(p =>
-    p.businessId.toLowerCase().includes(poSearch.toLowerCase()) ||
-    p.supplierName.toLowerCase().includes(poSearch.toLowerCase())
-  ).slice(0, 8);
+  const filteredPos = (() => {
+    const q = poSearch.trim().toLowerCase();
+    if (!q) return [];
+    return ref.purchaseOrders
+      .filter(p =>
+        p.businessId.toLowerCase().includes(q) ||
+        (p.supplierName || '').toLowerCase().includes(q)
+      )
+      .sort((a, b) => (b.orderDate || '').localeCompare(a.orderDate || '') || b.businessId.localeCompare(a.businessId))
+      .slice(0, 30);
+  })();
 
   // 원가 합계 (costItems or costAmount, VAT 별도 추가)
   const costItemsTotal = costItems.reduce((s, i) => s + (i.amount || 0), 0)
@@ -1544,7 +1552,7 @@ function CostModal({ record, onClose, onSave }: {
                   </div>
                 </div>
                 {poSearch && filteredPos.length > 0 && (
-                  <div className="absolute z-50 mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                  <div className="absolute z-50 mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-80 overflow-y-auto">
                     {filteredPos.map(po => (
                       <button key={po.id} type="button" className="w-full text-left px-3 py-2 text-xs hover:bg-muted flex justify-between" onClick={() => addOffsetPo(po)}>
                         <div><div className="font-medium">{po.businessId}</div><div className="text-muted-foreground">{po.supplierName}</div></div>
@@ -1643,7 +1651,7 @@ function CostModal({ record, onClose, onSave }: {
                     <Input value={poSearch} onChange={e => setPoSearch(e.target.value)} placeholder="PO번호 또는 공급업체명 검색" className="h-9 pl-8 text-xs" />
                   </div>
                   {poSearch && filteredPos.length > 0 && (
-                    <div className="absolute z-50 mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                    <div className="absolute z-50 mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-80 overflow-y-auto">
                       {filteredPos.map(po => (
                         <button key={po.id} type="button" className="w-full text-left px-3 py-2 text-xs hover:bg-muted flex justify-between"
                           onClick={() => { setForm(f => ({ ...f, poId: po.id, poBusinessId: po.businessId, vendorName: po.supplierName })); setPoSearch(''); }}>
