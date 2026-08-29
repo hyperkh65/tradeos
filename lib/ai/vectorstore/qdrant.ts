@@ -129,3 +129,58 @@ export async function qdrantSearch(cfg: QdrantConfig, vector: number[], opts?: {
   });
   return result.result;
 }
+
+// ── 재해복구 백업용 Snapshot API ──────────────────────────────────────────────
+// Qdrant는 Snapshot Restore와 Full Rebuild(re-embedding) 두 경로를 모두 지원해야
+// 한다(lib/backup 참고) — snapshot이 없거나 복원에 실패해도 원본 DB/NAS 기준으로
+// /api/ai/index/reindex-all 전체 재인덱싱이 항상 가능한 대체 경로로 남아 있다.
+
+export interface QdrantSnapshotInfo { name: string; creation_time?: string; size?: number }
+
+export async function qdrantCreateSnapshot(cfg: QdrantConfig): Promise<QdrantSnapshotInfo> {
+  const result = await req<{ result: QdrantSnapshotInfo }>(cfg, 'POST', `/collections/${encodeURIComponent(cfg.collection)}/snapshots`);
+  return result.result;
+}
+
+export async function qdrantListSnapshots(cfg: QdrantConfig): Promise<QdrantSnapshotInfo[]> {
+  const result = await req<{ result: QdrantSnapshotInfo[] }>(cfg, 'GET', `/collections/${encodeURIComponent(cfg.collection)}/snapshots`);
+  return result.result;
+}
+
+export async function qdrantDownloadSnapshot(cfg: QdrantConfig, snapshotName: string): Promise<Buffer> {
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.url.replace(/\/$/, '')}/collections/${encodeURIComponent(cfg.collection)}/snapshots/${encodeURIComponent(snapshotName)}`, {
+      headers: cfg.apiKey ? { 'api-key': cfg.apiKey } : {},
+    });
+  } catch (e) {
+    throw new QdrantError(`스냅샷 다운로드 연결 실패: ${(e as Error).message}`);
+  }
+  if (!res.ok) throw new QdrantError(`스냅샷 다운로드 실패(${res.status})`, res.status);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export async function qdrantDeleteSnapshot(cfg: QdrantConfig, snapshotName: string): Promise<void> {
+  await req(cfg, 'DELETE', `/collections/${encodeURIComponent(cfg.collection)}/snapshots/${encodeURIComponent(snapshotName)}`);
+}
+
+/** 새(또는 기존) 컬렉션을 스냅샷 파일로 복원한다 — 재해복구 시 사용. 컬렉션이 없으면
+ * Qdrant가 스냅샷 내용대로 새로 만든다. */
+export async function qdrantRestoreFromSnapshot(cfg: QdrantConfig, snapshotBuffer: Buffer): Promise<void> {
+  const form = new FormData();
+  form.append('snapshot', new Blob([new Uint8Array(snapshotBuffer)]), 'snapshot.snapshot');
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.url.replace(/\/$/, '')}/collections/${encodeURIComponent(cfg.collection)}/snapshots/upload?priority=snapshot`, {
+      method: 'POST',
+      headers: cfg.apiKey ? { 'api-key': cfg.apiKey } : {},
+      body: form,
+    });
+  } catch (e) {
+    throw new QdrantError(`스냅샷 복원 연결 실패: ${(e as Error).message}`);
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new QdrantError(`스냅샷 복원 실패(${res.status}): ${text}`, res.status);
+  }
+}

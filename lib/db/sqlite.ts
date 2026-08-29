@@ -1925,6 +1925,46 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE ai_usage_logs ADD COLUMN estimated_neurons REAL`); } catch { /* already exists */ }
   // ── AI Qdrant 컬렉션 버전 관리 끝 ────────────────────────────────────────────
 
+  // ── 재해복구(Disaster Recovery) 시스템 시작 ──────────────────────────────────
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS system_change_log (
+      id TEXT PRIMARY KEY,
+      occurred_at TEXT NOT NULL,
+      category TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      details TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_system_change_log_occurred ON system_change_log(occurred_at DESC)`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS backup_packages (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      triggered_by TEXT NOT NULL,
+      status TEXT NOT NULL,
+      encrypted INTEGER NOT NULL DEFAULT 0,
+      manifest_json TEXT,
+      coverage_json TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_backup_packages_created ON backup_packages(created_at DESC)`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS restore_test_runs (
+      id TEXT PRIMARY KEY,
+      package_id TEXT,
+      status TEXT NOT NULL,
+      report_json TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  // ── 재해복구(Disaster Recovery) 시스템 끝 ────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

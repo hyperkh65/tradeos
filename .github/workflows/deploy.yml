@@ -48,6 +48,19 @@ jobs:
           NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
         run: npm run build
 
+      - name: Generate BUILD_INFO.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            fs.writeFileSync('BUILD_INFO.json', JSON.stringify({
+              gitCommit: process.env.GITHUB_SHA,
+              gitBranch: process.env.GITHUB_REF_NAME,
+              buildTime: new Date().toISOString(),
+              packageVersion: pkg.version,
+            }, null, 2));
+          "
+
       - name: Prepare NAS directory
         uses: appleboy/ssh-action@v1
         with:
@@ -74,7 +87,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          source: ".next/standalone/,.next/static/,public/"
+          source: ".next/standalone/,.next/static/,public/,BUILD_INFO.json"
           target: /volume1/web/tradeos/
 
       - name: Ensure docverify container running
