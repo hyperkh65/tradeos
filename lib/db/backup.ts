@@ -8,15 +8,24 @@ const execFileAsync = promisify(execFile);
 
 export interface BackupConfig {
   enabled: boolean;
-  intervalHours: number;  // 백업 주기 (시간 단위)
+  intervalHours: number;  // 백업 주기 (시간 단위) — 기존 DB/전체tar 백업용, 그대로 유지
   retainCount: number;    // DB 백업 보관 개수
   includeFullApp: boolean; // 예약 백업 때 프로그램 전체(실행 파일 전부)도 함께 백업할지
   fullAppRetainCount: number; // 전체 백업은 용량이 크므로 별도 보관 개수
+  // Complete Recovery Package(재해복구 패키지) 전용 스케줄 — "N일마다 HH:MM" 방식
+  completePackageEnabled: boolean;
+  scheduleDayInterval: number; // 며칠마다
+  scheduleHour: number;        // 0~23
+  scheduleMinute: number;      // 0~59
+  completePackageRetainCount: number;       // 최근 N개 보존
+  completePackageMonthlyArchiveCount: number; // 그 밖에 월간 아카이브로 별도 보존할 개수
 }
 
 const DEFAULT_CONFIG: BackupConfig = {
   enabled: true, intervalHours: 24, retainCount: 10,
   includeFullApp: true, fullAppRetainCount: 5,
+  completePackageEnabled: true, scheduleDayInterval: 3, scheduleHour: 3, scheduleMinute: 0,
+  completePackageRetainCount: 5, completePackageMonthlyArchiveCount: 3,
 };
 
 function ensureSettingsTable(db: ReturnType<typeof getDb>) {

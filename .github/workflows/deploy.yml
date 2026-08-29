@@ -48,6 +48,11 @@ jobs:
           NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
         run: npm run build
 
+      - name: Domain hardcoding check (비차단 — 정보성)
+        run: node scripts/check-hardcoded-domain.js
+        env:
+          NEXT_PUBLIC_APP_URL: https://gw.ynk2014.com
+
       - name: Generate BUILD_INFO.json
         run: |
           node -e "

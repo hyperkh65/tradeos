@@ -4,11 +4,12 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getDb, newId, now } from '../db/sqlite';
-import { getBackupDir } from '../db/backup';
+import { getBackupDir, getAppRootDir } from '../db/backup';
 import { generateManifest, type SystemManifest } from './manifest';
 import { auditAttachments, getUploadDir } from './attachments';
 import { generateAllDocs } from './docs';
 import { collectSecrets, getStoredRecoveryPasswordForAutoBackup } from './secrets';
+import { collectNonSecretConfig } from './app-config';
 import { encryptVault } from './vault';
 import { backupQdrantSnapshot } from './qdrant-backup';
 import { locateApplicationArtifacts } from './application';
@@ -29,7 +30,7 @@ export interface PackageResult {
   manifest: SystemManifest | null;
 }
 
-const STAGING_SUBDIRS = ['manifest', 'database', 'files', 'qdrant', 'application', 'docker', 'secrets', 'documentation', 'recovery'];
+const STAGING_SUBDIRS = ['manifest', 'database', 'files', 'qdrant', 'application', 'docker', 'config', 'secrets', 'documentation', 'recovery'];
 
 function walkFiles(dir: string, base = dir): string[] {
   const out: string[] = [];
@@ -111,7 +112,23 @@ export async function createCompleteRecoveryPackage(
     const qdrantResult = await backupQdrantSnapshot(path.join(stagingDir, 'qdrant', 'snapshots'));
     fs.writeFileSync(path.join(stagingDir, 'qdrant', 'snapshot-result.json'), JSON.stringify(qdrantResult, null, 2));
 
-    // 4) 애플리케이션 참조 파일
+    // 4) 애플리케이션 — "패키지 하나만 있으면 된다"를 실제로 만족하려면 컴파일된
+    //    standalone 빌드 자체가 패키지 안에 있어야 한다(참조 파일만 넣으면 복원 시
+    //    인터넷으로 npm install/build가 필요해져 오프라인 복구가 안 됨). 기존
+    //    runFullAppBackup()과 같은 소스 경로를 재사용하되, data/는 여기서 중복 포함하지
+    //    않는다(DB는 /database에 dump로, 첨부파일은 /files에 체크섬과 함께 이미 더
+    //    안전하게 포함됨).
+    const appRoot = getAppRootDir();
+    const buildTargets = ['.next/standalone', '.next/static', 'public'].filter(t => fs.existsSync(path.join(appRoot, t)));
+    const buildDestDir = path.join(stagingDir, 'application', 'build');
+    fs.mkdirSync(buildDestDir, { recursive: true });
+    for (const t of buildTargets) {
+      const dest = path.join(buildDestDir, t);
+      fs.mkdirSync(path.dirname(dest), { recursive: true }); // t가 ".next/standalone"처럼 하위경로면 부모(.next)가 먼저 있어야 cp -R이 됨
+      await execFileAsync('cp', ['-R', path.join(appRoot, t), dest], { maxBuffer: 1024 * 1024 * 50 });
+    }
+    if (buildTargets.length === 0) warnings.push('컴파일된 애플리케이션 빌드(.next/standalone)를 찾지 못했습니다 — 개발 환경에서 백업하면 정상입니다(프로덕션 NAS에서는 항상 존재).');
+
     const appArtifacts = locateApplicationArtifacts();
     for (const p of Object.values(appArtifacts)) {
       if (p) fs.copyFileSync(p, path.join(stagingDir, 'application', path.basename(p)));
@@ -121,6 +138,9 @@ export async function createCompleteRecoveryPackage(
     const preManifest = generateManifest(id); // docker 정보 포함, 아래서 최종 manifest로 다시 씀(문서/체크섬 반영 위해)
     const compose = synthesizeDockerCompose(preManifest.docker.containers.map(c => ({ name: c.name, image: c.image, ports: c.ports, volumes: c.volumes })));
     fs.writeFileSync(path.join(stagingDir, 'docker', 'docker-compose.yml'), compose);
+
+    // 5.5) 민감하지 않은 설정(Notion DB ID 등) — 암호화 불필요, 앱 재기동에 필수
+    fs.writeFileSync(path.join(stagingDir, 'config', 'application-config.json'), JSON.stringify(collectNonSecretConfig(), null, 2));
 
     // 6) Secrets — Recovery Password가 설정돼 있을 때만 포함(평문 폴백 절대 금지)
     const password = opts?.password || getStoredRecoveryPasswordForAutoBackup();
@@ -198,4 +218,39 @@ export function listCompleteRecoveryPackages(): BackupPackageListItem[] {
     error: r.error as string | null, createdAt: r.created_at as string,
     existsOnDisk: fs.existsSync(path.join(dir, r.filename as string)),
   }));
+}
+
+/** 요구사항 18번: 최근 N개는 그대로 두고, 그 밖의 것들 중에서는 달마다 가장 최근 것
+ * 하나씩만 "월간 아카이브"로 별도 보존한다. FAILED 백업은 애초에 보존 대상이 아니므로
+ * (검증 실패라 가치가 없음) 즉시 정리 대상이다. 이제 막 만든 백업(COMPLETE 검증 통과)
+ * 이후에만 호출되므로, 정리 도중 정상 백업이 사라지는 일은 없다(요구사항 19). */
+export function pruneCompletePackages(retainCount: number, monthlyArchiveCount: number): { deleted: number } {
+  const db = getDb();
+  const backupDir = getBackupDir();
+  const all = listCompleteRecoveryPackages()
+    .filter(p => p.status !== 'FAILED')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  const keepIds = new Set<string>();
+  for (const p of all.slice(0, Math.max(0, retainCount))) keepIds.add(p.id);
+
+  const seenMonths = new Set<string>();
+  for (const p of all) {
+    if (keepIds.has(p.id)) continue;
+    const month = p.createdAt.slice(0, 7);
+    if (seenMonths.has(month) || seenMonths.size >= monthlyArchiveCount) continue;
+    seenMonths.add(month);
+    keepIds.add(p.id);
+  }
+
+  let deleted = 0;
+  for (const p of all) {
+    if (keepIds.has(p.id)) continue;
+    try { fs.unlinkSync(path.join(backupDir, p.filename)); } catch { /* 이미 없을 수 있음 */ }
+    db.prepare(`DELETE FROM backup_packages WHERE id=?`).run(p.id);
+    deleted++;
+  }
+  // FAILED 백업도 목록에서 정리(파일은 애초에 만들어지지 않았거나 롤백됨)
+  db.prepare(`DELETE FROM backup_packages WHERE status='FAILED' AND created_at < datetime('now','-7 days')`).run();
+  return { deleted };
 }
