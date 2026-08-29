@@ -1,5 +1,6 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { encryptPassword, decryptPassword } from '@/lib/mail/crypto';
+import { DEFAULT_CLOUDFLARE_CHAT_MODEL, DEFAULT_CLOUDFLARE_EMBEDDING_MODEL } from './models';
 import type { AIProviderType, ProviderHealthStatus } from './types';
 
 export interface AIProviderRow {
@@ -129,6 +130,25 @@ export function updateProvider(id: string, input: UpdateProviderInput): AIProvid
     ts, id,
   );
   return getProvider(id);
+}
+
+const LEGACY_CHAT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const LEGACY_EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5';
+
+/** DEFAULT_CLOUDFLARE_CHAT_MODEL/EMBEDDING_MODEL을 바꾸는 것은 "새로 만드는" Provider의
+ * 기본값만 바꿀 뿐, 그 시점 이전에 이미 저장된 행은 소급 갱신되지 않는다 — 실제로
+ * 2026-08-29 모델 교체 커밋 이전(8/28)에 만들어진 프로덕션 Provider 5개가 전부 옛 모델을
+ * 계속 쓰고 있던 채로 방치돼 있었다(재인덱싱까지 옛 모델로 다시 만들어버림). 앱 시작 시
+ * 마다 호출해 "정확히 옛 기본값 그대로인" 행만 새 기본값으로 옮긴다 — 관리자가 의도적으로
+ * 다른 값을 넣은 행은 건드리지 않는다(멱등: 이미 옮겨졌으면 대상이 없어 아무 일도 안 함). */
+export function migrateLegacyProviderDefaults(): number {
+  const db = getDb();
+  const ts = now();
+  const result = db.prepare(
+    `UPDATE ai_providers SET chat_model=?, embedding_model=?, updated_at=?
+     WHERE provider_type='cloudflare' AND chat_model=? AND embedding_model=?`
+  ).run(DEFAULT_CLOUDFLARE_CHAT_MODEL, DEFAULT_CLOUDFLARE_EMBEDDING_MODEL, ts, LEGACY_CHAT_MODEL, LEGACY_EMBEDDING_MODEL);
+  return result.changes;
 }
 
 export function deleteProvider(id: string): void {
