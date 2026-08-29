@@ -297,6 +297,16 @@ export function setVectorCollectionStatus(id: string, status: VectorCollectionRo
   db.prepare(`UPDATE ai_vector_collections SET status=?, updated_at=? WHERE id=?`).run(status, now(), id);
 }
 
+/** 마이그레이션을 취소/포기할 때 해당 building 컬렉션에 남은 잡을 전부 지운다 —
+ * 이미 완료된 잡도 포함해서 지운다(잘못된 모델로 만들어진 컬렉션이면 completed 표시된
+ * 벡터도 같이 버려지는 대상이라 재사용하면 안 되므로, 다음 마이그레이션이 새 컬렉션에
+ * 대해 처음부터 다시 인덱싱하게 한다). */
+export function deleteJobsForCollection(targetCollectionId: string): number {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM ai_index_jobs WHERE target_collection_id=?`).run(targetCollectionId);
+  return result.changes;
+}
+
 /** 새 컬렉션(v2)이 완전히 인덱싱된 뒤에만 호출한다 — 이전 active를 legacy로,
  * 대상을 active로 바꾸는 것을 한 트랜잭션으로 묶어 "일부만 전환됨" 상태가 생기지 않게 한다. */
 export function activateVectorCollection(id: string): void {
@@ -493,6 +503,33 @@ export function failJob(id: string, message: string): void {
   const attempts = (row?.attempts || 0) + 1;
   const status = attempts >= MAX_JOB_ATTEMPTS ? 'failed' : 'retrying';
   db.prepare(`UPDATE ai_index_jobs SET status=?, attempts=?, last_error=?, updated_at=? WHERE id=?`).run(status, attempts, message, ts, id);
+}
+
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
+
+/** claimNextJobs()가 status를 'processing'으로 찍은 뒤, 실제 처리(runJob) 도중에
+ * 서버 프로세스가 죽으면(배포로 인한 재시작 등) completeJob/failJob 둘 다 호출되지
+ * 못한 채 'processing'에 영원히 멈춘다 — claimNextJobs는 pending/retrying만 다시
+ * 꺼내므로 워커가 재기동돼도 이 잡들은 절대 재시도되지 않는다(실제 프로덕션에서
+ * 재인덱싱 잡 15건이 이렇게 멈춰 마이그레이션이 98%에서 영구 정지한 사례로 발견됨).
+ * 매 poll마다 일정 시간 이상 processing에 머문 잡을 회수해 failJob과 동일한
+ * attempts/재시도 로직을 태운다. */
+export function recoverStaleProcessingJobs(): number {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  const stale = db.prepare(`SELECT id, attempts FROM ai_index_jobs WHERE status='processing' AND updated_at < ?`).all(cutoff) as { id: string; attempts: number }[];
+  if (stale.length === 0) return 0;
+  const ts = now();
+  const tx = db.transaction(() => {
+    for (const row of stale) {
+      const attempts = row.attempts + 1;
+      const status = attempts >= MAX_JOB_ATTEMPTS ? 'failed' : 'retrying';
+      db.prepare(`UPDATE ai_index_jobs SET status=?, attempts=?, last_error=?, updated_at=? WHERE id=?`)
+        .run(status, attempts, '워커 프로세스 재시작으로 처리가 중단되어 자동 회수됨', ts, row.id);
+    }
+  });
+  tx();
+  return stale.length;
 }
 
 /** targetCollectionId를 안 넘기면 "일반(활성 컬렉션 대상) 잡만" 확인한다 — 마이그레이션 잡은

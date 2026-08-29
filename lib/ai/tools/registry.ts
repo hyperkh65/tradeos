@@ -157,7 +157,7 @@ const getCompany: ToolDefinition<{ id: string }> = {
 
 const searchPurchaseOrders: ToolDefinition<BaseArgs> = {
   name: 'searchPurchaseOrders',
-  description: '발주번호/공급업체명/상태로 발주(PO)를 검색한다. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 발주 현황"처럼 기간별 전체 목록을 가져올 수 있다(발주일 기준).',
+  description: '발주번호/공급업체명/상태로 발주(PO)를 검색한다. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 발주 현황"처럼 기간별 전체 목록을 가져올 수 있다(발주일 기준). "매입처 1위/상위" 같은 순위 질문에는 이 도구로 받은 개별 행을 눈으로 비교하지 말고 getTopPurchaseOrderSuppliers를 써라.',
   parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(생략 가능)' }, ...dateParams('발주일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
   handler: async (args) => {
     const db = getDb();
@@ -187,6 +187,21 @@ const getPurchaseOrdersTotal: ToolDefinition<BaseArgs> = {
     const { clause, params } = buildWhere(args, ['business_id', 'supplier_name', 'status'], 'order_date');
     const byCurrency = db.prepare(`SELECT currency, SUM(total_amount) as total, COUNT(*) as count FROM purchase_orders ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
     return { byCurrency };
+  },
+};
+
+const topN = (def = 5, max = 20) => ({ type: 'number', description: `상위 몇 곳까지(기본 ${def}, 최대 ${max})` });
+
+const getTopPurchaseOrderSuppliers: ToolDefinition<BaseArgs & { topN?: number }> = {
+  name: 'getTopPurchaseOrderSuppliers',
+  description: '공급업체(매입처)별 발주 금액 합계를 DB가 직접 계산해 금액이 큰 순으로 순위를 매긴다("매입처 1위/상위/랭킹" 질문에는 searchPurchaseOrders의 개별 행을 눈으로 비교하지 말고 반드시 이 도구를 써라 — 업체별 합산 없이 개별 건 중 가장 큰 값을 고르면 틀린다).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '공급업체명 등 검색어(생략 가능)' }, ...dateParams('발주일'), topN: topN() } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'supplier_name', 'status'], 'order_date');
+    const rows = db.prepare(`SELECT supplier_name, currency, SUM(total_amount) as total, COUNT(*) as count
+      FROM purchase_orders ${clause} GROUP BY supplier_name, currency ORDER BY total DESC LIMIT ?`).all(...params, clampLimit(args.topN, 5, 20)) as Record<string, unknown>[];
+    return rows;
   },
 };
 
@@ -228,7 +243,7 @@ const getQuote: ToolDefinition<{ id: string }> = {
 
 const searchSales: ToolDefinition<BaseArgs> = {
   name: 'searchSales',
-  description: '매출번호/고객사명/PO번호로 매출(판매) 기록을 검색한다. 금액(net_amount/vat/total_amount) 포함. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 매출 현황/총액"처럼 기간별 전체 목록을 가져올 수 있다(매출일 기준) — 합계는 반환된 행들의 total_amount를 직접 더해서 계산하라.',
+  description: '매출번호/고객사명/PO번호로 매출(판매) 기록을 검색한다. 금액(net_amount/vat/total_amount) 포함. query를 비워두고 dateFrom/dateTo만 넘기면 "이번 달 매출 현황/총액"처럼 기간별 전체 목록을 가져올 수 있다(매출일 기준) — 합계는 반환된 행들의 total_amount를 직접 더해서 계산하라. "매출처 1위/상위" 같은 순위 질문에는 이 도구로 받은 개별 행을 눈으로 비교하지 말고 getTopSalesCustomers를 써라.',
   parameters: { type: 'object', properties: { query: { type: 'string', description: '검색어(고객사명 등, 생략 가능)' }, ...dateParams('매출일'), limit: { type: 'number', description: '결과 개수(기본 15, 최대 50)' } } },
   handler: async (args) => {
     const db = getDb();
@@ -258,6 +273,19 @@ const getSalesTotal: ToolDefinition<BaseArgs> = {
     const { clause, params } = buildWhere(args, ['business_id', 'customer', 'po_no'], 'sale_date');
     const byCurrency = db.prepare(`SELECT currency, SUM(total_amount) as total, COUNT(*) as count FROM sales ${clause} GROUP BY currency`).all(...params) as Record<string, unknown>[];
     return { byCurrency };
+  },
+};
+
+const getTopSalesCustomers: ToolDefinition<BaseArgs & { topN?: number }> = {
+  name: 'getTopSalesCustomers',
+  description: '고객사(매출처)별 매출 합계를 DB가 직접 계산해 금액이 큰 순으로 순위를 매긴다("매출처 1위/상위/랭킹" 질문에는 searchSales의 개별 행을 눈으로 비교하지 말고 반드시 이 도구를 써라 — 고객사별 합산 없이 개별 건 중 가장 큰 값을 고르면 틀린다).',
+  parameters: { type: 'object', properties: { query: { type: 'string', description: '고객사명 등 검색어(생략 가능)' }, ...dateParams('매출일'), topN: topN() } },
+  handler: async (args) => {
+    const db = getDb();
+    const { clause, params } = buildWhere(args, ['business_id', 'customer', 'po_no'], 'sale_date');
+    const rows = db.prepare(`SELECT customer, currency, SUM(total_amount) as total, COUNT(*) as count
+      FROM sales ${clause} GROUP BY customer, currency ORDER BY total DESC LIMIT ?`).all(...params, clampLimit(args.topN, 5, 20)) as Record<string, unknown>[];
+    return rows;
   },
 };
 
@@ -387,10 +415,10 @@ export const TOOL_REGISTRY: ToolDefinition<any, any>[] = [
   searchInspections, getInspection,
   searchClaims, getClaim,
   searchCompanies, getCompany,
-  searchPurchaseOrders, getPurchaseOrder, getPurchaseOrdersTotal,
+  searchPurchaseOrders, getPurchaseOrder, getPurchaseOrdersTotal, getTopPurchaseOrderSuppliers,
   searchShipments,
   searchQuotes, getQuote,
-  searchSales, getSale, getSalesTotal,
+  searchSales, getSale, getSalesTotal, getTopSalesCustomers,
   searchInventory,
   searchImports, getImport,
   searchExpenses, getExpensesTotal,
@@ -410,8 +438,8 @@ export function getToolByName(name: string): ToolDefinition | undefined {
  * 조회되므로 db 계열 그룹에는 항상 자동으로 포함시킨다(registry.ts 밖, intent.ts에서 처리). */
 export const TOOL_GROUPS: Record<string, string[]> = {
   inventory: ['searchProducts', 'getProduct', 'searchInventory'],
-  trade: ['searchImports', 'getImport', 'searchShipments', 'searchPurchaseOrders', 'getPurchaseOrder', 'getPurchaseOrdersTotal'],
-  sales: ['searchQuotes', 'getQuote', 'searchSales', 'getSale', 'getSalesTotal'],
+  trade: ['searchImports', 'getImport', 'searchShipments', 'searchPurchaseOrders', 'getPurchaseOrder', 'getPurchaseOrdersTotal', 'getTopPurchaseOrderSuppliers'],
+  sales: ['searchQuotes', 'getQuote', 'searchSales', 'getSale', 'getSalesTotal', 'getTopSalesCustomers'],
   quality: ['searchInspections', 'getInspection', 'searchClaims', 'getClaim', 'searchKnowledge'],
   accounting: ['searchExpenses', 'getExpensesTotal', 'searchCommissions', 'getCommission', 'getCommissionsTotal'],
   company: ['searchCompanies', 'getCompany'],

@@ -1,5 +1,5 @@
 import {
-  claimNextJobs, completeJob, failJob, type IndexJobRow,
+  claimNextJobs, completeJob, failJob, recoverStaleProcessingJobs, type IndexJobRow,
   listVectorCollections, countJobsByStatus, activateVectorCollection, setVectorCollectionStatus,
 } from './db';
 import { indexOneSource, deleteOneSource } from './indexer';
@@ -17,6 +17,7 @@ async function runJob(job: IndexJobRow): Promise<void> {
 /** 큐에서 일정 개수만 꺼내 처리한다 — 워커 poll 주기마다 호출되며,
  * 한 번에 너무 많이 처리해 무료 임베딩 호출량을 한꺼번에 태우지 않도록 배치 크기를 제한한다. */
 export async function processNextJobs(batchSize = 5): Promise<{ processed: number; failed: number }> {
+  recoverStaleProcessingJobs();
   const jobs = claimNextJobs(batchSize);
   let failed = 0;
   for (const job of jobs) {

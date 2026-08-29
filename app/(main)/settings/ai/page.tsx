@@ -229,6 +229,17 @@ export default function AISettingsPage() {
     } finally { setMigrating(false); }
   };
 
+  const cancelMigration = async () => {
+    if (!confirm('진행 중인 재인덱싱을 취소할까요?\n\n지금까지 새 Collection에 쌓인 내용은 버려지고, 기존 Active Collection은 계속 그대로 서비스됩니다.')) return;
+    setMigrating(true);
+    try {
+      const res = await fetch('/api/ai/index/cancel-migration', { method: 'POST' });
+      const j = await res.json();
+      if (res.ok) { showMsg('success', `재인덱싱을 취소했습니다(${j.data.collectionName}).`); loadMigrationStatus(); loadIndexStatus(); }
+      else showMsg('error', j.error ?? '취소 실패');
+    } finally { setMigrating(false); }
+  };
+
   const runReindexAll = async () => {
     if (!confirm('전체 재인덱싱을 큐에 등록할까요? 변경되지 않은 문서는 자동으로 건너뜁니다.')) return;
     setIndexBusy('reindex');
@@ -532,6 +543,10 @@ export default function AISettingsPage() {
                     <div className="text-[11px] text-muted-foreground">
                       전체 {migrationStatus.total ?? 0} · 완료 {migrationStatus.done ?? 0} · 실패 {migrationStatus.failed ?? 0} · 남은 건 {migrationStatus.remaining ?? 0}
                     </div>
+                    <Button size="sm" variant="outline" disabled={migrating} onClick={cancelMigration}>
+                      {migrating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                      재인덱싱 취소
+                    </Button>
                   </div>
                 ) : (
                   <div className="pt-2 flex items-center gap-2">

@@ -104,6 +104,17 @@ export interface QdrantPoint {
   payload: Record<string, unknown>;
 }
 
+/** 잘못된 모델/차원으로 만들어졌거나 마이그레이션이 취소된 building 컬렉션을 정리할 때
+ * 쓴다 — 컬렉션이 이미 없어도(404) 에러로 취급하지 않는다(멱등). */
+export async function qdrantDeleteCollection(cfg: QdrantConfig): Promise<void> {
+  try {
+    await req(cfg, 'DELETE', `/collections/${encodeURIComponent(cfg.collection)}`);
+  } catch (e) {
+    if (e instanceof QdrantError && e.status === 404) return;
+    throw e;
+  }
+}
+
 export async function qdrantUpsertPoints(cfg: QdrantConfig, points: QdrantPoint[]): Promise<void> {
   if (points.length === 0) return;
   await req(cfg, 'PUT', `/collections/${encodeURIComponent(cfg.collection)}/points?wait=true`, { points });
