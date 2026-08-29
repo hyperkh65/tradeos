@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
   const seen = new Set<string>();
   const competitorLatest: Record<string, unknown>[] = [];
   for (const r of rest) {
-    const key = [r.forwarder_name, r.pol, r.pod, r.container_type].join('|');
+    // carrier까지 키에 포함 — 안 그러면 경쟁사가 같은 노선에 선사를 여러 개
+    // 견적했을 때 그 중 임의의 한 선사만 남아 실제 최저가가 누락되고,
+    // 프론트의 "경쟁사 중 최저가" 계산이 이미 걸러진 데이터로 왜곡됨.
+    const key = [r.forwarder_name, r.pol, r.pod, r.container_type, r.carrier].join('|');
     if (seen.has(key)) continue;
     seen.add(key);
     competitorLatest.push(r);
