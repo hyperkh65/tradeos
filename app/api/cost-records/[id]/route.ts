@@ -56,6 +56,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       vendor_id=?, vendor_name=?,
       shipment_id=?, shipment_business_id=?,
       import_id=?, import_business_id=?,
+      po_id=?, po_business_id=?,
       cost_amount=?, cost_currency=?, fx_rate_at_cost=?, cost_amount_krw=?,
       incurred_date=?, disposition=?,
       bill_amount=?, bill_currency=?, bill_status=?,
@@ -65,7 +66,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       offset_status=?, offset_remaining=?, offset_po_id=?, offset_items_json=?,
       cost_items_json=?, line_items_json=?,
       allocation_method=?, allocation_ratio=?,
-      paid_amount_krw=?, payment_memo=?,
+      paid_amount_krw=?, payment_memo=?, journal_entry_id=?,
       remark=?, updated_at=?
       WHERE id=?`)
       .run(
@@ -80,6 +81,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.shipmentBusinessId ?? row.shipment_business_id,
         body.importId ?? row.import_id,
         body.importBusinessId ?? row.import_business_id,
+        body.poId ?? row.po_id,
+        body.poBusinessId ?? row.po_business_id,
         body.costAmount ?? row.cost_amount,
         body.costCurrency ?? row.cost_currency,
         body.fxRateAtCost ?? row.fx_rate_at_cost,
@@ -106,6 +109,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         body.allocationRatio ?? row.allocation_ratio,
         body.paidAmountKrw !== undefined ? body.paidAmountKrw : (row.paid_amount_krw ?? null),
         body.paymentMemo !== undefined ? body.paymentMemo : (row.payment_memo ?? null),
+        body.journalEntryId !== undefined ? body.journalEntryId : (row.journal_entry_id ?? null),
         body.remark ?? row.remark,
         now(), id,
       );

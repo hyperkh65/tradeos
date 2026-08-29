@@ -66,7 +66,7 @@ export interface CostRecord {
   costAmount: number; costCurrency: string;
   fxRateAtCost?: number; costAmountKrw?: number;
   incurredDate?: string;
-  disposition: 'pending' | 'internal' | 'billable_domestic' | 'billable_foreign' | 'offset_purchase' | 'selling_admin';
+  disposition: 'pending' | 'internal' | 'billable_domestic' | 'billable_foreign' | 'offset_purchase' | 'selling_admin' | 'purchase_cogs';
   billAmount?: number; billCurrency?: string;
   billStatus: 'unbilled' | 'invoiced' | 'collected' | 'offset' | 'waived';
   fxRateAtSettle?: number; fxGainLoss?: number; settledAt?: string;
@@ -82,6 +82,7 @@ export interface CostRecord {
   allocationGroupId?: string; allocationMethod?: string; allocationRatio?: number;
   isAutoAllocated: boolean;
   paidAmountKrw?: number; paymentMemo?: string;
+  journalEntryId?: string;
   remark?: string; createdBy?: string; createdAt: string; updatedAt?: string;
 }
 
@@ -133,6 +134,7 @@ export function dbToCostRecord(row: Record<string, unknown>): CostRecord {
     isAutoAllocated: Boolean(row.is_auto_allocated),
     paidAmountKrw: (row.paid_amount_krw as number) || undefined,
     paymentMemo: (row.payment_memo as string) || undefined,
+    journalEntryId: (row.journal_entry_id as string) || undefined,
     remark: (row.remark as string) || undefined,
     createdBy: (row.created_by as string) || undefined,
     createdAt: row.created_at as string,

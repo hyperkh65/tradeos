@@ -42,6 +42,7 @@ const DISPOSITION_LABELS: Record<string, { label: string; color: string }> = {
   billable_foreign:   { label: '외화 청구', color: 'bg-green-100 text-green-700' },
   offset_purchase:    { label: '매입 상계', color: 'bg-purple-100 text-purple-700' },
   selling_admin:      { label: '판매관리비', color: 'bg-orange-100 text-orange-700' },
+  purchase_cogs:      { label: '매입원가',   color: 'bg-teal-100 text-teal-700' },
 };
 
 const BILL_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -137,6 +138,11 @@ function computeBillStatus(
       if (costAmount > 0 && offTotal >= costAmount) return 'offset';
       return 'unbilled';
     }
+    case 'purchase_cogs':
+      // 결제확인(confirm-payment 라우트)이 확정한 'collected' 상태는 그대로 유지하고,
+      // 그 전까지는 항상 미결제(unbilled) — 폼을 저장할 때마다 이 값이 재계산되므로
+      // 결제확인 뒤에 다른 필드를 수정해도 상태가 되돌아가면 안 된다.
+      return currentBillStatus === 'collected' ? 'collected' : 'unbilled';
     default: return 'unbilled';
   }
 }
@@ -163,6 +169,10 @@ const BILL_STATUS_DISPLAY: Record<string, Record<string, { label: string; color:
     unbilled:  { label: '상계 예정', color: 'text-purple-600' },
     offset:    { label: '상계완료', color: 'text-purple-700' },
   },
+  purchase_cogs: {
+    unbilled:  { label: '지급 대기', color: 'text-amber-600' },
+    collected: { label: '지급완료', color: 'text-teal-700' },
+  },
 };
 
 function getStatusDisplay(disposition: string, billStatus: string): { label: string; color: string } {
@@ -174,11 +184,15 @@ function getStatusDisplay(disposition: string, billStatus: string): { label: str
 // ── 입금 확인 다이얼로그 ───────────────────────────────────────────────────
 
 function PaymentConfirmDialog({
-  billAmount, billCurrency, initRate, initDate, recordId, onClose, onSuccess,
+  billAmount, billCurrency, initRate, initDate, recordId, mode = 'receive', onClose, onSuccess,
 }: {
   billAmount: number; billCurrency: string; initRate?: number; initDate?: string;
-  recordId: string; onClose: () => void; onSuccess: () => void;
+  recordId: string; mode?: 'receive' | 'pay'; onClose: () => void; onSuccess: () => void;
 }) {
+  const isPay = mode === 'pay';
+  const t = isPay
+    ? { title: '지급 확인 처리', amountLabel: '지급금액', rateLabel: '지급 시 환율', dateLabel: '지급일', expectLabel: '예상 지급', paidLabel: '실제 지급액 (KRW)', submitLabel: '지급 확인', boxCls: 'bg-teal-50 border-teal-200 text-teal-800', btnCls: 'bg-teal-700 hover:bg-teal-800' }
+    : { title: '입금 확인 처리', amountLabel: '청구금액', rateLabel: '수금 시 환율', dateLabel: '수금일', expectLabel: '예상 수금', paidLabel: '실제 입금액 (KRW)', submitLabel: '입금 확인', boxCls: 'bg-green-50 border-green-200 text-green-800', btnCls: 'bg-green-700 hover:bg-green-800' };
   const [rate, setRate] = useState(initRate ? initRate.toString() : '');
   const [date, setDate] = useState(initDate || new Date().toISOString().slice(0, 10));
   const [paidKrw, setPaidKrw] = useState('');
@@ -220,8 +234,11 @@ function PaymentConfirmDialog({
       paidAmountKrw: paidKrwNum || expectedKrw,
     };
     if (memo.trim()) body.paymentMemo = memo.trim();
-    const res = await fetch(`/api/cost-records/${recordId}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    // 매입원가는 지급확인과 동시에 전표(회계분개)를 자동 생성해야 하므로 전용 라우트를
+    // 쓴다 — 그 외(외화청구 등)는 기존처럼 단순 PUT으로 상태만 갱신.
+    const url = isPay ? `/api/cost-records/${recordId}/confirm-payment` : `/api/cost-records/${recordId}`;
+    const res = await fetch(url, {
+      method: isPay ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     setSaving(false);
@@ -233,34 +250,34 @@ function PaymentConfirmDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm">입금 확인 처리</h3>
+          <h3 className="font-semibold text-sm">{t.title}</h3>
           <button type="button" onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-800">
-          청구금액: <strong>{billAmount.toLocaleString()} {billCurrency}</strong>
-          {rateNum > 0 && <span className="ml-2">→ 예상 수금: <strong>₩{expectedKrw.toLocaleString()}</strong></span>}
+        <div className={cn('border rounded-lg px-3 py-2 text-xs', t.boxCls)}>
+          {t.amountLabel}: <strong>{billAmount.toLocaleString()} {billCurrency}</strong>
+          {rateNum > 0 && <span className="ml-2">→ {t.expectLabel}: <strong>₩{expectedKrw.toLocaleString()}</strong></span>}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">수금 시 환율 <span className="text-red-500">*</span></label>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">{t.rateLabel} <span className="text-red-500">*</span></label>
             <Input type="number" value={rate} onChange={e => setRate(e.target.value)} placeholder="예: 1380" className="h-9" />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">수금일 <span className="text-red-500">*</span></label>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">{t.dateLabel} <span className="text-red-500">*</span></label>
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9" />
           </div>
         </div>
 
         <div>
           <label className="text-xs font-medium text-muted-foreground block mb-1">
-            실제 입금액 (KRW)
-            {expectedKrw > 0 && <span className="font-normal ml-1 text-muted-foreground/70">(예상 ₩{expectedKrw.toLocaleString()})</span>}
+            {t.paidLabel}
+            {expectedKrw > 0 && <span className="font-normal ml-1 text-muted-foreground/70">({t.expectLabel} ₩{expectedKrw.toLocaleString()})</span>}
           </label>
           <Input type="number" value={paidKrw}
             onChange={e => { setPaidKrw(e.target.value); setPaidTouched(true); }}
-            placeholder={expectedKrw > 0 ? expectedKrw.toString() : '원화 입금액'}
+            placeholder={expectedKrw > 0 ? expectedKrw.toString() : `원화 ${isPay ? '지급액' : '입금액'}`}
             className="h-9" />
         </div>
 
@@ -268,7 +285,7 @@ function PaymentConfirmDialog({
           <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
             <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              입금 받은 금액과 상이합니다 (차액: {(paidKrwNum - expectedKrw) >= 0 ? '+' : ''}{(paidKrwNum - expectedKrw).toLocaleString()}원)
+              {isPay ? '지급한' : '입금 받은'} 금액과 상이합니다 (차액: {(paidKrwNum - expectedKrw) >= 0 ? '+' : ''}{(paidKrwNum - expectedKrw).toLocaleString()}원)
             </div>
             <div>
               <label className="text-xs font-medium text-amber-800 block mb-1">사유 입력 (필수) <span className="text-red-500">*</span></label>
@@ -282,8 +299,8 @@ function PaymentConfirmDialog({
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className="flex-1 text-sm border rounded-lg py-2 hover:bg-muted/50">취소</button>
           <button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}
-            className="flex-1 text-sm bg-green-700 text-white rounded-lg py-2 hover:bg-green-800 disabled:opacity-50 font-medium">
-            {saving ? '처리중...' : '입금 확인'}
+            className={cn('flex-1 text-sm text-white rounded-lg py-2 disabled:opacity-50 font-medium', t.btnCls)}>
+            {saving ? '처리중...' : t.submitLabel}
           </button>
         </div>
       </div>
@@ -681,6 +698,8 @@ function CostModal({ record, onClose, onSave }: {
     importId: record?.importId || '',
     shipmentBusinessId: record?.shipmentBusinessId || '',
     shipmentId: record?.shipmentId || '',
+    poId: record?.poId || '',
+    poBusinessId: record?.poBusinessId || '',
     linkedSaleId: record?.linkedSaleId || '',
     linkedSaleLabel: '',
     isLocked: false,
@@ -983,6 +1002,8 @@ function CostModal({ record, onClose, onSave }: {
       importId: form.importId || undefined,
       shipmentBusinessId: form.shipmentBusinessId || undefined,
       shipmentId: form.shipmentId || undefined,
+      poId: form.poId || undefined,
+      poBusinessId: form.poBusinessId || undefined,
       linkedSaleId: form.linkedSaleId || undefined,
       linkedSales,
     };
@@ -1601,6 +1622,58 @@ function CostModal({ record, onClose, onSave }: {
             </div>
           )}
 
+          {/* 매입원가 — 발주(PO) 연결 + 지급확인(전표 자동생성) */}
+          {form.disposition === 'purchase_cogs' && (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 space-y-3">
+              <div className="text-xs font-semibold text-teal-800">매입원가 — 발주(PO) 연결</div>
+              {form.poId ? (
+                <div className="flex items-center justify-between bg-white border border-teal-100 rounded-lg px-3 py-2">
+                  <div>
+                    <div className="text-xs font-medium">{form.poBusinessId}</div>
+                    <div className="text-[10px] text-muted-foreground">{form.vendorName || '-'}</div>
+                  </div>
+                  <button type="button" onClick={() => setForm(f => ({ ...f, poId: '', poBusinessId: '' }))} className="text-muted-foreground hover:text-destructive">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input value={poSearch} onChange={e => setPoSearch(e.target.value)} placeholder="PO번호 또는 공급업체명 검색" className="h-9 pl-8 text-xs" />
+                  </div>
+                  {poSearch && filteredPos.length > 0 && (
+                    <div className="absolute z-50 mt-0.5 left-0 right-0 bg-background border rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                      {filteredPos.map(po => (
+                        <button key={po.id} type="button" className="w-full text-left px-3 py-2 text-xs hover:bg-muted flex justify-between"
+                          onClick={() => { setForm(f => ({ ...f, poId: po.id, poBusinessId: po.businessId, vendorName: po.supplierName })); setPoSearch(''); }}>
+                          <div><div className="font-medium">{po.businessId}</div><div className="text-muted-foreground">{po.supplierName}</div></div>
+                          <div className="text-right shrink-0 ml-4">
+                            <div>{po.totalAmount?.toLocaleString()} {po.currency}</div>
+                            <div className="text-[10px] text-muted-foreground">{po.items?.[0]?.productName || ''}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">발주 잔액은 이 화면에서 자동으로 차감되지 않습니다 — 발주서 화면에서 별도로 확인하세요.</p>
+
+              {form.billStatus === 'collected' ? (
+                <div className="flex items-center justify-between bg-teal-100 rounded-lg px-3 py-2">
+                  <span className="text-xs font-medium text-teal-800">지급 완료{form.settledAt ? ` (${form.settledAt})` : ''}</span>
+                  {record?.journalEntryId && <span className="text-[10px] text-teal-700">전표 생성됨</span>}
+                </div>
+              ) : (
+                <button type="button" disabled={isNew} onClick={() => setShowPaymentDialog(true)}
+                  className="w-full text-xs bg-teal-700 text-white rounded-lg py-2 hover:bg-teal-800 disabled:opacity-50 font-medium">
+                  {isNew ? '먼저 저장한 뒤 지급확인이 가능합니다' : '지급확인 (전표 자동생성)'}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* FX 정산 */}
           {form.billStatus === 'collected' && form.billCurrency !== 'KRW' && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
@@ -1665,12 +1738,13 @@ function CostModal({ record, onClose, onSave }: {
       </div>
     </div>
 
-    {/* 입금 확인 다이얼로그 */}
+    {/* 입금/지급 확인 다이얼로그 — 매입원가는 원가(지급)금액 기준, 그 외는 청구금액 기준 */}
     {showPaymentDialog && record?.id && (
       <PaymentConfirmDialog
         recordId={record.id}
-        billAmount={lineItemsTotal || parseFloat(form.billAmount || '0')}
-        billCurrency={form.billCurrency}
+        mode={form.disposition === 'purchase_cogs' ? 'pay' : 'receive'}
+        billAmount={form.disposition === 'purchase_cogs' ? effectiveCostAmount : (lineItemsTotal || parseFloat(form.billAmount || '0'))}
+        billCurrency={form.disposition === 'purchase_cogs' ? form.costCurrency : form.billCurrency}
         initRate={parseFloat(form.fxRateAtSettle || '0') || parseFloat(form.fxRateAtCost || '0') || undefined}
         initDate={form.settledAt || undefined}
         onClose={() => setShowPaymentDialog(false)}
@@ -2049,6 +2123,7 @@ function CostsPageInner() {
                               <button onClick={() => handleQuickDisposition(r.id, 'billable_foreign')} className="text-[10px] px-1.5 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">외화</button>
                               <button onClick={() => handleQuickDisposition(r.id, 'offset_purchase')} className="text-[10px] px-1.5 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded">상계</button>
                               <button onClick={() => handleQuickDisposition(r.id, 'selling_admin')} className="text-[10px] px-1.5 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">판관</button>
+                              <button onClick={() => handleQuickDisposition(r.id, 'purchase_cogs')} className="text-[10px] px-1.5 py-0.5 bg-teal-100 hover:bg-teal-200 text-teal-700 rounded">매입원가</button>
                             </div>
                           ) : (
                             <span
@@ -2082,6 +2157,13 @@ function CostsPageInner() {
                                     onClick={e => { e.stopPropagation(); handleConfirmPayment(r.id); }}
                                     className="text-[10px] px-1.5 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded border border-green-300 w-fit">
                                     입금확인
+                                  </button>
+                                )}
+                                {r.disposition === 'purchase_cogs' && r.billStatus === 'unbilled' && (
+                                  <button type="button"
+                                    onClick={e => { e.stopPropagation(); handleConfirmPayment(r.id); }}
+                                    className="text-[10px] px-1.5 py-0.5 bg-teal-100 hover:bg-teal-200 text-teal-700 rounded border border-teal-300 w-fit">
+                                    지급확인
                                   </button>
                                 )}
                                 {r.offsetStatus !== 'none' && r.offsetStatus !== 'completed' && (
@@ -2172,8 +2254,9 @@ function CostsPageInner() {
       {paymentTarget && (
         <PaymentConfirmDialog
           recordId={paymentTarget.id}
-          billAmount={paymentTarget.billAmount || 0}
-          billCurrency={paymentTarget.billCurrency || 'USD'}
+          mode={paymentTarget.disposition === 'purchase_cogs' ? 'pay' : 'receive'}
+          billAmount={paymentTarget.disposition === 'purchase_cogs' ? paymentTarget.costAmount : (paymentTarget.billAmount || 0)}
+          billCurrency={paymentTarget.disposition === 'purchase_cogs' ? paymentTarget.costCurrency : (paymentTarget.billCurrency || 'USD')}
           initRate={paymentTarget.fxRateAtSettle || paymentTarget.fxRateAtCost || undefined}
           initDate={paymentTarget.settledAt || undefined}
           onClose={() => setPaymentTarget(null)}
