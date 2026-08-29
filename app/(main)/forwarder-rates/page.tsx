@@ -12,13 +12,13 @@ interface ForwarderRate {
   id: string; forwarderId?: string; forwarderName: string;
   pol: string; pod: string; containerType: string; carrier?: string; rateType?: string;
   totalAmount: number; totalCurrency: string; breakdown: BreakdownItem[];
-  quoteDate?: string; validUntil?: string; docNo?: string; contactPerson?: string;
+  quoteDate?: string; quoteMonth?: string; validUntil?: string; docNo?: string; contactPerson?: string;
   sourceFileUrl?: string; memo?: string; createdByName?: string;
   createdAt: string; updatedAt: string;
 }
-interface Lane { pol: string; pod: string; count: number; forwarderCount: number; lastUpdated: string }
+interface Lane { pol: string; pod: string; count: number; forwarderCount: number; lastUpdated: string; lastQuoteMonth?: string | null }
 interface Company { id: string; name: string; type: string }
-interface ForwarderSummary { forwarderId: string | null; forwarderName: string; lastQuoteDate: string; laneCount: number; totalCount: number }
+interface ForwarderSummary { forwarderId: string | null; forwarderName: string; lastQuoteDate: string; lastQuoteMonth?: string | null; laneCount: number; totalCount: number }
 
 const CONTAINER_TYPES = ['20GP', '40GP', 'LCL'];
 const CURRENCIES = ['USD', 'CNY', 'KRW', 'EUR', 'JPY'];
@@ -164,7 +164,7 @@ export default function ForwarderRatesPage() {
                 <div key={f.forwarderName} className="flex items-center justify-between px-4 py-2.5">
                   <div>
                     <div className="text-sm font-medium">{f.forwarderName}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">노선 {f.laneCount}개 · 최근 견적 {f.lastQuoteDate?.slice(0, 10)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">노선 {f.laneCount}개 · 최근 견적 {f.lastQuoteMonth || f.lastQuoteDate?.slice(0, 7)}월</div>
                   </div>
                   <Button type="button" variant="outline" size="sm" disabled={updatingForwarder === f.forwarderName}
                     onClick={() => startMonthlyUpdate(f.forwarderName)} className="gap-1.5">
@@ -188,7 +188,7 @@ export default function ForwarderRatesPage() {
                 <button key={`${l.pol}-${l.pod}`} type="button" onClick={() => selectLane(l)}
                   className="text-left border rounded-xl p-4 hover:border-primary hover:shadow-sm transition-colors bg-card">
                   <div className="font-semibold text-sm">{l.pol} → {l.pod}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{l.forwarderCount}개 업체 · {l.count}건 · 최근 {(l.lastUpdated || '').slice(0, 10)}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{l.forwarderCount}개 업체 · {l.count}건 · 최근 {l.lastQuoteMonth || (l.lastUpdated || '').slice(0, 7)}월</div>
                 </button>
               ))}
             </div>
@@ -251,7 +251,10 @@ export default function ForwarderRatesPage() {
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{r.quoteDate || '-'}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {r.quoteDate || '-'}
+                          {r.quoteMonth && <span className="ml-1 text-[10px] bg-muted rounded px-1 py-0.5">{r.quoteMonth} 견적</span>}
+                        </td>
                         <td className="px-3 py-2.5 text-muted-foreground">{r.contactPerson || '-'}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-end gap-2">
@@ -534,7 +537,10 @@ function HistoryModal({ base, onClose }: { base: ForwarderRate; onClose: () => v
               {rows.map((r, idx) => (
                 <div key={r.id} className={cn('border rounded-lg px-3 py-2 text-sm', idx === 0 && 'border-primary bg-primary/5')}>
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">{r.quoteDate || r.createdAt.slice(0, 10)}</span>
+                    <span className="font-medium">
+                      {r.quoteDate || r.createdAt.slice(0, 10)}
+                      {r.quoteMonth && <span className="ml-1.5 text-[10px] font-normal bg-muted rounded px-1 py-0.5">{r.quoteMonth} 견적</span>}
+                    </span>
                     <span className="font-semibold">{r.totalCurrency} {r.totalAmount.toLocaleString()}</span>
                   </div>
                   {(r.validUntil || r.contactPerson || r.memo) && (
@@ -574,6 +580,9 @@ function BulkPasteModal({ forwarders, prefill, onClose, onSaved }: { forwarders:
   const [forwarderName, setForwarderName] = useState(prefill?.forwarderName || '');
   const [totalCurrency, setTotalCurrency] = useState(prefill?.totalCurrency || 'USD');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
+  // "이번달 갱신"으로 들어와도 지난달 구성을 참고할 뿐, 실제로는 항상 "이번 달" 견적을
+  // 등록하는 것이므로 견적월은 지난 데이터의 월이 아니라 오늘 기준 현재월을 기본값으로 한다.
+  const [quoteMonth, setQuoteMonth] = useState(new Date().toISOString().slice(0, 7));
   const [validUntil, setValidUntil] = useState(prefill?.validUntil || '');
   const [contactPerson, setContactPerson] = useState(prefill?.contactPerson || '');
   const [rows, setRows] = useState<BulkRow[]>(
@@ -626,11 +635,11 @@ function BulkPasteModal({ forwarders, prefill, onClose, onSaved }: { forwarders:
     try {
       const res = await fetch('/api/forwarder-rates/bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ forwarderId: forwarderMatch?.id, forwarderName, totalCurrency, quoteDate, validUntil, contactPerson, rows: bulkRows }),
+        body: JSON.stringify({ forwarderId: forwarderMatch?.id, forwarderName, totalCurrency, quoteDate, quoteMonth, validUntil, contactPerson, rows: bulkRows }),
       });
       const j = await res.json();
       if (!res.ok) { alert(j.error || '저장 실패'); return; }
-      alert(`${j.data.length}건 등록되었습니다.`);
+      alert(`${j.data.length}건 등록되었습니다(${quoteMonth} 견적으로 저장 — 같은 달에 이미 있던 노선은 갱신됨).`);
       onSaved();
     } finally { setSaving(false); }
   };
@@ -661,6 +670,11 @@ function BulkPasteModal({ forwarders, prefill, onClose, onSaved }: { forwarders:
               <select value={totalCurrency} onChange={e => setTotalCurrency(e.target.value)} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                 {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">견적월 *</label>
+              <Input type="month" value={quoteMonth} onChange={e => setQuoteMonth(e.target.value)} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">같은 달에 이미 등록된 노선은 이 저장으로 덮어씁니다.</p>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">견적일자</label>
@@ -740,6 +754,7 @@ interface ParsedFileRow {
 function FileUploadImportModal({ forwarders, onClose, onSaved }: { forwarders: Company[]; onClose: () => void; onSaved: () => void }) {
   const [forwarderName, setForwarderName] = useState('');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
+  const [quoteMonth, setQuoteMonth] = useState(new Date().toISOString().slice(0, 7));
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [rows, setRows] = useState<ParsedFileRow[] | null>(null);
@@ -779,7 +794,7 @@ function FileUploadImportModal({ forwarders, onClose, onSaved }: { forwarders: C
       const res = await fetch('/api/forwarder-rates/bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          forwarderId: forwarderMatch?.id, forwarderName: forwarderName.trim(), totalCurrency, quoteDate,
+          forwarderId: forwarderMatch?.id, forwarderName: forwarderName.trim(), totalCurrency, quoteDate, quoteMonth,
           rows: rows.map(r => ({ pol: r.pol, pod: r.pod, containerType: r.containerType, carrier: r.carrier, rateType: r.rateType, totalAmount: r.totalAmount, breakdown: r.breakdown })),
         }),
       });
@@ -801,11 +816,15 @@ function FileUploadImportModal({ forwarders, onClose, onSaved }: { forwarders: C
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">포워더명 *</label>
               <Input list="fr-upload-forwarder-list" value={forwarderName} onChange={e => setForwarderName(e.target.value)} placeholder="예: CNC LOGIX CO., LTD." />
               <datalist id="fr-upload-forwarder-list">{forwarders.map(f => <option key={f.id} value={f.name} />)}</datalist>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">견적월 *</label>
+              <Input type="month" value={quoteMonth} onChange={e => setQuoteMonth(e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">견적일자</label>
