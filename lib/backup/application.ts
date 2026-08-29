@@ -17,8 +17,12 @@ export interface ApplicationArtifacts {
 export function locateApplicationArtifacts(): ApplicationArtifacts {
   const root = getAppRootDir();
   const find = (rel: string) => { const p = path.join(root, rel); return fs.existsSync(p) ? p : null; };
+  // 배포 스크립트가 언젠가 다시 바뀌어도 조용히 깨지지 않도록, 앱 루트에 없으면
+  // Next.js standalone 산출물 안에 자동 포함되는 사본(.next/standalone/package.json)을
+  // 대체 경로로 확인한다 — standalone용은 런타임 의존성만 남긴 축약본이라 원본이
+  // 있으면 그게 우선이지만, 원본이 없을 때 완전히 빈 백업이 되는 것보다는 낫다.
   return {
-    packageJsonPath: find('package.json'),
+    packageJsonPath: find('package.json') || find('.next/standalone/package.json'),
     packageLockPath: find('package-lock.json'),
     nextConfigPath: find('next.config.ts') || find('next.config.js') || find('next.config.mjs'),
     buildInfoPath: find('BUILD_INFO.json'),

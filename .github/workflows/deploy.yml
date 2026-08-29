@@ -92,7 +92,7 @@ jobs:
           host: hy64.synology.me
           username: urjent
           key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
-          source: ".next/standalone/,.next/static/,public/,BUILD_INFO.json,recovery/"
+          source: ".next/standalone/,.next/static/,public/,BUILD_INFO.json,recovery/,package.json,package-lock.json,next.config.ts"
           target: /volume1/web/tradeos/
 
       - name: Ensure docverify container running
