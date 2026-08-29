@@ -35,6 +35,7 @@ export default function ForwarderRatesPage() {
   const [modalOpen, setModalOpen] = useState<{ open: boolean; item?: ForwarderRate | null }>({ open: false });
   const [historyFor, setHistoryFor] = useState<ForwarderRate | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [fileUploadOpen, setFileUploadOpen] = useState(false);
   const [bulkPrefill, setBulkPrefill] = useState<BulkPrefill | null>(null);
   const [forwarderSummaries, setForwarderSummaries] = useState<ForwarderSummary[]>([]);
   const [updatingForwarder, setUpdatingForwarder] = useState<string | null>(null);
@@ -149,6 +150,7 @@ export default function ForwarderRatesPage() {
             {(pol || pod) && <Button type="button" variant="outline" size="sm" onClick={clearFilter}>필터 초기화</Button>}
           </div>
           <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => setFileUploadOpen(true)} className="gap-1.5"><Upload className="w-4 h-4" />파일 업로드</Button>
             <Button type="button" variant="outline" onClick={openBulkNew} className="gap-1.5"><ClipboardPaste className="w-4 h-4" />엑셀에서 붙여넣기</Button>
             <Button onClick={() => setModalOpen({ open: true })} className="gap-1.5"><Plus className="w-4 h-4" />운임 등록</Button>
           </div>
@@ -280,6 +282,10 @@ export default function ForwarderRatesPage() {
       {bulkOpen && (
         <BulkPasteModal forwarders={forwarders} prefill={bulkPrefill} onClose={() => setBulkOpen(false)}
           onSaved={() => { setBulkOpen(false); loadLanes(); loadCompare(); loadForwarderSummaries(); }} />
+      )}
+      {fileUploadOpen && (
+        <FileUploadImportModal forwarders={forwarders} onClose={() => setFileUploadOpen(false)}
+          onSaved={() => { setFileUploadOpen(false); loadLanes(); loadCompare(); loadForwarderSummaries(); }} />
       )}
     </div>
   );
@@ -714,6 +720,162 @@ function BulkPasteModal({ forwarders, prefill, onClose, onSaved }: { forwarders:
           <Button variant="outline" onClick={onClose}>닫기</Button>
           <Button onClick={save} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : `${validRowCount}건 일괄 등록`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ParsedBreakdownItem { label: string; amount: number; currency: string }
+interface ParsedFileRow {
+  pol: string; pod: string; containerType: string; carrier?: string; rateType?: string;
+  totalAmount: number; totalCurrency: string; breakdown: ParsedBreakdownItem[];
+  needsReview?: boolean; reviewNote?: string;
+}
+
+/** 엑셀/PDF 견적 파일을 업로드하면 서버가 자동으로 노선·운임을 읽어서 돌려주고,
+ * 여기서는 그 결과를 사람이 확인·수정한 뒤에만 저장한다(자동 파싱이 절대 바로
+ * DB에 반영되지 않음 — 파싱 정확도 리스크를 이 확인 단계로 상쇄). */
+function FileUploadImportModal({ forwarders, onClose, onSaved }: { forwarders: Company[]; onClose: () => void; onSaved: () => void }) {
+  const [forwarderName, setForwarderName] = useState('');
+  const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10));
+  const [file, setFile] = useState<File | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [rows, setRows] = useState<ParsedFileRow[] | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const forwarderMatch = forwarders.find(f => f.name === forwarderName);
+
+  const parse = async () => {
+    if (!forwarderName.trim()) { alert('포워더명을 입력하세요.'); return; }
+    if (!file) { alert('파일을 선택하세요.'); return; }
+    setParsing(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('forwarderName', forwarderName.trim());
+      const res = await fetch('/api/forwarder-rates/parse-upload', { method: 'POST', body: fd });
+      const j = await res.json();
+      if (!res.ok) { alert(j.error || '파싱 실패'); return; }
+      setRows(j.data);
+      setWarnings(j.warnings || []);
+      if (!j.data.length) alert('파일에서 운임 데이터를 찾지 못했습니다.');
+    } finally { setParsing(false); }
+  };
+
+  const updateAmount = (idx: number, val: string) => {
+    const n = Number(val);
+    setRows(prev => prev ? prev.map((r, i) => (i === idx ? { ...r, totalAmount: Number.isFinite(n) ? n : r.totalAmount } : r)) : prev);
+  };
+  const removeRow = (idx: number) => setRows(prev => (prev ? prev.filter((_, i) => i !== idx) : prev));
+
+  const save = async () => {
+    if (!rows || rows.length === 0) return;
+    setSaving(true);
+    try {
+      const totalCurrency = rows[0]?.totalCurrency || 'USD';
+      const res = await fetch('/api/forwarder-rates/bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          forwarderId: forwarderMatch?.id, forwarderName: forwarderName.trim(), totalCurrency, quoteDate,
+          rows: rows.map(r => ({ pol: r.pol, pod: r.pod, containerType: r.containerType, carrier: r.carrier, rateType: r.rateType, totalAmount: r.totalAmount, breakdown: r.breakdown })),
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) { alert(j.error || '저장 실패'); return; }
+      alert(`${j.data.length}건 등록되었습니다(같은 달에 이미 있던 노선은 갱신됨).`);
+      onSaved();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-2">
+      <div className="bg-background rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
+          <div>
+            <h2 className="font-semibold">파일에서 자동 등록</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">견적 엑셀(.xlsx) 또는 PDF를 업로드하면 노선·운임을 자동으로 읽어옵니다. 저장 전에 아래에서 확인·수정하세요.</p>
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">포워더명 *</label>
+              <Input list="fr-upload-forwarder-list" value={forwarderName} onChange={e => setForwarderName(e.target.value)} placeholder="예: CNC LOGIX CO., LTD." />
+              <datalist id="fr-upload-forwarder-list">{forwarders.map(f => <option key={f.id} value={f.name} />)}</datalist>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">견적일자</label>
+              <Input type="date" value={quoteDate} onChange={e => setQuoteDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">파일(.xlsx/.pdf)</label>
+              <input type="file" accept=".xlsx,.xls,.pdf" onChange={e => setFile(e.target.files?.[0] || null)} className="w-full text-sm" />
+            </div>
+          </div>
+          <Button type="button" onClick={parse} disabled={parsing} className="gap-1.5">
+            {parsing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            파일 읽기
+          </Button>
+
+          {warnings.length > 0 && (
+            <div className="text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-2 space-y-0.5">
+              {warnings.map((w, i) => <div key={i}>{w}</div>)}
+            </div>
+          )}
+
+          {rows && (
+            <div>
+              <p className="text-xs font-semibold mb-1">읽어온 노선 ({rows.length}건) — 저장 전 확인하세요(노란색은 국내 부대비용 이력이 없어 직접 확인 필요)</p>
+              <div className="overflow-x-auto border rounded-lg max-h-[45vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">POL</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">POD</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">타입</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">선사</th>
+                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground">총운임</th>
+                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">부대비용</th>
+                      <th className="w-6" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rows.map((r, i) => (
+                      <tr key={i} className={cn(r.needsReview && 'bg-amber-50')}>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.pol}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.pod}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.containerType}</td>
+                        <td className="px-2 py-1 whitespace-nowrap">{r.carrier || '-'}</td>
+                        <td className="px-1 py-1 text-right whitespace-nowrap">
+                          <input value={r.totalAmount} onChange={e => updateAmount(i, e.target.value)}
+                            className="w-20 bg-transparent border-none outline-none text-sm text-right px-1" />
+                          <span className="text-xs text-muted-foreground ml-1">{r.totalCurrency}</span>
+                        </td>
+                        <td className="px-2 py-1 min-w-[200px]">
+                          <div className="flex flex-wrap gap-1">
+                            {r.breakdown.map((b, bi) => (
+                              <span key={bi} className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">{b.label} {b.currency} {b.amount.toLocaleString()}</span>
+                            ))}
+                          </div>
+                          {r.reviewNote && <div className="text-[10px] text-amber-600 mt-0.5">{r.reviewNote}</div>}
+                        </td>
+                        <td className="px-1 py-1"><button type="button" onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t shrink-0 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>닫기</Button>
+          <Button onClick={save} disabled={saving || !rows || rows.length === 0}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : `${rows?.length || 0}건 저장`}
           </Button>
         </div>
       </div>
