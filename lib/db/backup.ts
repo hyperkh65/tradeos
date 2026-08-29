@@ -24,7 +24,10 @@ export interface BackupConfig {
 const DEFAULT_CONFIG: BackupConfig = {
   enabled: true, intervalHours: 24, retainCount: 10,
   includeFullApp: true, fullAppRetainCount: 5,
-  completePackageEnabled: true, scheduleDayInterval: 3, scheduleHour: 3, scheduleMinute: 0,
+  // 기본값 false — 관리자가 Recovery Password/백업 드라이브를 설정 화면에서
+  // 직접 확인하고 켜기 전까지는 자동으로 실행되지 않는다(외장 드라이브 마운트
+  // 여부를 실제로 확인하기 전에 프로덕션에서 조용히 자동 실행되는 것을 방지).
+  completePackageEnabled: false, scheduleDayInterval: 3, scheduleHour: 3, scheduleMinute: 0,
   completePackageRetainCount: 5, completePackageMonthlyArchiveCount: 3,
 };
 
