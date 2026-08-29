@@ -440,6 +440,15 @@ function initSchema(db: Database.Database) {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS user_login_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_login_logs_user ON user_login_logs(user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS biz_sequences (
       prefix TEXT PRIMARY KEY,
       year INTEGER NOT NULL,

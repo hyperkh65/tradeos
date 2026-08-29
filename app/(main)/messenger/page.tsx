@@ -234,7 +234,7 @@ export default function MessengerPage() {
   const canDelete = (ch: Channel) => isAdmin || ch.created_by === myId;
 
   const handleDelete = async (ch: Channel) => {
-    if (!confirm(`"${ch.name}" 대화방을 삭제할까요?\n\n대화 내용은 실제로 지워지지 않고, 일반 사용자에게만 더 이상 보이지 않습니다(관리자는 계속 조회 가능).`)) return;
+    if (!confirm(`"${ch.name}" 대화방을 삭제할까요?\n\n삭제하면 목록에서 더 이상 보이지 않습니다.`)) return;
     const res = await fetch(`/api/messenger/channels/${ch.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));

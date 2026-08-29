@@ -3,14 +3,14 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, HardDrive, RefreshCw,
-  KeyRound, Download, FlaskConical, FileText, History, Globe, AlertTriangle,
+  KeyRound, Download, FlaskConical, FileText, History, Globe, AlertTriangle, Users, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tab = 'status' | 'schedule' | 'packages' | 'restore' | 'test' | 'docs' | 'changelog' | 'external';
+type Tab = 'status' | 'schedule' | 'packages' | 'restore' | 'test' | 'docs' | 'changelog' | 'external' | 'activity';
 
 interface CoverageItem { key: string; label: string; status: 'Protected' | 'Partial' | 'Unprotected'; detail: string }
 interface DrReadiness {
@@ -27,6 +27,12 @@ interface ScheduleConfig {
 }
 interface ChangeEntry { id: string; occurredAt: string; category: string; summary: string; details: string | null; createdBy: string | null }
 interface RestoreTestItem { id: string; packageId: string; status: string; error: string | null; createdAt: string }
+interface ModuleActivity { table: string; label: string; count: number; lastAt: string | null }
+interface UserActivity {
+  userId: string; userName: string; email: string; role: string; status: string;
+  loginCount: number; lastLoginAt: string | null; totalCreated: number; byModule: ModuleActivity[];
+}
+interface UnattributedEntry { table: string; label: string; count: number }
 
 const STATUS_COLOR: Record<CoverageItem['status'], string> = {
   Protected: 'text-green-700 bg-green-50 border-green-200',
@@ -63,6 +69,9 @@ export default function DisasterRecoveryPage() {
   const [recoverySheet, setRecoverySheet] = useState<string | null>(null);
   const [serverSaveInfo, setServerSaveInfo] = useState<{ savedPath: string; location: string; note: string } | null>(null);
   const [dryRunResult, setDryRunResult] = useState<Record<string, unknown> | null>(null);
+  const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
+  const [unattributed, setUnattributed] = useState<UnattributedEntry[]>([]);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(j => setMe(j.user ?? null)); }, []);
 
@@ -92,6 +101,11 @@ export default function DisasterRecoveryPage() {
   const loadDocsPreview = useCallback(() => {
     fetch('/api/settings/backup/docs-preview').then(r => r.json()).then(j => { if (j.data) setDocsPreview(j.data.docs); });
   }, []);
+  const loadUserActivity = useCallback(() => {
+    fetch('/api/admin/user-activity').then(r => r.json()).then(j => {
+      if (j.data) { setUserActivity(j.data.users); setUnattributed(j.data.unattributed); }
+    });
+  }, []);
 
   useEffect(() => {
     if (!me || me.role !== 'admin') return;
@@ -103,7 +117,8 @@ export default function DisasterRecoveryPage() {
     if (tab === 'docs') loadDocsPreview();
     if (tab === 'changelog') loadChanges();
     if (tab === 'external') loadCoverage();
-  }, [tab, me, loadCoverage, loadPackages, loadDrives, loadSchedule, loadRecoveryPwStatus, loadChanges, loadRestoreTests, loadDocsPreview]);
+    if (tab === 'activity') loadUserActivity();
+  }, [tab, me, loadCoverage, loadPackages, loadDrives, loadSchedule, loadRecoveryPwStatus, loadChanges, loadRestoreTests, loadDocsPreview, loadUserActivity]);
 
   const saveSchedule = async (patch: Partial<ScheduleConfig>) => {
     const res = await fetch('/api/settings/backup', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
@@ -187,6 +202,7 @@ export default function DisasterRecoveryPage() {
     { id: 'docs', label: '시스템구조', icon: <FileText className="w-4 h-4" /> },
     { id: 'changelog', label: '변경이력', icon: <History className="w-4 h-4" /> },
     { id: 'external', label: '외부의존성', icon: <Globe className="w-4 h-4" /> },
+    { id: 'activity', label: '사용자 활동', icon: <Users className="w-4 h-4" /> },
   ];
 
   return (
@@ -455,6 +471,66 @@ export default function DisasterRecoveryPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {tab === 'activity' && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                로그인 이력과, created_by(작성자) 컬럼이 있는 데이터에 한해 사용자별 작성 건수를 집계합니다.
+                제품/검품/거래처/선적/수입통관/재고/계약 등 작성자 컬럼이 없는 일부 오래된 항목은 이 집계에 포함되지 않습니다.
+              </p>
+              {unattributed.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <div className="font-medium mb-1">⚠ 특정 사용자로 귀속되지 않는 레거시 데이터가 있습니다(예: 초기 마이그레이션 기본값):</div>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {unattributed.map(u => <li key={u.table}>{u.label}: {u.count}건</li>)}
+                  </ul>
+                </div>
+              )}
+              <div className="border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50"><tr>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground w-6"></th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">이름</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">이메일</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">역할</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">로그인 횟수</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">마지막 로그인</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">총 작성 건수</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-border">
+                    {userActivity.map(u => (
+                      <Fragment key={u.userId}>
+                        <tr className="cursor-pointer hover:bg-muted/30" onClick={() => setExpandedUserId(expandedUserId === u.userId ? null : u.userId)}>
+                          <td className="px-3 py-2">{u.byModule.length > 0 && (expandedUserId === u.userId ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}</td>
+                          <td className="px-3 py-2 font-medium">{u.userName}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{u.email}</td>
+                          <td className="px-3 py-2">{u.role}{u.status !== 'active' && <span className="ml-1 text-xs text-amber-600">({u.status})</span>}</td>
+                          <td className="px-3 py-2">{u.loginCount}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ko-KR') : '기록 없음'}</td>
+                          <td className="px-3 py-2 font-medium">{u.totalCreated}</td>
+                        </tr>
+                        {expandedUserId === u.userId && u.byModule.length > 0 && (
+                          <tr>
+                            <td colSpan={7} className="px-3 py-2 bg-muted/20">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {u.byModule.map(m => (
+                                  <div key={m.table} className="border border-border rounded-md p-2 bg-background text-xs">
+                                    <div className="text-muted-foreground">{m.label}</div>
+                                    <div className="font-semibold">{m.count}건</div>
+                                    {m.lastAt && <div className="text-[10px] text-muted-foreground mt-0.5">최근: {m.lastAt.slice(0, 10)}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

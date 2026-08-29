@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession } from '@/lib/auth/session';
-import { getDb } from '@/lib/db/sqlite';
+import { getDb, newId, now } from '@/lib/db/sqlite';
 import bcrypt from 'bcryptjs';
 import type { User } from '@/types';
 
@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
       department: row.department || undefined,
       permissions: row.role === 'admin' ? ['*'] : [],
     };
+
+    db.prepare(`INSERT INTO user_login_logs (id, user_id, user_name, email, created_at) VALUES (?,?,?,?,?)`)
+      .run(newId(), user.id, user.name, user.email, now());
 
     const token = await createSession(user);
     const res = NextResponse.json({ success: true, user });
