@@ -3,9 +3,10 @@
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Ship, Plus, Loader2, X, History, Pencil, Trash2, Upload, ClipboardPaste } from 'lucide-react';
+import { Ship, Plus, Loader2, X, History, Pencil, Trash2, Upload, ClipboardPaste, TrendingUp } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 interface BreakdownItem { label: string; amount: number; currency: string }
 interface ForwarderRate {
@@ -166,11 +167,16 @@ export default function ForwarderRatesPage() {
                     <div className="text-sm font-medium">{f.forwarderName}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">노선 {f.laneCount}개 · 최근 견적 {f.lastQuoteMonth || f.lastQuoteDate?.slice(0, 7)}월</div>
                   </div>
-                  <Button type="button" variant="outline" size="sm" disabled={updatingForwarder === f.forwarderName}
-                    onClick={() => startMonthlyUpdate(f.forwarderName)} className="gap-1.5">
-                    {updatingForwarder === f.forwarderName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
-                    이번달 갱신
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/forwarder-rates/analysis?forwarderName=${encodeURIComponent(f.forwarderName)}`}>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5"><TrendingUp className="w-3.5 h-3.5" />종합분석</Button>
+                    </Link>
+                    <Button type="button" variant="outline" size="sm" disabled={updatingForwarder === f.forwarderName}
+                      onClick={() => startMonthlyUpdate(f.forwarderName)} className="gap-1.5">
+                      {updatingForwarder === f.forwarderName ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardPaste className="w-3.5 h-3.5" />}
+                      이번달 갱신
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
