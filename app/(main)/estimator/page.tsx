@@ -733,6 +733,7 @@ export default function EstimatorPage() {
             </div>
 
             {/* 메인 테이블 */}
+            <div className="overflow-x-auto">
             <table>
               <thead>
                 <tr>
@@ -803,6 +804,7 @@ export default function EstimatorPage() {
                 })}
               </tbody>
             </table>
+            </div>
 
             {/* 비고/메모 */}
             {c.notes && (

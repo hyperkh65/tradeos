@@ -173,17 +173,17 @@ function ChatArea({
         ) : (
           <div className="flex gap-2">
             <input ref={fileInputRef} type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
-            <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={handleFilePick} disabled={uploading} title="사진/동영상/문서 첨부">
+            <Button size="icon" variant="outline" className="h-11 w-11 shrink-0" onClick={handleFilePick} disabled={uploading} title="사진/동영상/문서 첨부">
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
             </Button>
             <Input
               placeholder="메시지를 입력하세요..."
-              className="flex-1 h-9"
+              className="flex-1 h-11"
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
-            <Button size="icon" className="h-9 w-9 shrink-0" onClick={send} disabled={sending}>
+            <Button size="icon" className="h-11 w-11 shrink-0" onClick={send} disabled={sending}>
               <Send className="w-4 h-4" />
             </Button>
           </div>
@@ -250,14 +250,17 @@ export default function MessengerPage() {
       <AppHeader title="메신저" />
 
       {mobileDetail && active && (
-        <div className="md:hidden fixed inset-0 z-40 bg-background flex flex-col">
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-background flex flex-col"
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div className="h-12 flex items-center px-4 border-b border-border shrink-0 gap-3">
-            <button onClick={() => setMobileDetail(false)}><ArrowLeft className="w-4 h-4 text-primary" /></button>
+            <button onClick={() => setMobileDetail(false)} className="p-1.5 -m-1.5"><ArrowLeft className="w-4 h-4 text-primary" /></button>
             <Hash className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="font-semibold text-sm">{active.name}</span>
             {active.status === 'deleted' && <span className="text-[10px] text-red-600 border border-red-200 bg-red-50 rounded px-1.5 py-0.5">삭제됨</span>}
             {canDelete(active) && active.status !== 'deleted' && (
-              <button onClick={() => handleDelete(active)} className="ml-auto text-muted-foreground hover:text-red-600" title="대화방 삭제">
+              <button onClick={() => handleDelete(active)} className="ml-auto text-muted-foreground hover:text-red-600 p-1.5 -m-1.5" title="대화방 삭제">
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
@@ -308,7 +311,7 @@ export default function MessengerPage() {
                 key={ch.id}
                 onClick={() => handleSelect(ch)}
                 className={cn(
-                  'w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-sidebar-accent transition-colors',
+                  'w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-sidebar-accent transition-colors',
                   active?.id === ch.id ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium' : 'text-sidebar-foreground'
                 )}
               >

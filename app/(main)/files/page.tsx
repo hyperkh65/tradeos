@@ -9,7 +9,7 @@ import {
   Search, Upload, FolderPlus, Grid3X3, List, Download, Link2, Copy,
   Trash2, Folder, FolderOpen, FileText, FileSpreadsheet, File, X,
   Edit2, Check, Loader2, Sparkles, ExternalLink, Table2,
-  ChevronRight, ChevronDown, MoveRight, FolderInput, MoreHorizontal,
+  ChevronRight, ChevronDown, MoveRight, FolderInput, MoreHorizontal, Menu,
 } from 'lucide-react';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
@@ -227,6 +227,7 @@ export default function FilesPage() {
   const [quotes, setQuotes] = useState<QuoteExtraction[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [mobileFolderOpen, setMobileFolderOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [tab, setTab] = useState<'files' | 'quotes'>('files');
@@ -296,6 +297,7 @@ export default function FilesPage() {
   const selectFolder = (id: string | null) => {
     setSelectedFolder(id); setTab('files');
     if (id) setExpandedIds(prev => new Set([...prev, id]));
+    setMobileFolderOpen(false);
   };
   const toggleExpand = (id: string) => setExpandedIds(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
@@ -484,13 +486,27 @@ export default function FilesPage() {
       <AppHeader title="파일" />
       <input ref={fileRef} type="file" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
 
-      <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* ── 사이드바 ── */}
-        <div className="w-48 shrink-0 border-r border-border bg-muted/20 flex flex-col overflow-hidden">
-          <div className="p-2 border-b border-border shrink-0">
+      <div className="flex flex-1 overflow-hidden min-h-0 relative">
+        {/* ── 사이드바 (데스크톱: 항상 표시, 모바일: 토글 드로어) ── */}
+        {mobileFolderOpen && (
+          <button
+            className="md:hidden fixed inset-0 z-40 bg-black/40"
+            aria-label="폴더 목록 닫기"
+            onClick={() => setMobileFolderOpen(false)}
+          />
+        )}
+        <div className={cn(
+          'w-48 shrink-0 border-r border-border bg-muted/20 flex flex-col overflow-hidden',
+          'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-64 max-md:max-w-[80vw] max-md:shadow-2xl max-md:transition-transform max-md:duration-200',
+          mobileFolderOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full',
+        )}>
+          <div className="p-2 border-b border-border shrink-0 flex items-center gap-1.5">
             <button onClick={() => setShowNewFolder(true)}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+              className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
               <FolderPlus className="w-3.5 h-3.5" /> 새 폴더
+            </button>
+            <button onClick={() => setMobileFolderOpen(false)} className="md:hidden p-1.5 rounded-lg text-muted-foreground hover:bg-muted" aria-label="닫기">
+              <X className="w-4 h-4" />
             </button>
           </div>
           <nav className="flex-1 overflow-y-auto py-1.5 px-1 space-y-0.5">
@@ -521,6 +537,13 @@ export default function FilesPage() {
 
           {/* 툴바 */}
           <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+            <button
+              onClick={() => setMobileFolderOpen(true)}
+              className="md:hidden shrink-0 p-1.5 -m-1.5 rounded-lg text-muted-foreground hover:bg-muted"
+              aria-label="폴더 목록 열기"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
             {/* 브레드크럼 */}
             <div className="flex items-center gap-1 text-xs text-muted-foreground flex-1 min-w-0">
               <button onClick={() => selectFolder(null)} className="hover:text-foreground shrink-0 font-medium">전체</button>
@@ -633,7 +656,7 @@ export default function FilesPage() {
                 </div>
               ) : (
                 // 리스트 뷰
-                <div className="px-3 py-2">
+                <div className="px-3 py-2 overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="text-left border-b border-border">
@@ -715,7 +738,7 @@ export default function FilesPage() {
                   <p className="text-sm">Excel 파일을 우클릭 → 열 매핑 추출</p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-border overflow-hidden">
+                <div className="rounded-xl border border-border overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr className="text-left">

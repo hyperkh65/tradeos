@@ -209,7 +209,7 @@ export default function ImportCostSettlementPage() {
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-auto p-6">
               {editing ? (
                 <div className="max-w-3xl mx-auto space-y-5">
                   <div className="grid grid-cols-2 gap-3">

@@ -380,6 +380,7 @@ export default function OrderTrackingPage() {
                   {priceHistory.map(ph => (
                     <div key={ph.product} className="p-4">
                       <p className="text-xs font-semibold mb-2">{ph.product}</p>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-[11px]">
                         <thead>
                           <tr className="text-muted-foreground border-b">
@@ -409,6 +410,7 @@ export default function OrderTrackingPage() {
                           ))}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   ))}
                 </div>

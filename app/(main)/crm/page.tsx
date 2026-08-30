@@ -1303,7 +1303,7 @@ function SalePrintModal({ sale, company, companies, onClose }: {
         }
         @page { size: A4 portrait; margin: 0; }
       `}</style>
-      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
           <div className="flex items-center justify-between p-4 border-b no-print">
             <span className="font-semibold text-sm text-gray-800">거래명세표 미리보기</span>

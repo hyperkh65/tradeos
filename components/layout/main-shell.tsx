@@ -28,7 +28,7 @@ export function MainShell({ children }: { children: React.ReactNode }) {
     <SidebarContext.Provider
       value={{ toggle: () => setOpen(p => !p), close: () => setOpen(false), collapsed, toggleCollapsed }}
     >
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div className="flex h-dvh overflow-hidden bg-background">
         {/* Desktop sidebar */}
         <div className={cn(
           'hidden md:flex shrink-0 transition-[width] duration-200 ease-in-out',
@@ -40,7 +40,10 @@ export function MainShell({ children }: { children: React.ReactNode }) {
         {/* Mobile overlay */}
         {open && (
           <div className="md:hidden fixed inset-0 z-50 flex">
-            <div className="w-64 max-w-[80vw] bg-sidebar overflow-y-auto shadow-2xl">
+            <div
+              className="w-64 max-w-[80vw] bg-sidebar overflow-y-auto shadow-2xl"
+              style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
               <AppSidebar onNavigate={() => setOpen(false)} />
             </div>
             <button
@@ -51,7 +54,15 @@ export function MainShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <main
+          className="flex-1 flex flex-col overflow-hidden min-w-0"
+          style={{
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+            paddingLeft: 'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)',
+          }}
+        >
           {children}
         </main>
       </div>

@@ -521,6 +521,7 @@ function AdminPanel({ policy, onPolicyUpdated }: { policy: LeavePolicy | null; o
         ) : pendingLeaves.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">대기 중인 요청이 없습니다.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -554,6 +555,7 @@ function AdminPanel({ policy, onPolicyUpdated }: { policy: LeavePolicy | null; o
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -793,6 +795,7 @@ export default function HRPage() {
               ) : leaves.length === 0 ? (
                 <div className="text-center py-8 text-sm text-muted-foreground">신청 내역이 없습니다.</div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -834,6 +837,7 @@ export default function HRPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

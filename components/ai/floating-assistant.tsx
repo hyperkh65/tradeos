@@ -160,17 +160,21 @@ export function FloatingAssistant() {
           onClick={() => setOpen(true)}
           aria-label="AI 도우미 열기"
           className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-transform hover:scale-105"
+          style={{ marginBottom: 'env(safe-area-inset-bottom)', marginRight: 'env(safe-area-inset-right)' }}
         >
           <Sparkles className="w-5 h-5" />
         </button>
       )}
 
       {open && (
-        <div className={cn(
-          'fixed z-50 bg-white border border-border shadow-2xl flex flex-col',
-          'inset-x-0 bottom-0 h-[85vh] rounded-t-2xl',
-          'md:inset-auto md:bottom-5 md:right-5 md:w-96 md:h-[600px] md:rounded-2xl',
-        )}>
+        <div
+          className={cn(
+            'fixed z-50 bg-white border border-border shadow-2xl flex flex-col',
+            'inset-x-0 bottom-0 h-[85dvh] rounded-t-2xl',
+            'md:inset-auto md:bottom-5 md:right-5 md:w-96 md:h-[600px] md:rounded-2xl',
+          )}
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-1.5 font-medium text-sm">
               <Sparkles className="w-4 h-4 text-primary" />AI 도우미
@@ -249,7 +253,7 @@ export function FloatingAssistant() {
                 <button
                   onClick={stop}
                   title="중단"
-                  className="w-9 h-9 shrink-0 rounded-lg bg-muted text-foreground flex items-center justify-center hover:bg-muted/70"
+                  className="w-11 h-11 shrink-0 rounded-lg bg-muted text-foreground flex items-center justify-center hover:bg-muted/70"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                 </button>
@@ -257,7 +261,7 @@ export function FloatingAssistant() {
                 <button
                   onClick={() => send(input)}
                   disabled={!input.trim()}
-                  className="w-9 h-9 shrink-0 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
+                  className="w-11 h-11 shrink-0 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
                 >
                   <Send className="w-4 h-4" />
                 </button>

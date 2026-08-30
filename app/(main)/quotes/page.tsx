@@ -721,7 +721,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
         #quote-print-area .box-content { font-size: 13px; line-height: 1.6; color: #333; }
       `}</style>
 
-      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center overflow-auto py-8 px-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-[900px]">
           <div className="flex items-center justify-between p-4 border-b">
             <span className="font-semibold text-sm text-gray-800">{docTitle} 미리보기</span>

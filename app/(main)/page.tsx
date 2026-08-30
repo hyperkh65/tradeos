@@ -135,14 +135,23 @@ function Delta({ curr, prev }: { curr: number; prev: number }) {
 
 function TrendBar({ data }: { data: { month: string; amount: number }[] }) {
   const max = Math.max(...data.map(d => d.amount), 1);
+  const [active, setActive] = useState<number | null>(null);
   return (
     <div className="flex items-end gap-1.5 h-20">
       {data.map((d, i) => {
         const h = Math.max((d.amount / max) * 100, 2);
         const isLast = i === data.length - 1;
         return (
-          <div key={d.month} className="flex-1 flex flex-col items-center gap-1.5 group relative">
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-popover border border-border rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm z-10">
+          <div
+            key={d.month}
+            className="flex-1 flex flex-col items-center gap-1.5 group relative"
+            onClick={() => setActive(active === i ? null : i)}
+            onTouchStart={() => setActive(i)}
+          >
+            <div className={cn(
+              'absolute -top-7 left-1/2 -translate-x-1/2 bg-popover border border-border rounded px-1.5 py-0.5 text-[10px] font-medium transition-opacity whitespace-nowrap shadow-sm z-10',
+              active === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            )}>
               ₩{krw(d.amount)}
             </div>
             <div className="w-full rounded-t-sm transition-all" style={{
@@ -377,7 +386,7 @@ export default function HomePage() {
         </div>
 
         {/* ── 운영 현황 ── */}
-        <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
           {opItems.map(s => (
             <Link key={s.label} href={s.href}>
               <div className={cn('rounded-xl p-3 text-center cursor-pointer hover:opacity-80 transition-opacity', s.bg)}>

@@ -215,6 +215,7 @@ export default function ForwarderRatesPage() {
             ) : !compareRows || compareRows.length === 0 ? (
               <p className="text-sm text-muted-foreground px-4 py-8 text-center">이 노선에 등록된 운임이 없습니다. &quot;운임 등록&quot;으로 추가하세요.</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
@@ -275,6 +276,7 @@ export default function ForwarderRatesPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}
