@@ -7,6 +7,9 @@ const SECRET = new TextEncoder().encode(
 
 const PUBLIC_PATHS = [
   '/login', '/signup', '/api/auth/login', '/api/auth/signup', '/api/settings/brand',
+  // PWA 설치 가능성(installability)을 위한 정적 자산 — 로그인 전(로그인 화면 자체)에도
+  // 매니페스트/서비스워커/아이콘이 열려야 설치 프롬프트가 동작한다.
+  '/manifest.webmanifest', '/sw.js', '/icons',
   // 중국 공급업체 자료요청 외부 작성 화면 — 그룹웨어 로그인 없이 토큰 링크로만 접근.
   // 보안은 여기서 끝나지 않고, 각 라우트가 매 요청마다 토큰을 해시해 DB에서 재검증한다
   // (lib/supplier-form/token.ts의 resolveProjectByToken). 이 prefix는 "누구나 화면은 열 수 있다"만
