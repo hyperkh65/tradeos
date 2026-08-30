@@ -17,6 +17,8 @@ const PUBLIC_PATHS = [
   '/supplier-form', '/api/supplier-form',
   // 제품 승인서·사양서 외부 작성 화면 — 동일한 토큰 기반 보안 정책(lib/approval-doc/token.ts).
   '/approval-form', '/api/approval-form',
+  // Tauri 데스크톱 셸이 창을 띄우기 전(로그인 전)에 서버 URL을 조회하는 엔드포인트.
+  '/api/desktop/bootstrap',
 ];
 // 다운로드된 문서(Word 등)가 세션 쿠키 없이도 첨부 이미지를 불러올 수 있도록 개별 파일 서빙 경로만 공개
 const PUBLIC_PATTERNS = [/^\/api\/documents\/[^/]+\/files\/[^/]+\/[^/]+$/];
