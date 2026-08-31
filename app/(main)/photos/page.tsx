@@ -15,6 +15,7 @@ import { PhotoViewer } from '@/components/photos/photo-viewer';
 import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
 import { TrashView } from '@/components/photos/trash-view';
 import { FolderShareModal } from '@/components/photos/folder-share-modal';
+import { ExternalShareModal } from '@/components/photos/external-share-modal';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -90,6 +91,7 @@ export default function PhotosPage() {
   const [bulkTagInput, setBulkTagInput] = useState('');
   const [showBulkTagInput, setShowBulkTagInput] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showExternalShareModal, setShowExternalShareModal] = useState(false);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -524,6 +526,9 @@ export default function PhotosPage() {
                 <button onClick={bulkDownload} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-50">
                   <Upload className="w-3 h-3 rotate-180" />다운로드
                 </button>
+                <button onClick={() => setShowExternalShareModal(true)} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-50">
+                  <Share2 className="w-3 h-3" />외부 공유
+                </button>
                 <button onClick={bulkDelete} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
                   <Trash2 className="w-3 h-3" />삭제
                 </button>
@@ -678,6 +683,10 @@ export default function PhotosPage() {
 
       {shareModalFolder && (
         <FolderShareModal folderId={shareModalFolder.id} folderName={shareModalFolder.name} onClose={() => setShareModalFolder(null)} />
+      )}
+
+      {showExternalShareModal && (
+        <ExternalShareModal photoIds={[...selectedIds]} onClose={() => { setShowExternalShareModal(false); setSelectedIds(new Set()); setSelectMode(false); }} />
       )}
     </div>
   );

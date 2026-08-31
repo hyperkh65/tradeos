@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { getPhotoById, getDerivative, type DerivativeKind } from '@/lib/photos/db';
+import { getPhotoById, getDerivative, canViewPhotoWithShares, type DerivativeKind } from '@/lib/photos/db';
 import { downloadPhotoFile } from '@/lib/photos/storage';
-import { canViewOwned, PHOTO_PERMISSIONS, isPhotoAdmin } from '@/lib/photos/permissions';
+import { PHOTO_PERMISSIONS, isPhotoAdmin } from '@/lib/photos/permissions';
 import { writePhotoAuditLog } from '@/lib/photos/audit';
-import { getDb } from '@/lib/db/sqlite';
 
 const DERIVATIVE_KINDS: DerivativeKind[] = ['thumb_small', 'thumb_medium', 'preview_large', 'watermarked'];
 
@@ -18,11 +17,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const photo = getPhotoById(id);
   if (!photo || photo.deletedAt) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  // Phase 10(내부 공유)까지는 폴더 공개여부/업로더 본인/관리자만 확인.
-  const folder = photo.folderId ? (getDb().prepare(`SELECT is_public, owner_user_id FROM photo_folders WHERE id=?`).get(photo.folderId) as { is_public: number; owner_user_id: string | null } | undefined) : undefined;
-  const isPublicFolder = folder ? !!folder.is_public : true; // 폴더 미지정(=최상위) 사진은 기본 공개로 취급
   const ownerId = photo.uploadedBy;
-  if (!canViewOwned(user, ownerId, isPublicFolder)) {
+  if (!canViewPhotoWithShares(user, photo)) {
     return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 });
   }
 
