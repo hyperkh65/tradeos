@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Images, Folder, FolderPlus, ChevronRight, ChevronDown, Upload, Loader2,
   Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
+  Search, SlidersHorizontal, Calendar as CalendarIcon, ArrowUpDown,
 } from 'lucide-react';
 import { PhotoViewer } from '@/components/photos/photo-viewer';
 import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
@@ -23,11 +24,24 @@ interface Photo {
   uploadedAt: string; uploadedBy: string; uploadedByName: string; title: string | null; description: string | null; folderId: string | null;
   isFavorited: boolean;
 }
-type ViewMode = 'grid-large' | 'grid-medium' | 'grid-small' | 'list';
+type ViewMode = 'grid-large' | 'grid-medium' | 'grid-small' | 'list' | 'timeline';
 type UploadItem = { file: File; status: 'pending' | 'uploading' | 'ok' | 'duplicate' | 'error'; error?: string };
+type SortKey = 'uploaded_desc' | 'uploaded_asc' | 'captured_desc' | 'captured_asc' | 'name_asc' | 'size_desc';
+
+interface PhotoFilters {
+  q: string; uploader: string; extension: string;
+  dateFrom: string; dateTo: string; capturedFrom: string; capturedTo: string;
+}
+const EMPTY_FILTERS: PhotoFilters = { q: '', uploader: '', extension: '', dateFrom: '', dateTo: '', capturedFrom: '', capturedTo: '' };
+const SORT_LABELS: Record<SortKey, string> = {
+  uploaded_desc: '업로드 최신순', uploaded_asc: '업로드 오래된순',
+  captured_desc: '촬영 최신순', captured_asc: '촬영 오래된순',
+  name_asc: '파일명순', size_desc: '용량 큰순',
+};
 
 const fmtSize = (b: number) => b >= 1048576 ? `${(b / 1048576).toFixed(1)}MB` : b >= 1024 ? `${Math.round(b / 1024)}KB` : `${b}B`;
 const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';
+const monthLabel = (s: string) => { const d = new Date(s); return `${d.getFullYear()}년 ${d.getMonth() + 1}월`; };
 
 function buildTree(folders: PhotoFolder[]): PhotoFolder[] {
   const map = new Map<string, PhotoFolder>();
@@ -46,6 +60,7 @@ const GRID_SIZE_CLASS: Record<ViewMode, string> = {
   'grid-medium': 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))]',
   'grid-small': 'grid-cols-[repeat(auto-fill,minmax(100px,1fr))]',
   list: '',
+  timeline: 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))]',
 };
 
 export default function PhotosPage() {
@@ -63,6 +78,17 @@ export default function PhotosPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+
+  // ── 검색/필터/정렬/무한스크롤(요청서 21~26번) ──────────────────────────────
+  const [filters, setFilters] = useState<PhotoFilters>(EMPTY_FILTERS);
+  const [filterDraft, setFilterDraft] = useState<PhotoFilters>(EMPTY_FILTERS);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [sort, setSort] = useState<SortKey>('uploaded_desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const isSearchActive = Object.values(filters).some(v => v);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => {
@@ -83,19 +109,67 @@ export default function PhotosPage() {
     if (data.folders) setFolders(data.folders);
   }, []);
 
+  const buildQuery = useCallback((folderId: string | null, cursor?: string | null) => {
+    const sp = new URLSearchParams();
+    sp.set('folderId', folderId ?? 'null');
+    sp.set('sort', sort);
+    if (filters.q) sp.set('q', filters.q);
+    if (filters.uploader) sp.set('uploader', filters.uploader);
+    if (filters.extension) sp.set('extension', filters.extension);
+    if (filters.dateFrom) sp.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) sp.set('dateTo', filters.dateTo + 'T23:59:59.999Z');
+    if (filters.capturedFrom) sp.set('capturedFrom', filters.capturedFrom);
+    if (filters.capturedTo) sp.set('capturedTo', filters.capturedTo + 'T23:59:59.999Z');
+    if (cursor) sp.set('cursor', cursor);
+    return sp.toString();
+  }, [sort, filters]);
+
   const loadPhotos = useCallback(async (folderId: string | null) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/photos?folderId=${folderId ?? 'null'}`);
+      const res = await fetch(`/api/photos?${buildQuery(folderId)}`);
       const data = await res.json();
       setPhotos(data.photos || []);
+      setNextCursor(data.nextCursor || null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildQuery]);
+
+  const loadMorePhotos = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/photos?${buildQuery(selectedFolderId, nextCursor)}`);
+      const data = await res.json();
+      setPhotos(prev => [...prev, ...(data.photos || [])]);
+      setNextCursor(data.nextCursor || null);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextCursor, loadingMore, buildQuery, selectedFolderId]);
 
   useEffect(() => { loadFolders(); }, [loadFolders]);
   useEffect(() => { loadPhotos(selectedFolderId); setSelectedPhoto(null); }, [selectedFolderId, loadPhotos]);
+
+  // 무한 스크롤 — 그리드 하단 sentinel이 보이면 다음 커서 페이지를 이어붙인다(요청서 26번).
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !nextCursor) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) loadMorePhotos();
+    }, { rootMargin: '300px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [nextCursor, loadMorePhotos, photos.length]);
+
+  const applyQuickFilter = (days: number | null) => {
+    if (days === null) { setFilters(EMPTY_FILTERS); setFilterDraft(EMPTY_FILTERS); return; }
+    const from = new Date(Date.now() - days * 86400000).toISOString();
+    const next = { ...EMPTY_FILTERS, dateFrom: from.slice(0, 10) };
+    setFilters(next);
+    setFilterDraft(next);
+  };
 
   const tree = useMemo(() => buildTree(folders), [folders]);
 
@@ -234,17 +308,91 @@ export default function PhotosPage() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-            <div className="text-sm text-muted-foreground truncate">
-              사진첩 {currentFolder ? `> ${currentFolder.name}` : '> 전체 사진'} · {photos.length}장
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 gap-2">
+            <div className="text-xs text-muted-foreground truncate shrink-0">
+              사진첩 {isSearchActive ? '> 검색 결과' : currentFolder ? `> ${currentFolder.name}` : '> 전체 사진'} · {photos.length}장{nextCursor ? '+' : ''}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex-1 flex items-center gap-1 max-w-md">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  value={filterDraft.q}
+                  onChange={e => setFilterDraft(prev => ({ ...prev, q: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') setFilters(filterDraft); }}
+                  onBlur={() => setFilters(filterDraft)}
+                  placeholder="파일명·제목·설명 검색"
+                  className="w-full h-7 text-xs pl-7 pr-2 border border-border rounded-md bg-background"
+                />
+              </div>
+              <Button size="icon-xs" variant={showFilterPanel || isSearchActive ? 'secondary' : 'ghost'} onClick={() => setShowFilterPanel(v => !v)} title="필터"><SlidersHorizontal className="w-3.5 h-3.5" /></Button>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <div className="relative">
+                <Button size="icon-xs" variant={showSortMenu ? 'secondary' : 'ghost'} onClick={() => setShowSortMenu(v => !v)} title="정렬"><ArrowUpDown className="w-3.5 h-3.5" /></Button>
+                {showSortMenu && (
+                  <div className="absolute right-0 top-full mt-1 z-20 bg-popover border border-border rounded-md shadow-md py-1 w-36">
+                    {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+                      <button key={k} onClick={() => { setSort(k); setShowSortMenu(false); }}
+                        className={cn('block w-full text-left text-xs px-2.5 py-1.5 hover:bg-muted', sort === k && 'text-primary font-medium')}>
+                        {SORT_LABELS[k]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Button size="icon-xs" variant={viewMode === 'grid-large' ? 'secondary' : 'ghost'} onClick={() => setViewMode('grid-large')} title="큰 썸네일"><LayoutGrid className="w-3.5 h-3.5" /></Button>
               <Button size="icon-xs" variant={viewMode === 'grid-medium' ? 'secondary' : 'ghost'} onClick={() => setViewMode('grid-medium')} title="중간 썸네일"><Grid3X3 className="w-3.5 h-3.5" /></Button>
               <Button size="icon-xs" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')} title="목록"><List className="w-3.5 h-3.5" /></Button>
+              <Button size="icon-xs" variant={viewMode === 'timeline' ? 'secondary' : 'ghost'} onClick={() => setViewMode('timeline')} title="타임라인"><CalendarIcon className="w-3.5 h-3.5" /></Button>
               <Button size="icon-xs" variant="ghost" onClick={() => loadPhotos(selectedFolderId)} title="새로고침"><RefreshCw className="w-3.5 h-3.5" /></Button>
             </div>
           </div>
+
+          {showFilterPanel && (
+            <div className="border-b border-border p-3 shrink-0 bg-muted/20 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground mr-1">빠른 필터</span>
+                <button onClick={() => applyQuickFilter(0)} className="text-[11px] px-2 py-0.5 rounded-full border border-border hover:bg-muted">오늘</button>
+                <button onClick={() => applyQuickFilter(7)} className="text-[11px] px-2 py-0.5 rounded-full border border-border hover:bg-muted">최근 7일</button>
+                <button onClick={() => applyQuickFilter(30)} className="text-[11px] px-2 py-0.5 rounded-full border border-border hover:bg-muted">최근 30일</button>
+                {isSearchActive && <button onClick={() => applyQuickFilter(null)} className="text-[11px] px-2 py-0.5 rounded-full border border-primary text-primary hover:bg-primary/10 ml-auto">필터 초기화</button>}
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-[11px]">
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">업로더</span>
+                  <input value={filterDraft.uploader} onChange={e => setFilterDraft(prev => ({ ...prev, uploader: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') setFilters(filterDraft); }} onBlur={() => setFilters(filterDraft)}
+                    className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">확장자</span>
+                  <input value={filterDraft.extension} onChange={e => setFilterDraft(prev => ({ ...prev, extension: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') setFilters(filterDraft); }} onBlur={() => setFilters(filterDraft)}
+                    placeholder="jpg, png…" className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">업로드일 시작</span>
+                  <input type="date" value={filterDraft.dateFrom} onChange={e => { const next = { ...filterDraft, dateFrom: e.target.value }; setFilterDraft(next); setFilters(next); }}
+                    className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">업로드일 끝</span>
+                  <input type="date" value={filterDraft.dateTo} onChange={e => { const next = { ...filterDraft, dateTo: e.target.value }; setFilterDraft(next); setFilters(next); }}
+                    className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">촬영일 시작</span>
+                  <input type="date" value={filterDraft.capturedFrom} onChange={e => { const next = { ...filterDraft, capturedFrom: e.target.value }; setFilterDraft(next); setFilters(next); }}
+                    className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+                <label className="space-y-0.5">
+                  <span className="text-muted-foreground">촬영일 끝</span>
+                  <input type="date" value={filterDraft.capturedTo} onChange={e => { const next = { ...filterDraft, capturedTo: e.target.value }; setFilterDraft(next); setFilters(next); }}
+                    className="w-full h-7 px-1.5 border border-border rounded bg-background" />
+                </label>
+              </div>
+            </div>
+          )}
 
           {uploads.length > 0 && (
             <div className="border-b border-border p-2 max-h-32 overflow-y-auto space-y-1 shrink-0 bg-muted/30">
@@ -295,29 +443,29 @@ export default function PhotosPage() {
                   ))}
                 </tbody>
               </table>
+            ) : viewMode === 'timeline' ? (
+              <div className="space-y-5">
+                {groupPhotosByMonth(photos).map(group => (
+                  <div key={group.key}>
+                    <div className="text-xs font-semibold text-muted-foreground mb-1.5 sticky top-0 bg-background/95 py-1">{group.label} · {group.items.length}장</div>
+                    <div className={cn('grid gap-2', GRID_SIZE_CLASS['grid-medium'])}>
+                      {group.items.map(p => (
+                        <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className={cn('grid gap-2', GRID_SIZE_CLASS[viewMode])}>
-                {photos.map((p, i) => (
-                  <button key={p.id} type="button" onClick={() => setSelectedPhoto(p)} onDoubleClick={() => setViewerIndex(i)}
-                    className={cn('aspect-square rounded-lg overflow-hidden border-2 border-transparent bg-muted relative group',
-                      selectedPhoto?.id === p.id && 'border-primary')}>
-                    {p.isFavorited && <Star className="absolute top-1 right-1 w-3.5 h-3.5 fill-yellow-400 text-yellow-400 z-10 drop-shadow" />}
-                    {p.status === 'ready' ? (
-                      <img src={`/api/photos/${p.id}/media/thumb_medium`} alt={p.originalFileName} className="w-full h-full object-cover" loading="lazy" />
-                    ) : p.status === 'processing' ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
-                        <Loader2 className="w-5 h-5 animate-spin" /><span className="text-[10px]">처리 중</span>
-                      </div>
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-red-400">
-                        <ImageIcon className="w-5 h-5" /><span className="text-[10px]">미리보기 실패</span>
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1.5 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                      {p.title || p.originalFileName}
-                    </div>
-                  </button>
+                {photos.map(p => (
+                  <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex} />
                 ))}
+              </div>
+            )}
+            {nextCursor && (
+              <div ref={sentinelRef} className="flex items-center justify-center py-4 text-muted-foreground">
+                {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
               </div>
             )}
           </div>
@@ -398,5 +546,45 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground shrink-0">{label}</span>
       <span className="text-right truncate">{value}</span>
     </div>
+  );
+}
+
+/** Timeline View(요청서 27번) — 촬영월 기준, 촬영일 없으면 업로드월로 대체. */
+function groupPhotosByMonth(photos: Photo[]): { key: string; label: string; items: Photo[] }[] {
+  const groups = new Map<string, Photo[]>();
+  for (const p of photos) {
+    const basis = p.capturedAt || p.uploadedAt;
+    const key = basis.slice(0, 7);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+  return [...groups.entries()].map(([key, items]) => ({ key, label: monthLabel(items[0].capturedAt || items[0].uploadedAt), items }));
+}
+
+function PhotoThumb({ p, photos, selectedPhoto, setSelectedPhoto, setViewerIndex }: {
+  p: Photo; photos: Photo[]; selectedPhoto: Photo | null;
+  setSelectedPhoto: (p: Photo) => void; setViewerIndex: (i: number) => void;
+}) {
+  return (
+    <button type="button" onClick={() => setSelectedPhoto(p)}
+      onDoubleClick={() => { const idx = photos.findIndex(x => x.id === p.id); if (idx >= 0) setViewerIndex(idx); }}
+      className={cn('aspect-square rounded-lg overflow-hidden border-2 border-transparent bg-muted relative group',
+        selectedPhoto?.id === p.id && 'border-primary')}>
+      {p.isFavorited && <Star className="absolute top-1 right-1 w-3.5 h-3.5 fill-yellow-400 text-yellow-400 z-10 drop-shadow" />}
+      {p.status === 'ready' ? (
+        <img src={`/api/photos/${p.id}/media/thumb_medium`} alt={p.originalFileName} className="w-full h-full object-cover" loading="lazy" />
+      ) : p.status === 'processing' ? (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" /><span className="text-[10px]">처리 중</span>
+        </div>
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-red-400">
+          <ImageIcon className="w-5 h-5" /><span className="text-[10px]">미리보기 실패</span>
+        </div>
+      )}
+      <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-1.5 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+        {p.title || p.originalFileName}
+      </div>
+    </button>
   );
 }
