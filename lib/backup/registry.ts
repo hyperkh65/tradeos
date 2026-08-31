@@ -71,6 +71,12 @@ export const BACKUP_DOMAINS: BackupDomain[] = [
     sourceOfTruth: 'rebuildable',
     backedUpBy: 'docker inspect 설정 기록(합성 docker-compose.yml) + docker save 오프라인 이미지 아카이브',
   },
+  {
+    id: 'app_releases',
+    label: '데스크톱 앱 릴리스 설치파일(data/releases/{windows,macos} — msi/exe/dmg)',
+    sourceOfTruth: 'nas',
+    backedUpBy: 'Complete Backup 시 data/releases 전체 복사(있을 때만 — 릴리스를 하나도 안 올렸으면 정상적으로 생략됨). app_releases 테이블 메타데이터는 sqlite_database 도메인에 포함.',
+  },
 ];
 
 export function getSourceOfTruthRegistry(): BackupDomain[] {
@@ -105,7 +111,7 @@ const KNOWN_TABLES_BASELINE = new Set([
 /** 백업 목표 tar에 포함되는 것으로 알려진 data/ 하위 디렉터리 — 새로운 최상위 저장
  * 경로가 여기 없이 생기면(예: data/exports/ 같은 것) 백업 스코프에서 누락될 수 있어
  * 경고 대상이다. uploads/backups는 이미 알고 있으므로 정상. */
-const KNOWN_DATA_SUBDIRS = new Set(['uploads', 'backups']);
+const KNOWN_DATA_SUBDIRS = new Set(['uploads', 'backups', 'releases']);
 
 export interface DriftWarning { severity: 'info' | 'warning'; message: string }
 

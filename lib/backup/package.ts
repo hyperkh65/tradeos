@@ -108,6 +108,14 @@ export async function createCompleteRecoveryPackage(
       warnings.push(`DB에 참조는 있으나 실제 파일이 없는 첨부 ${audit.missingReferences.length}건 발견(files/attachments-audit.json 참고)`);
     }
 
+    // 2.5) 데스크톱 앱 릴리스 설치파일(data/releases/{windows,macos}) — app_releases 테이블의
+    // 행 자체는 database dump에 포함되지만, 실제 msi/exe/dmg 바이너리는 여기서 따로 복사해야
+    // 백업에 포함된다(없으면 아직 릴리스를 하나도 안 올린 정상 상태이므로 best-effort).
+    const releasesDir = path.join(getAppRootDir(), 'data', 'releases');
+    if (fs.existsSync(releasesDir) && fs.readdirSync(releasesDir).length > 0) {
+      await execFileAsync('cp', ['-R', releasesDir, path.join(stagingDir, 'files', 'releases')]);
+    }
+
     // 3) Qdrant snapshot(실패해도 계속 진행 — Full Rebuild 대체 경로가 있음)
     const qdrantResult = await backupQdrantSnapshot(path.join(stagingDir, 'qdrant', 'snapshots'));
     fs.writeFileSync(path.join(stagingDir, 'qdrant', 'snapshot-result.json'), JSON.stringify(qdrantResult, null, 2));
