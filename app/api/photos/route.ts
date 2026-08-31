@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   // 순수 폴더 열람(검색 필터 없음)일 때만 폴더 자체의 조회 권한을 사전 체크한다 —
   // 검색 모드는 listPhotosForUser 내부 SQL WHERE에서 행 단위로 권한을 이미 강제한다.
-  const hasSearchFilters = !!(sp.get('q') || sp.get('tag') || sp.get('uploader') || sp.get('dateFrom') || sp.get('dateTo') ||
+  const hasSearchFilters = !!(sp.get('all') || sp.get('q') || sp.get('tag') || sp.get('uploader') || sp.get('dateFrom') || sp.get('dateTo') ||
     sp.get('capturedFrom') || sp.get('capturedTo') || sp.get('extension') || sp.get('albumId') || sp.get('entityType'));
   if (!hasSearchFilters && folderId) {
     const folder = getFolderById(folderId);
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
     sort,
     cursor: sp.get('cursor') || undefined,
     limit: sp.get('limit') ? Number(sp.get('limit')) : undefined,
+    forceAll: sp.get('all') === '1',
   });
 
   const db = getDb();

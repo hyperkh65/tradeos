@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { Quote } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 const ADMIN_PASSWORD = '1209';
 const statusStyle: Record<string, string> = {
@@ -618,6 +619,10 @@ function QuoteModal({
                 className="w-full h-20 rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
             </div>
             <QuoteImageUpload images={images} quoteId={quoteId} onChange={setImages} />
+          </div>
+
+          <div className="border-t pt-3">
+            <RelatedPhotos entityType="quote" entityId={quoteId} />
           </div>
 
           {/* History */}

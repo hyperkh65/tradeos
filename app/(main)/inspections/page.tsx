@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Inspection } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 const INSPECTION_TYPES = ['공장검품', '입고검품', '선적전검품', '도입전 샘플 검품'];
 const RESULTS: { value: string; label: string; style: string }[] = [
@@ -414,6 +415,12 @@ function InspectionModal({ inspection, companies, products, purchaseOrders, onCl
               )}
             </div>
           </div>
+
+          {inspection?.id && (
+            <div className="border-t pt-4">
+              <RelatedPhotos entityType="inspection" entityId={inspection.id} />
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-2 pt-2">

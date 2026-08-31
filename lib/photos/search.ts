@@ -20,6 +20,8 @@ export interface PhotoSearchParams {
   sort?: PhotoSortKey;
   cursor?: string;
   limit?: number;
+  /** 필터가 하나도 없어도 폴더 범위를 무시하고 전체를 대상으로 검색(엔티티 연결 picker용). */
+  forceAll?: boolean;
 }
 
 export interface PhotoListRow {
@@ -62,7 +64,7 @@ export function listPhotosForUser(user: User, params: PhotoSearchParams): { phot
   const sortKey = params.sort ?? 'uploaded_desc';
   const { expr: sortExpr, dir } = SORT_EXPR[sortKey];
 
-  const isSearchMode = !!(params.q || params.tag || params.uploader || params.dateFrom || params.dateTo ||
+  const isSearchMode = !!(params.forceAll || params.q || params.tag || params.uploader || params.dateFrom || params.dateTo ||
     params.capturedFrom || params.capturedTo || params.extension || params.albumId || params.entityType);
 
   const joins: string[] = [];

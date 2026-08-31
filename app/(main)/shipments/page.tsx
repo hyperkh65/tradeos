@@ -13,6 +13,7 @@ import { FilePreviewModal } from '@/components/files/file-preview-modal';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Shipment, CargoItem, ShipDocument, ShipDocType, PurchaseOrder } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -978,6 +979,12 @@ function ShipmentModal({
               </select>
             </div>
           </div>
+
+          {(savedId || item?.id) && (
+            <div className="border-t pt-3">
+              <RelatedPhotos entityType="shipment" entityId={(savedId || item?.id)!} />
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">

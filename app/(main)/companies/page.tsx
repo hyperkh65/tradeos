@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Company } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 const typeColor: Record<string, string> = {
   '공급업체': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -276,6 +277,10 @@ function CompanyModal({ item, preId, onClose, onSave }: { item?: Company | null;
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">메모</label>
             <Input value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} placeholder="비고" />
+          </div>
+
+          <div className="border-t pt-4">
+            <RelatedPhotos entityType="company" entityId={companyId} />
           </div>
 
           {saveError && <p className="text-xs text-destructive bg-destructive/10 rounded px-3 py-2">{saveError}</p>}

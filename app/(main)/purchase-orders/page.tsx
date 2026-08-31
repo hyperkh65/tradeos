@@ -9,6 +9,7 @@ import { openAppUrl } from '@/lib/tauri-print';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { PurchaseOrder } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 const statusLabel: Record<string, string> = { draft: '초안', confirmed: '확정', production: '생산', inspection: '검품', shipped: '선적', completed: '완료', cancelled: '취소' };
 const statusColor: Record<string, string> = { draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-blue-100 text-blue-700', production: 'bg-yellow-100 text-yellow-700', inspection: 'bg-purple-100 text-purple-700', shipped: 'bg-cyan-100 text-cyan-700', completed: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-600' };
@@ -721,6 +722,12 @@ function POModal({
           </div>
 
           <POImageUpload images={images} poId={uploadPoId} onChange={setImages} />
+
+          {item?.id && (
+            <div className="border-t pt-3">
+              <RelatedPhotos entityType="purchase_order" entityId={item.id} />
+            </div>
+          )}
 
           {specModal.open && (
             <SpecModal

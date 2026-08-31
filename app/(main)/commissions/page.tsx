@@ -10,6 +10,7 @@ import { downloadFile } from '@/lib/tauri-print';
 import { FilePreviewModal } from '@/components/files/file-preview-modal';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { AccountManageModal } from '@/components/deposits/account-manage-modal';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 interface BankAccount {
   id: string; businessId: string; currency: string; bankName: string; accountNumber: string; holderName?: string; memo?: string;
@@ -344,6 +345,9 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
               <FileZone label="해외 인보이스" files={invoiceFiles} type="invoice" />
               <div className="pt-2 border-t">
                 <DepositManager ref={depositManagerRef} apiBase={`/api/commissions/${savedId}`} totalDue={form.amount} deposits={deposits} accounts={accounts} onChange={setDeposits} onAccountsRefresh={onAccountsRefresh} disabled={readOnly} />
+              </div>
+              <div className="pt-2 border-t">
+                <RelatedPhotos entityType="commission" entityId={savedId} />
               </div>
             </>
           ) : (

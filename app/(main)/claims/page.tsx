@@ -12,6 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Claim } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -407,6 +408,10 @@ function ClaimModal({
             onChangeReports={setReportFiles}
             disabled={saving}
           />
+
+          <div className="border-t pt-3">
+            <RelatedPhotos entityType="claim" entityId={claimId} />
+          </div>
 
           {saveError && <p className="text-sm text-red-500">{saveError}</p>}
 

@@ -16,6 +16,7 @@ import type {
   Import, ImportItem, ImportDocument, ImportDocType,
   Shipment, Company, SettlementItem, SettlementHistoryEntry,
 } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 // ── 한국 행정구역 ──────────────────────────────────────────────────────────────
 const KR_REGIONS: Record<string, string[]> = {
@@ -1877,6 +1878,12 @@ function ImportModal({
               </div>
             )}
           </div>
+
+          {item?.id && (
+            <div className="px-4 pb-2">
+              <RelatedPhotos entityType="import" entityId={item.id} />
+            </div>
+          )}
 
           <div className="flex gap-2 p-4 border-t sticky bottom-0 bg-background shrink-0">
             <Button type="button" variant="outline" className="flex-1" onClick={onClose}>닫기</Button>

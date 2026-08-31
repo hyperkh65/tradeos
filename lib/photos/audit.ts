@@ -6,7 +6,8 @@ export type PhotoAuditAction =
   | 'UPLOAD' | 'MOVE' | 'COPY' | 'ADD_TO_ALBUM' | 'REMOVE_FROM_ALBUM'
   | 'RENAME' | 'EDIT_DESCRIPTION' | 'TAG_ADD' | 'TAG_REMOVE'
   | 'SHARE_CREATED' | 'SHARE_CHANGED' | 'SHARE_REVOKED'
-  | 'DOWNLOAD' | 'DELETE' | 'RESTORE' | 'PERMANENT_DELETE';
+  | 'DOWNLOAD' | 'DELETE' | 'RESTORE' | 'PERMANENT_DELETE'
+  | 'ENTITY_LINK' | 'ENTITY_UNLINK' | 'SET_REPRESENTATIVE';
 
 export interface PhotoAuditOpts {
   photoId?: string | null;

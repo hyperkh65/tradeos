@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Product, Company } from '@/types';
+import { RelatedPhotos } from '@/components/photos/related-photos';
 
 function CompanyAutocomplete({ label, value, onChange, companies }: {
   label: string; value: string; onChange: (v: string) => void; companies: Company[];
@@ -765,6 +766,11 @@ function ProductModal({ item, preId, products: allProducts, onClose, onSave }: {
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">제품 이미지</p>
             <ImageGrid images={images} productId={productId} onChange={setImages} />
+          </div>
+
+          <div className="border-t pt-4">
+            <RelatedPhotos entityType="product" entityId={productId} canSetRepresentative
+              onRepresentativeSet={(_photoId, imageUrl) => setImages(prev => [imageUrl, ...prev.filter(u => u !== imageUrl)])} />
           </div>
 
           <div className="border-t pt-4 space-y-3">
