@@ -1,7 +1,8 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import type { User } from '@/types';
-import { getPhotoById, getPhotoOwnership } from '@/lib/photos/db';
-import { canViewOwned, isPhotoAdmin } from '@/lib/photos/permissions';
+import { getPhotoById, canViewPhotoWithShares } from '@/lib/photos/db';
+import { isPhotoAdmin } from '@/lib/photos/permissions';
+import { hasInternalShareAccess } from '@/lib/photos/internal-shares';
 import { writePhotoAuditLog } from '@/lib/photos/audit';
 
 export type LinkResult<T> = { ok: true; data: T } | { ok: false; error: string; status: number };
@@ -21,8 +22,7 @@ export function linkPhotoToEntity(user: User, photoId: string, entityType: strin
   if (!entityType.trim() || !entityId.trim()) return { ok: false, error: 'entityType/entityId가 필요합니다', status: 400 };
   const photo = getPhotoById(photoId);
   if (!photo || photo.deletedAt) return { ok: false, error: 'not found', status: 404 };
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return { ok: false, error: '권한이 없습니다', status: 403 };
+  if (!canViewPhotoWithShares(user, photo)) return { ok: false, error: '권한이 없습니다', status: 403 };
 
   const db = getDb();
   const existing = db.prepare(`SELECT id FROM photo_entity_links WHERE photo_id=? AND entity_type=? AND entity_id=?`)
@@ -71,10 +71,13 @@ export function listPhotosForEntity(user: User, entityType: string, entityId: st
   return rows
     .filter(r => {
       if (isPhotoAdmin(user)) return true;
+      if (r.uploaded_by === user.id) return true;
+      const photoId = r.id as string;
       const folderId = r.folder_id as string | null;
       if (!folderId) return true;
       const folder = db.prepare(`SELECT is_public FROM photo_folders WHERE id=?`).get(folderId) as { is_public: number } | undefined;
-      return (folder ? !!folder.is_public : true) || r.uploaded_by === user.id;
+      if (folder ? !!folder.is_public : true) return true;
+      return hasInternalShareAccess(user.id, 'photo', photoId, 'view') || hasInternalShareAccess(user.id, 'folder', folderId, 'view');
     })
     .map(r => ({
       id: r.id as string, linkId: r.link_id as string, originalFileName: r.original_file_name as string,

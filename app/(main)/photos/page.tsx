@@ -9,10 +9,12 @@ import {
   Images, Folder, FolderPlus, ChevronRight, ChevronDown, Upload, Loader2,
   Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
   Search, SlidersHorizontal, Calendar as CalendarIcon, ArrowUpDown, Trash2,
+  Share2, CheckSquare, Square, Tag as TagIcon, FolderInput,
 } from 'lucide-react';
 import { PhotoViewer } from '@/components/photos/photo-viewer';
 import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
 import { TrashView } from '@/components/photos/trash-view';
+import { FolderShareModal } from '@/components/photos/folder-share-modal';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -80,6 +82,70 @@ export default function PhotosPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  const [shareModalFolder, setShareModalFolder] = useState<PhotoFolder | null>(null);
+
+  // ── 그리드 다중선택 + 일괄 처리(요청서 39번) ────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkTagInput, setBulkTagInput] = useState('');
+  const [showBulkTagInput, setShowBulkTagInput] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkFavorite = async () => {
+    setBulkBusy(true);
+    try {
+      await Promise.all([...selectedIds].map(id => fetch(`/api/photos/${id}/favorite`, { method: 'POST' })));
+      await loadPhotos(selectedFolderId);
+      setSelectedIds(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkAddTag = async () => {
+    const name = bulkTagInput.trim();
+    if (!name) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all([...selectedIds].map(id => fetch(`/api/photos/${id}/tags`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      })));
+      setBulkTagInput('');
+      setShowBulkTagInput(false);
+      setSelectedIds(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`선택한 ${selectedIds.size}장을 휴지통으로 이동할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all([...selectedIds].map(id => fetch(`/api/photos/${id}`, { method: 'DELETE' })));
+      setPhotos(prev => prev.filter(p => !selectedIds.has(p.id)));
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDownload = () => {
+    for (const id of selectedIds) {
+      const a = document.createElement('a');
+      a.href = `/api/photos/${id}/media/original`;
+      a.click();
+    }
+  };
 
   // ── 검색/필터/정렬/무한스크롤(요청서 21~26번) ──────────────────────────────
   const [filters, setFilters] = useState<PhotoFilters>(EMPTY_FILTERS);
@@ -256,6 +322,12 @@ export default function PhotosPage() {
           <Folder className="w-3.5 h-3.5 shrink-0 text-amber-500" />
           <span className="truncate flex-1">{node.name}</span>
           {!node.isPublic && <span className="text-[9px] text-muted-foreground shrink-0">개인</span>}
+          {!!currentUser && (currentUser.id === node.ownerUserId || currentUser.role === 'admin') && (
+            <button type="button" onClick={e => { e.stopPropagation(); setShareModalFolder(node); }}
+              className="shrink-0 text-muted-foreground hover:text-primary" title="폴더 공유">
+              <Share2 className="w-3 h-3" />
+            </button>
+          )}
         </div>
         {isExpanded && hasChildren && node.children!.map(c => <FolderNode key={c.id} node={c} depth={depth + 1} />)}
         {showNewFolder === node.id && (
@@ -355,6 +427,10 @@ export default function PhotosPage() {
               <Button size="icon-xs" variant={viewMode === 'grid-medium' ? 'secondary' : 'ghost'} onClick={() => setViewMode('grid-medium')} title="중간 썸네일"><Grid3X3 className="w-3.5 h-3.5" /></Button>
               <Button size="icon-xs" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')} title="목록"><List className="w-3.5 h-3.5" /></Button>
               <Button size="icon-xs" variant={viewMode === 'timeline' ? 'secondary' : 'ghost'} onClick={() => setViewMode('timeline')} title="타임라인"><CalendarIcon className="w-3.5 h-3.5" /></Button>
+              <Button size="icon-xs" variant={selectMode ? 'secondary' : 'ghost'}
+                onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()); }} title="여러 장 선택">
+                {selectMode ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+              </Button>
               <Button size="icon-xs" variant="ghost" onClick={() => loadPhotos(selectedFolderId)} title="새로고침"><RefreshCw className="w-3.5 h-3.5" /></Button>
             </div>
           </div>
@@ -425,6 +501,36 @@ export default function PhotosPage() {
             </div>
           )}
 
+          {selectMode && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0 bg-primary/5">
+              <span className="text-xs font-medium">{selectedIds.size}장 선택됨</span>
+              <div className="flex items-center gap-1 ml-auto">
+                <button onClick={bulkFavorite} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-50">
+                  <Star className="w-3 h-3" />즐겨찾기
+                </button>
+                <div className="relative">
+                  <button onClick={() => setShowBulkTagInput(v => !v)} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-50">
+                    <TagIcon className="w-3 h-3" />태그
+                  </button>
+                  {showBulkTagInput && (
+                    <div className="absolute top-full mt-1 left-0 z-20 bg-popover border border-border rounded-md shadow-md p-1.5 flex items-center gap-1">
+                      <input autoFocus value={bulkTagInput} onChange={e => setBulkTagInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') bulkAddTag(); if (e.key === 'Escape') setShowBulkTagInput(false); }}
+                        placeholder="태그 이름" className="h-6 text-xs px-1.5 border border-border rounded w-24" />
+                      <button onClick={bulkAddTag} className="text-[11px] text-primary shrink-0">추가</button>
+                    </div>
+                  )}
+                </div>
+                <button onClick={bulkDownload} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-border hover:bg-muted disabled:opacity-50">
+                  <Upload className="w-3 h-3 rotate-180" />다운로드
+                </button>
+                <button onClick={bulkDelete} disabled={bulkBusy} className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+                  <Trash2 className="w-3 h-3" />삭제
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-3">
             {loading ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /></div>
@@ -461,7 +567,8 @@ export default function PhotosPage() {
                     <div className="text-xs font-semibold text-muted-foreground mb-1.5 sticky top-0 bg-background/95 py-1">{group.label} · {group.items.length}장</div>
                     <div className={cn('grid gap-2', GRID_SIZE_CLASS['grid-medium'])}>
                       {group.items.map(p => (
-                        <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex} />
+                        <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex}
+                          selectMode={selectMode} selected={selectedIds.has(p.id)} onToggleSelect={toggleSelect} />
                       ))}
                     </div>
                   </div>
@@ -470,7 +577,8 @@ export default function PhotosPage() {
             ) : (
               <div className={cn('grid gap-2', GRID_SIZE_CLASS[viewMode])}>
                 {photos.map(p => (
-                  <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex} />
+                  <PhotoThumb key={p.id} p={p} photos={photos} selectedPhoto={selectedPhoto} setSelectedPhoto={setSelectedPhoto} setViewerIndex={setViewerIndex}
+                    selectMode={selectMode} selected={selectedIds.has(p.id)} onToggleSelect={toggleSelect} />
                 ))}
               </div>
             )}
@@ -567,6 +675,10 @@ export default function PhotosPage() {
           }}
         />
       )}
+
+      {shareModalFolder && (
+        <FolderShareModal folderId={shareModalFolder.id} folderName={shareModalFolder.name} onClose={() => setShareModalFolder(null)} />
+      )}
     </div>
   );
 }
@@ -592,15 +704,22 @@ function groupPhotosByMonth(photos: Photo[]): { key: string; label: string; item
   return [...groups.entries()].map(([key, items]) => ({ key, label: monthLabel(items[0].capturedAt || items[0].uploadedAt), items }));
 }
 
-function PhotoThumb({ p, photos, selectedPhoto, setSelectedPhoto, setViewerIndex }: {
+function PhotoThumb({ p, photos, selectedPhoto, setSelectedPhoto, setViewerIndex, selectMode, selected, onToggleSelect }: {
   p: Photo; photos: Photo[]; selectedPhoto: Photo | null;
   setSelectedPhoto: (p: Photo) => void; setViewerIndex: (i: number) => void;
+  selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void;
 }) {
   return (
-    <button type="button" onClick={() => setSelectedPhoto(p)}
-      onDoubleClick={() => { const idx = photos.findIndex(x => x.id === p.id); if (idx >= 0) setViewerIndex(idx); }}
+    <button type="button" onClick={() => selectMode ? onToggleSelect?.(p.id) : setSelectedPhoto(p)}
+      onDoubleClick={() => { if (selectMode) return; const idx = photos.findIndex(x => x.id === p.id); if (idx >= 0) setViewerIndex(idx); }}
       className={cn('aspect-square rounded-lg overflow-hidden border-2 border-transparent bg-muted relative group',
-        selectedPhoto?.id === p.id && 'border-primary')}>
+        selected ? 'border-primary ring-2 ring-primary/40' : selectedPhoto?.id === p.id && 'border-primary')}>
+      {selectMode && (
+        <div className={cn('absolute top-1 left-1 z-10 w-4 h-4 rounded flex items-center justify-center border',
+          selected ? 'bg-primary border-primary text-primary-foreground' : 'bg-black/40 border-white/70')}>
+          {selected && <CheckSquare className="w-3 h-3" />}
+        </div>
+      )}
       {p.isFavorited && <Star className="absolute top-1 right-1 w-3.5 h-3.5 fill-yellow-400 text-yellow-400 z-10 drop-shadow" />}
       {p.status === 'ready' ? (
         <img src={`/api/photos/${p.id}/media/thumb_medium`} alt={p.originalFileName} className="w-full h-full object-cover" loading="lazy" />

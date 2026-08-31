@@ -1,6 +1,7 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import type { User } from '@/types';
 import { canEditOwned, canViewOwned, isPhotoAdmin } from './permissions';
+import { hasInternalShareAccess } from './internal-shares';
 
 export interface PhotoFolderRow {
   id: string;
@@ -40,14 +41,20 @@ export function getFolderById(id: string): PhotoFolderRow | null {
   return row ? rowToFolder(row) : null;
 }
 
-/** user가 볼 수 있는 폴더만(휴지통 제외) — 공개 폴더 + 본인 소유 + 관리자는 전체. */
+/** 공개/본인소유/관리자 + 사내 공유(요청서 38번)로 view 권한을 받은 경우까지 포함. */
+export function canViewFolderWithShares(user: User, folder: PhotoFolderRow): boolean {
+  if (canViewOwned(user, folder.ownerUserId, folder.isPublic)) return true;
+  return hasInternalShareAccess(user.id, 'folder', folder.id, 'view');
+}
+
+/** user가 볼 수 있는 폴더만(휴지통 제외) — 공개 폴더 + 본인 소유 + 사내 공유 + 관리자는 전체. */
 export function listFolders(user: User, includeTrash = false): PhotoFolderRow[] {
   const db = getDb();
   const rows = db.prepare(`SELECT * FROM photo_folders`).all() as Record<string, unknown>[];
   return rows
     .map(rowToFolder)
     .filter(f => (includeTrash ? true : !f.deletedAt))
-    .filter(f => includeTrash ? (isPhotoAdmin(user) || f.ownerUserId === user.id) : canViewOwned(user, f.ownerUserId, f.isPublic));
+    .filter(f => includeTrash ? (isPhotoAdmin(user) || f.ownerUserId === user.id) : canViewFolderWithShares(user, f));
 }
 
 export interface CreateFolderInput { name: string; parentFolderId: string | null; isPublic: boolean }

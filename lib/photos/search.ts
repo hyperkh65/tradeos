@@ -76,10 +76,15 @@ export function listPhotosForUser(user: User, params: PhotoSearchParams): { phot
     else { where.push('p.folder_id IS NULL'); }
   }
 
-  // 권한 — 관리자가 아니면 공개폴더/최상위/본인업로드만 (getPhotoOwnership과 동일한 규칙).
+  // 권한 — 관리자가 아니면 공개폴더/최상위/본인업로드/사내공유(요청서 38번)만.
   if (!isPhotoAdmin(user)) {
-    where.push(`(p.folder_id IS NULL OR EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.id = p.folder_id AND pf.is_public = 1) OR p.uploaded_by = ?)`);
-    args.push(user.id);
+    where.push(`(p.folder_id IS NULL
+      OR EXISTS (SELECT 1 FROM photo_folders pf WHERE pf.id = p.folder_id AND pf.is_public = 1)
+      OR p.uploaded_by = ?
+      OR EXISTS (SELECT 1 FROM photo_internal_shares pis WHERE pis.target_type='photo' AND pis.target_id = p.id AND pis.shared_with_user_id = ?)
+      OR EXISTS (SELECT 1 FROM photo_internal_shares pis2 WHERE pis2.target_type='folder' AND pis2.target_id = p.folder_id AND pis2.shared_with_user_id = ?)
+    )`);
+    args.push(user.id, user.id, user.id);
   }
 
   if (params.q) {

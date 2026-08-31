@@ -1,7 +1,7 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import type { User } from '@/types';
-import { getPhotoById, getPhotoOwnership } from '@/lib/photos/db';
-import { canViewOwned, canEditOwned } from '@/lib/photos/permissions';
+import { getPhotoById, canViewPhotoWithShares } from '@/lib/photos/db';
+import { canEditOwned } from '@/lib/photos/permissions';
 import { writePhotoAuditLog } from '@/lib/photos/audit';
 
 export interface PhotoTagRow { id: string; name: string }
@@ -38,8 +38,7 @@ export function addPhotoTag(user: User, photoId: string, tagName: string): TagRe
   if (!trimmed) return { ok: false, error: '태그 이름이 비어있습니다', status: 400 };
   const photo = getPhotoById(photoId);
   if (!photo || photo.deletedAt) return { ok: false, error: 'not found', status: 404 };
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return { ok: false, error: '권한이 없습니다', status: 403 };
+  if (!canViewPhotoWithShares(user, photo)) return { ok: false, error: '권한이 없습니다', status: 403 };
 
   const db = getDb();
   const tag = findOrCreateTag(trimmed);
@@ -55,8 +54,7 @@ export function addPhotoTag(user: User, photoId: string, tagName: string): TagRe
 export function removePhotoTag(user: User, photoId: string, tagId: string): TagResult<null> {
   const photo = getPhotoById(photoId);
   if (!photo || photo.deletedAt) return { ok: false, error: 'not found', status: 404 };
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return { ok: false, error: '권한이 없습니다', status: 403 };
+  if (!canViewPhotoWithShares(user, photo)) return { ok: false, error: '권한이 없습니다', status: 403 };
 
   const db = getDb();
   const tag = db.prepare(`SELECT id, name FROM photo_tags WHERE id=?`).get(tagId) as PhotoTagRow | undefined;

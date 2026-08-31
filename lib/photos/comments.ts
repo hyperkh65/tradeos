@@ -1,8 +1,8 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import type { User } from '@/types';
 import { createNotification } from '@/lib/notifications';
-import { getPhotoById, getPhotoOwnership } from '@/lib/photos/db';
-import { canViewOwned, isPhotoAdmin } from '@/lib/photos/permissions';
+import { getPhotoById, canViewPhotoWithShares } from '@/lib/photos/db';
+import { isPhotoAdmin } from '@/lib/photos/permissions';
 
 export interface PhotoCommentRow {
   id: string; photoId: string; userId: string; userName: string;
@@ -21,8 +21,7 @@ function rowToComment(r: Record<string, unknown>): PhotoCommentRow {
 export function listPhotoComments(user: User, photoId: string): CommentResult<PhotoCommentRow[]> {
   const photo = getPhotoById(photoId);
   if (!photo || photo.deletedAt) return { ok: false, error: 'not found', status: 404 };
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return { ok: false, error: '권한이 없습니다', status: 403 };
+  if (!canViewPhotoWithShares(user, photo)) return { ok: false, error: '권한이 없습니다', status: 403 };
 
   const db = getDb();
   const rows = db.prepare(`SELECT * FROM photo_comments WHERE photo_id=? AND deleted_at IS NULL ORDER BY created_at ASC`).all(photoId) as Record<string, unknown>[];
@@ -57,8 +56,7 @@ export async function addPhotoComment(user: User, photoId: string, content: stri
   if (!trimmed) return { ok: false, error: '내용을 입력하세요', status: 400 };
   const photo = getPhotoById(photoId);
   if (!photo || photo.deletedAt) return { ok: false, error: 'not found', status: 404 };
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return { ok: false, error: '권한이 없습니다', status: 403 };
+  if (!canViewPhotoWithShares(user, photo)) return { ok: false, error: '권한이 없습니다', status: 403 };
 
   const db = getDb();
   const id = newId();

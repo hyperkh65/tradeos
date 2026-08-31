@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
-import { getPhotoById, getPhotoOwnership } from '@/lib/photos/db';
-import { canViewOwned } from '@/lib/photos/permissions';
+import { getPhotoById, canViewPhotoWithShares } from '@/lib/photos/db';
 import { updatePhotoDescription } from '@/lib/photos/tags';
 import { softDeletePhoto } from '@/lib/photos/trash';
 
@@ -11,8 +10,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const photo = getPhotoById(id);
   if (!photo || photo.deletedAt) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
-  if (!canViewOwned(user, ownerUserId, isPublic)) return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 });
+  if (!canViewPhotoWithShares(user, photo)) return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 });
   return NextResponse.json({ photo });
 }
 

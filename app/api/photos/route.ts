@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { getDb } from '@/lib/db/sqlite';
-import { getFolderById } from '@/lib/photos/folders';
-import { canViewOwned } from '@/lib/photos/permissions';
+import { getFolderById, canViewFolderWithShares } from '@/lib/photos/folders';
 import { listPhotosForUser, type PhotoSortKey } from '@/lib/photos/search';
 
 const SORT_KEYS: PhotoSortKey[] = ['uploaded_desc', 'uploaded_asc', 'captured_desc', 'captured_asc', 'name_asc', 'size_desc'];
@@ -23,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (!hasSearchFilters && folderId) {
     const folder = getFolderById(folderId);
     if (!folder || folder.deletedAt) return NextResponse.json({ error: 'not found' }, { status: 404 });
-    if (!canViewOwned(user, folder.ownerUserId, folder.isPublic)) {
+    if (!canViewFolderWithShares(user, folder)) {
       return NextResponse.json({ error: '권한이 없습니다' }, { status: 403 });
     }
   }

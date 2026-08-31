@@ -1,4 +1,7 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
+import type { User } from '@/types';
+import { canViewOwned } from '@/lib/photos/permissions';
+import { hasInternalShareAccess } from '@/lib/photos/internal-shares';
 
 export interface PhotoRow {
   id: string;
@@ -119,6 +122,17 @@ export function getPhotoOwnership(photo: PhotoRow): { ownerUserId: string | null
   const folder = db.prepare(`SELECT is_public FROM photo_folders WHERE id=?`)
     .get(photo.folderId) as { is_public: number } | undefined;
   return { ownerUserId: photo.uploadedBy, isPublic: folder ? !!folder.is_public : true };
+}
+
+/** getPhotoOwnership 규칙(공개/본인업로드) + 사내 공유(요청서 38번, photo_internal_shares)
+ * 로 view 권한을 받은 경우까지 포함한 조회 권한 판정. favorite/tags/comments/detail GET
+ * 등 "이 사진을 볼 수 있는가"를 묻는 모든 곳에서 canViewOwned 대신 이걸 쓴다. */
+export function canViewPhotoWithShares(user: User, photo: PhotoRow): boolean {
+  const { ownerUserId, isPublic } = getPhotoOwnership(photo);
+  if (canViewOwned(user, ownerUserId, isPublic)) return true;
+  if (hasInternalShareAccess(user.id, 'photo', photo.id, 'view')) return true;
+  if (photo.folderId && hasInternalShareAccess(user.id, 'folder', photo.folderId, 'view')) return true;
+  return false;
 }
 
 /** 중복 감지(요청서 41번) — 삭제되지 않은 사진 중 같은 SHA-256 해시가 있는지 확인. */
