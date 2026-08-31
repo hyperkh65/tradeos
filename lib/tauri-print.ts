@@ -24,12 +24,15 @@ export function isTauri(): boolean {
 }
 
 /**
- * 인쇄용 라우트(예: /print, /costs/invoice-print?id=…)를 연다. 일반 브라우저는 새 탭
- * (window.open)으로 — 원래 화면 상태를 유지한 채 인쇄 탭만 따로 뜸. Tauri는 별도 창을
- * 띄우는 WKWebView delegate가 없어 window.open()이 조용히 실패하므로, 같은 웹뷰 안에서
- * 그냥 이동(location.href)한다 — 인쇄 라우트의 "뒤로가기" 링크로 돌아온다.
+ * 같은 출처(gw.ynk2014.com)의 URL을 새 탭/파일다운로드로 연다 — 인쇄 라우트
+ * (/print, /costs/invoice-print?id=…), 첨부파일 다운로드(선적/발주/매출 서류 등),
+ * 서버생성 PDF/엑셀(거래명세표, 견적 등) 전부 동일한 문제를 겪는다: 일반 브라우저는
+ * window.open()이나 <a target="_blank">로 새 탭이 잘 뜨지만, Tauri(WKWebView)는 새
+ * 창을 만드는 delegate가 구현되어 있지 않아 둘 다 조용히 아무 반응이 없다. Tauri에서는
+ * 같은 웹뷰 안에서 그냥 이동(location.href)한다 — 페이지면 "뒤로가기"로, 파일이면
+ * WKWebView 기본 다운로드 처리로 돌아온다.
  */
-export function openPrintUrl(url: string): void {
+export function openAppUrl(url: string): void {
   if (isTauri()) {
     window.location.href = url;
   } else {

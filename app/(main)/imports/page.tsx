@@ -9,7 +9,7 @@ import {
   AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openPrintUrl } from '@/lib/tauri-print';
+import { openAppUrl } from '@/lib/tauri-print';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   Import, ImportItem, ImportDocument, ImportDocType,
@@ -818,7 +818,10 @@ function ImportModal({
                   {linkedShipment?.documents?.some(d => d.docType === 'invoice') && (
                     <div className="flex items-center gap-1.5 text-xs text-blue-600">
                       <FileText className="w-3.5 h-3.5" />선적 인보이스 있음 —
-                      <a href={linkedShipment.documents.find(d => d.docType === 'invoice')?.url} target="_blank" rel="noopener noreferrer" className="underline">보기</a>
+                      <button type="button" onClick={() => {
+                        const u = linkedShipment.documents.find(d => d.docType === 'invoice')?.url;
+                        if (u) openAppUrl(u);
+                      }} className="underline">보기</button>
                     </div>
                   )}
                   {itemsHaveData ? (
@@ -1707,7 +1710,7 @@ function ImportModal({
                           </span>
                         )}
                         <button type="button"
-                          onClick={() => openPrintUrl(`/purchase-orders/print?id=${encodeURIComponent(linkedPO.id)}`)}
+                          onClick={() => openAppUrl(`/purchase-orders/print?id=${encodeURIComponent(linkedPO.id)}`)}
                           className="ml-auto flex items-center gap-1 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
                           <Download className="w-3 h-3" /> PO PDF
                         </button>
@@ -1717,10 +1720,10 @@ function ImportModal({
                           f.isStamped ? 'bg-teal-50 border-teal-100' : 'bg-orange-50 border-orange-100')}>
                           <FileText className={cn('w-3.5 h-3.5 shrink-0', f.isStamped ? 'text-teal-400' : 'text-orange-400')} />
                           <span className={cn('flex-1 truncate font-medium', f.isStamped ? 'text-teal-900' : 'text-orange-900')}>{f.name}</span>
-                          <a href={f.url} target="_blank" rel="noopener noreferrer"
+                          <button type="button" onClick={() => openAppUrl(f.url)}
                             className={cn('shrink-0', f.isStamped ? 'text-teal-500 hover:text-teal-700' : 'text-orange-500 hover:text-orange-700')}>
                             <Download className="w-3.5 h-3.5" />
-                          </a>
+                          </button>
                         </div>
                       )) : (
                         <div className="px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg text-xs text-orange-700 flex items-center gap-2">
@@ -1785,10 +1788,10 @@ function ImportModal({
                               <span className="text-[10px]">파싱</span>
                             </button>
                           )}
-                          <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                          <button type="button" onClick={() => openAppUrl(doc.url)}
                             className={cn('shrink-0', isBL ? 'text-indigo-500 hover:text-indigo-700' : 'text-blue-500 hover:text-blue-700')}>
                             <Download className="w-3.5 h-3.5" />
-                          </a>
+                          </button>
                         </div>
                       );
                     })}
@@ -1856,7 +1859,7 @@ function ImportModal({
                             <Wand2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></a>
+                        <button type="button" onClick={() => openAppUrl(doc.url)} className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></button>
                         {canEdit && <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600 shrink-0"><X className="w-3.5 h-3.5" /></button>}
                       </div>
                     ))}

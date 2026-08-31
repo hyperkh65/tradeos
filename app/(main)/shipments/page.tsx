@@ -9,6 +9,7 @@ import {
   FileText, Download, File,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { openAppUrl } from '@/lib/tauri-print';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Shipment, CargoItem, ShipDocument, ShipDocType, PurchaseOrder } from '@/types';
@@ -940,9 +941,9 @@ function ShipmentModal({
                     <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', DOC_TYPE_COLOR[doc.docType])}>
                       {doc.docType === 'other' && doc.customName ? doc.customName : DOC_TYPE_LABEL[doc.docType]}
                     </span>
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                    <button type="button" onClick={() => openAppUrl(doc.url)} className="text-blue-500 hover:text-blue-700">
                       <Download className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                     <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600">
                       <X className="w-3.5 h-3.5" />
                     </button>

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { RichEditor } from '@/components/approvals/RichEditor';
 import { DocumentDeleteButton } from '@/components/documents/DocumentDeleteButton';
 import { cn } from '@/lib/utils';
+import { openAppUrl } from '@/lib/tauri-print';
 import {
   Plus, Search, Loader2, FileText, History, X, Save, Send, Printer,
 } from 'lucide-react';
@@ -150,7 +151,7 @@ export default function OfficialDocumentsPage() {
                   <span className="font-semibold text-sm truncate">{selected.title}</span>
                   <div className="ml-auto flex items-center gap-1.5">
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setShowHistory(true)}><History className="w-3.5 h-3.5" />히스토리</Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => window.open(`/api/documents/${selected.id}/pdf`, '_blank')}><Printer className="w-3.5 h-3.5" />PDF</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openAppUrl(`/api/documents/${selected.id}/pdf`)}><Printer className="w-3.5 h-3.5" />PDF</Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openEdit(selected)}>편집</Button>
                   </div>
                 </>

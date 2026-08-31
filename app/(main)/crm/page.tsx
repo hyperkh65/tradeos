@@ -11,7 +11,7 @@ import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-s
 import { calcSettlementTotals, emptySettlementItem, type SettlementItem } from '@/lib/settlement-statement';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { cn } from '@/lib/utils';
-import { triggerPrint } from '@/lib/tauri-print';
+import { triggerPrint, openAppUrl } from '@/lib/tauri-print';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
@@ -1070,10 +1070,10 @@ function CustomStatementModal({ sale, companies, onClose }: { sale: SalesRecord;
         )}
         <div className="p-4 border-t shrink-0 flex flex-wrap gap-2 justify-end">
           <Button type="button" variant="outline" onClick={onClose}>닫기</Button>
-          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/custom-statement/excel`, '_blank')}>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => openAppUrl(`/api/sales/${sale.id}/custom-statement/excel`)}>
             엑셀 다운로드
           </Button>
-          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/custom-statement/pdf`, '_blank')}>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => openAppUrl(`/api/sales/${sale.id}/custom-statement/pdf`)}>
             PDF 다운로드
           </Button>
           <Button type="button" onClick={save} disabled={saving}>
@@ -1247,10 +1247,10 @@ function SettlementStatementModal({ sale, onClose }: { sale: SalesRecord; onClos
         )}
         <div className="p-4 border-t shrink-0 flex flex-wrap gap-2 justify-end">
           <Button type="button" variant="outline" onClick={onClose}>닫기</Button>
-          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/settlement-statement/excel`, '_blank')}>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => openAppUrl(`/api/sales/${sale.id}/settlement-statement/excel`)}>
             엑셀 다운로드
           </Button>
-          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => window.open(`/api/sales/${sale.id}/settlement-statement/pdf`, '_blank')}>
+          <Button type="button" variant="outline" disabled={!savedOnce} onClick={() => openAppUrl(`/api/sales/${sale.id}/settlement-statement/pdf`)}>
             인쇄(PDF)
           </Button>
           <Button type="button" onClick={save} disabled={saving}>

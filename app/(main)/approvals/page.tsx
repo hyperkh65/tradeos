@@ -11,7 +11,7 @@ import {
   Trash2, Link2, Send, Pencil, Eye, ZoomIn, RotateCcw, Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { triggerPrint, openPrintUrl, isTauri } from '@/lib/tauri-print';
+import { triggerPrint, openAppUrl, isTauri } from '@/lib/tauri-print';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const RichEditor = dynamic(() => import('@/components/approvals/RichEditor').then(m => m.RichEditor), { ssr: false });
@@ -323,7 +323,7 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive, onReuse }: {
       // 미구현) — PO/견적서와 같은 /print 라우트(sessionStorage 핸드오프)로 대체한다.
       sessionStorage.setItem('doc_print_html', printContent);
       sessionStorage.setItem('doc_print_title', apr.form_title);
-      openPrintUrl('/print');
+      openAppUrl('/print');
       return;
     }
     const w = window.open('', '_blank');

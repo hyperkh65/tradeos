@@ -8,6 +8,7 @@ import {
   MapPin, Phone, Mail, Search, FilePlus2, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { openAppUrl } from '@/lib/tauri-print';
 
 interface ItemImage { url: string; filename: string; originalName: string; size: number }
 interface RfqItem {
@@ -169,7 +170,7 @@ export default function RfqPage() {
 
   const exportDoc = (kind: 'excel' | 'word' | 'pdf') => {
     if (!selected) { alert('먼저 저장한 뒤 이용할 수 있습니다.'); return; }
-    window.open(`/api/documents/${selected.id}/${kind}`, '_blank');
+    openAppUrl(`/api/documents/${selected.id}/${kind}`);
   };
 
   const filteredList = list.filter(d => !listSearch || d.title.includes(listSearch) || d.businessId.includes(listSearch));

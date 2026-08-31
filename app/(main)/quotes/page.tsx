@@ -8,7 +8,7 @@ import {
   Copy, ChevronDown, Upload, History, Lock, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openPrintUrl } from '@/lib/tauri-print';
+import { openAppUrl } from '@/lib/tauri-print';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
@@ -750,7 +750,7 @@ function QuotePrintModal({ quote, company, companies, products, onClose }: { quo
                 const printTitle = `${quote.businessId}_${safeName}_${quoteDate}`;
                 sessionStorage.setItem('doc_print_html', `<style>${css}</style>${area.outerHTML}`);
                 sessionStorage.setItem('doc_print_title', printTitle);
-                openPrintUrl('/print');
+                openAppUrl('/print');
               }}>
                 <Printer className="w-4 h-4 mr-1" /> 인쇄 / PDF
               </Button>

@@ -1,0 +1,6 @@
+"$schema" = "./schemas/desktop-schema.json"
+
+[[permission]]
+identifier = "allow-native-print"
+description = "Allows invoking the native_print command (macOS 네이티브 인쇄 패널 — window.print()가 WKWebView에서 no-op되는 문제 우회)"
+commands.allow = ["native_print"]

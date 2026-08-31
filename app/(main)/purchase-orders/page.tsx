@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Boxes, X, Loader2, Pencil, Trash2, Printer, Upload, TrendingDown, TrendingUp, History, Maximize2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openPrintUrl } from '@/lib/tauri-print';
+import { openAppUrl } from '@/lib/tauri-print';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { PurchaseOrder } from '@/types';
@@ -812,7 +812,7 @@ function POPrintModal({ po, company, supplierCompany, onClose }: {
     const printTitle = `${po.businessId}_${safeName}_${po.orderDate || new Date().toISOString().slice(0, 10)}`;
     sessionStorage.setItem('doc_print_html', `<style>${css}</style>${area.outerHTML}`);
     sessionStorage.setItem('doc_print_title', printTitle);
-    openPrintUrl('/print');
+    openAppUrl('/print');
   };
 
   return (
