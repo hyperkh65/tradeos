@@ -1983,6 +1983,28 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 재해복구(Disaster Recovery) 시스템 끝 ────────────────────────────────────
 
+  // ── 데스크톱 앱 릴리스(Windows/macOS 설치파일) ───────────────────────────────
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS app_releases (
+      id TEXT PRIMARY KEY,
+      platform TEXT NOT NULL,
+      architecture TEXT NOT NULL,
+      version TEXT NOT NULL,
+      build_number TEXT,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      sha256 TEXT NOT NULL,
+      release_notes TEXT,
+      minimum_os TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_app_releases_platform_active ON app_releases(platform, active, created_at DESC)`);
+  } catch { /* already exists */ }
+  // ── 데스크톱 앱 릴리스 끝 ─────────────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
