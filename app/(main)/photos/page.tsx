@@ -142,11 +142,15 @@ export default function PhotosPage() {
   };
 
   const bulkDownload = () => {
-    for (const id of selectedIds) {
+    if (selectedIds.size === 1) {
       const a = document.createElement('a');
-      a.href = `/api/photos/${id}/media/original`;
+      a.href = `/api/photos/${[...selectedIds][0]}/media/original`;
       a.click();
+      return;
     }
+    const a = document.createElement('a');
+    a.href = `/api/photos/zip?ids=${[...selectedIds].join(',')}`;
+    a.click();
   };
 
   // ── 검색/필터/정렬/무한스크롤(요청서 21~26번) ──────────────────────────────

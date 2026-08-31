@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Lock, Loader2, Download, X, ChevronLeft, ChevronRight, ImageIcon, AlertTriangle } from 'lucide-react';
+import { Lock, Loader2, Download, X, ChevronLeft, ChevronRight, ImageIcon, AlertTriangle, FolderArchive } from 'lucide-react';
 
 interface SharedPhoto { id: string; originalFileName: string; title: string | null; status: string; width: number | null; height: number | null }
 
@@ -18,6 +18,7 @@ export default function PhotoSharePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [allowDownload, setAllowDownload] = useState(false);
   const [allowOriginalDownload, setAllowOriginalDownload] = useState(false);
+  const [allowZip, setAllowZip] = useState(false);
   const [photos, setPhotos] = useState<SharedPhoto[]>([]);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
@@ -41,6 +42,7 @@ export default function PhotoSharePage() {
         setMessage(data.message);
         setAllowDownload(data.allowDownload);
         setAllowOriginalDownload(data.allowOriginalDownload);
+        setAllowZip(data.allowZip);
         setPhotos(data.photos || []);
       }
     } finally {
@@ -106,10 +108,18 @@ export default function PhotoSharePage() {
 
   return (
     <div className="min-h-screen bg-muted/10">
-      <div className="border-b border-border bg-background px-4 py-4">
-        <h1 className="font-semibold text-lg">{title || '공유된 사진'}</h1>
-        {message && <p className="text-sm text-muted-foreground mt-1">{message}</p>}
-        <p className="text-xs text-muted-foreground mt-1">{photos.length}장</p>
+      <div className="border-b border-border bg-background px-4 py-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-semibold text-lg">{title || '공유된 사진'}</h1>
+          {message && <p className="text-sm text-muted-foreground mt-1">{message}</p>}
+          <p className="text-xs text-muted-foreground mt-1">{photos.length}장</p>
+        </div>
+        {allowZip && photos.length > 0 && (
+          <a href={`/api/share/photos/${token}/zip`}
+            className="shrink-0 flex items-center gap-1.5 text-xs px-3 py-2 rounded-md bg-primary text-primary-foreground font-medium">
+            <FolderArchive className="w-3.5 h-3.5" />전체 ZIP 다운로드
+          </a>
+        )}
       </div>
 
       <div className="p-4">

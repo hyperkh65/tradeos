@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveShareByToken, getSharedPhotos, recordShareAccess, shareUnlockCookieName, verifyShareUnlockCookie } from '@/lib/photos/external-shares';
 import { getPhotoById, getDerivative, type DerivativeKind } from '@/lib/photos/db';
 import { downloadPhotoFile } from '@/lib/photos/storage';
+import { getOrCreateWatermarkedPreview } from '@/lib/photos/watermark';
 
 const DERIVATIVE_KINDS: DerivativeKind[] = ['thumb_small', 'thumb_medium', 'preview_large'];
 
@@ -29,9 +30,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     storedPath = photo.storedPath; contentType = photo.mimeType; disposition = 'attachment';
   } else if (DERIVATIVE_KINDS.includes(kind as DerivativeKind)) {
     // 미리보기 표시 자체는 항상 허용(그리드 렌더용) — 다운로드 차단은 원본에서만 적용.
-    const derivative = getDerivative(photoId, kind as DerivativeKind);
-    if (!derivative) return NextResponse.json({ error: '미리보기를 사용할 수 없습니다' }, { status: 404 });
-    storedPath = derivative.storedPath; contentType = 'image/webp'; disposition = 'inline';
+    // 워터마크 옵션이 켜진 공유는 실제 감상 크기(preview_large)만 워터마크를 입혀 내보낸다.
+    if (kind === 'preview_large' && share.watermark) {
+      const watermarked = await getOrCreateWatermarkedPreview(photoId);
+      if (!watermarked) return NextResponse.json({ error: '미리보기를 사용할 수 없습니다' }, { status: 404 });
+      storedPath = watermarked.storedPath; contentType = 'image/webp'; disposition = 'inline';
+    } else {
+      const derivative = getDerivative(photoId, kind as DerivativeKind);
+      if (!derivative) return NextResponse.json({ error: '미리보기를 사용할 수 없습니다' }, { status: 404 });
+      storedPath = derivative.storedPath; contentType = 'image/webp'; disposition = 'inline';
+    }
   } else {
     return NextResponse.json({ error: '알 수 없는 종류입니다' }, { status: 400 });
   }

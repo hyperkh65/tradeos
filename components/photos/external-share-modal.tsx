@@ -16,6 +16,7 @@ export function ExternalShareModal({ photoIds, onClose }: ExternalShareModalProp
   const [expiresInDays, setExpiresInDays] = useState('7');
   const [allowDownload, setAllowDownload] = useState(true);
   const [allowOriginalDownload, setAllowOriginalDownload] = useState(false);
+  const [watermark, setWatermark] = useState(false);
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<{ url: string } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -29,7 +30,7 @@ export function ExternalShareModal({ photoIds, onClose }: ExternalShareModalProp
         body: JSON.stringify({
           targetType: 'selection', photoIds,
           title: title || undefined, password: password || undefined,
-          allowDownload, allowOriginalDownload, allowZip: true, watermark: false,
+          allowDownload, allowOriginalDownload, allowZip: true, watermark,
           expiresInDays: expiresInDays ? Number(expiresInDays) : null,
         }),
       });
@@ -92,6 +93,9 @@ export function ExternalShareModal({ photoIds, onClose }: ExternalShareModalProp
             </label>
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={allowOriginalDownload} onChange={e => setAllowOriginalDownload(e.target.checked)} />원본 다운로드 허용
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={watermark} onChange={e => setWatermark(e.target.checked)} />워터마크 표시(YNK, 감상용 이미지에만)
             </label>
             <button onClick={create} disabled={creating}
               className="w-full h-9 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-1.5">
