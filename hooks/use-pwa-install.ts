@@ -10,7 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export type DetectedPlatform = 'ios' | 'android' | 'windows' | 'macos' | 'other';
 
-function detectPlatform(): DetectedPlatform {
+export function detectPlatform(): DetectedPlatform {
   if (typeof navigator === 'undefined') return 'other';
   const ua = navigator.userAgent;
   // iPadOS 13+는 데스크톱 Safari로 위장해서 UA에 iPad가 안 남는다 — 터치 지원 여부로 추가 판별.

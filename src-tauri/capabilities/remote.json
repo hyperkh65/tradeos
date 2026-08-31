@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote",
+  "description": "그룹웨어 원격 URL(gw.ynk2014.com)에서 실행되는 페이지에게만 허용하는 최소 권한 — 업데이트 확인 화면의 app.getVersion() 호출용.",
+  "remote": {
+    "urls": [
+      "https://gw.ynk2014.com/*"
+    ]
+  },
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:app:allow-version"
+  ]
+}

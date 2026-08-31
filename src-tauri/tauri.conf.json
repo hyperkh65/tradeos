@@ -7,18 +7,8 @@
     "frontendDist": "../tauri-dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "YNK 그룹웨어",
-        "url": "https://gw.ynk2014.com",
-        "width": 1280,
-        "height": 860,
-        "minWidth": 900,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "withGlobalTauri": true,
+    "windows": [],
     "security": {
       "csp": null
     }

@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle, HardDrive, Download, RotateCcw, AlertTriangle, Sparkles, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { LogoMark } from '@/components/brand/logo-mark';
+import { UpdateCheckCard } from '@/components/desktop/update-check-card';
 import { cn } from '@/lib/utils';
 
 type Tab = 'profile' | 'company' | 'notion' | 'security' | 'backup';
@@ -261,6 +262,7 @@ export default function SettingsPage() {
                 <Input value={profile.department} onChange={e => setProfile(p => ({ ...p, department: e.target.value }))} placeholder="수출팀" />
               </div>
               <Button type="submit" disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : '저장'}</Button>
+              <UpdateCheckCard />
             </form>
           )}
 
