@@ -9,7 +9,7 @@ import {
   AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openAppUrl } from '@/lib/tauri-print';
+import { openAppUrl, downloadFile } from '@/lib/tauri-print';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   Import, ImportItem, ImportDocument, ImportDocType,
@@ -820,7 +820,7 @@ function ImportModal({
                       <FileText className="w-3.5 h-3.5" />선적 인보이스 있음 —
                       <button type="button" onClick={() => {
                         const u = linkedShipment.documents.find(d => d.docType === 'invoice')?.url;
-                        if (u) openAppUrl(u);
+                        if (u) downloadFile(u);
                       }} className="underline">보기</button>
                     </div>
                   )}
@@ -1720,7 +1720,7 @@ function ImportModal({
                           f.isStamped ? 'bg-teal-50 border-teal-100' : 'bg-orange-50 border-orange-100')}>
                           <FileText className={cn('w-3.5 h-3.5 shrink-0', f.isStamped ? 'text-teal-400' : 'text-orange-400')} />
                           <span className={cn('flex-1 truncate font-medium', f.isStamped ? 'text-teal-900' : 'text-orange-900')}>{f.name}</span>
-                          <button type="button" onClick={() => openAppUrl(f.url)}
+                          <button type="button" onClick={() => downloadFile(f.url, f.name)}
                             className={cn('shrink-0', f.isStamped ? 'text-teal-500 hover:text-teal-700' : 'text-orange-500 hover:text-orange-700')}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -1788,7 +1788,7 @@ function ImportModal({
                               <span className="text-[10px]">파싱</span>
                             </button>
                           )}
-                          <button type="button" onClick={() => openAppUrl(doc.url)}
+                          <button type="button" onClick={() => downloadFile(doc.url, doc.originalName)}
                             className={cn('shrink-0', isBL ? 'text-indigo-500 hover:text-indigo-700' : 'text-blue-500 hover:text-blue-700')}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -1859,7 +1859,7 @@ function ImportModal({
                             <Wand2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button type="button" onClick={() => openAppUrl(doc.url)} className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => downloadFile(doc.url, doc.originalName)} className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></button>
                         {canEdit && <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600 shrink-0"><X className="w-3.5 h-3.5" /></button>}
                       </div>
                     ))}

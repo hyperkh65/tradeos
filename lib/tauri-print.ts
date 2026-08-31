@@ -24,18 +24,45 @@ export function isTauri(): boolean {
 }
 
 /**
- * 같은 출처(gw.ynk2014.com)의 URL을 새 탭/파일다운로드로 연다 — 인쇄 라우트
- * (/print, /costs/invoice-print?id=…), 첨부파일 다운로드(선적/발주/매출 서류 등),
- * 서버생성 PDF/엑셀(거래명세표, 견적 등) 전부 동일한 문제를 겪는다: 일반 브라우저는
- * window.open()이나 <a target="_blank">로 새 탭이 잘 뜨지만, Tauri(WKWebView)는 새
- * 창을 만드는 delegate가 구현되어 있지 않아 둘 다 조용히 아무 반응이 없다. Tauri에서는
- * 같은 웹뷰 안에서 그냥 이동(location.href)한다 — 페이지면 "뒤로가기"로, 파일이면
- * WKWebView 기본 다운로드 처리로 돌아온다.
+ * 이 앱 안의 다른 "페이지"(예: /print, /purchase-orders/print?id=…, /costs/invoice-print)
+ * 로 이동한다 — 일반 브라우저는 새 탭(window.open)으로, Tauri는 같은 웹뷰 안에서 이동
+ * (location.href)한다. Tauri(WKWebView)는 새 창을 만드는 delegate가 구현되어 있지 않아
+ * window.open()이 조용히 아무 반응 없기 때문 — 대신 페이지 이동 후 "뒤로가기" 버튼으로
+ * 돌아온다.
+ *
+ * ⚠️ PDF/이미지 등 "파일"에는 이 함수를 쓰면 안 된다 — WKWebView가 페이지 대신 파일을
+ * 렌더링해버려서 앱 전체가 그 파일로 바뀌고 뒤로 갈 방법이 없어진다(실사용자 확인된 버그).
+ * 파일 다운로드에는 downloadFile()을 쓴다.
  */
 export function openAppUrl(url: string): void {
   if (isTauri()) {
     window.location.href = url;
   } else {
     window.open(url, '_blank');
+  }
+}
+
+/**
+ * 첨부파일/서버생성 PDF·엑셀 등 "파일"을 다운로드한다. openAppUrl()과 달리 페이지 이동을
+ * 전혀 하지 않는다 — fetch로 받아 Blob으로 만든 뒤 임시 <a download> 클릭으로 저장 창을
+ * 띄운다. 이 방식은 Tauri(WKWebView)든 일반 브라우저든 동일하게 동작하고, PDF/이미지처럼
+ * 브라우저가 인라인으로 열 수 있는 파일 타입이어도 항상 "다운로드"로 처리된다(현재 페이지
+ * 를 벗어나지 않음).
+ */
+export async function downloadFile(url: string, filename?: string): Promise<void> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename || url.split('/').pop()?.split('?')[0] || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '다운로드에 실패했습니다.');
   }
 }

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, Eye, CreditCard, FileSpreadsheet, FileText } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { openAppUrl } from '@/lib/tauri-print';
+import { downloadFile } from '@/lib/tauri-print';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { AccountManageModal } from '@/components/deposits/account-manage-modal';
 
@@ -87,7 +87,7 @@ export default function CommissionsPage() {
               <CreditCard className="w-4 h-4" /> 계좌 관리
             </Button>
             <a href="/api/commissions/export?format=excel"><Button variant="outline" className="gap-1.5"><FileSpreadsheet className="w-4 h-4" /> 엑셀</Button></a>
-            <Button variant="outline" className="gap-1.5" onClick={() => openAppUrl('/api/commissions/export?format=pdf')}><FileText className="w-4 h-4" /> PDF</Button>
+            <Button variant="outline" className="gap-1.5" onClick={() => downloadFile('/api/commissions/export?format=pdf')}><FileText className="w-4 h-4" /> PDF</Button>
             <Button onClick={() => setModalOpen({ open: true })} className="gap-1.5">
               <Plus className="w-4 h-4" /> 커미션 등록
             </Button>
@@ -276,7 +276,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
         <div className="space-y-1">
           {files.map((f, i) => (
             <div key={i} className="flex items-center justify-between text-xs border rounded-lg px-2.5 py-1.5">
-              <button type="button" onClick={() => openAppUrl(f.url)} className="truncate max-w-[220px] hover:underline text-left">{f.originalName}</button>
+              <button type="button" onClick={() => downloadFile(f.url, f.originalName)} className="truncate max-w-[220px] hover:underline text-left">{f.originalName}</button>
               {!readOnly && <button onClick={() => removeFile(type, f)} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>}
             </div>
           ))}
