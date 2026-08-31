@@ -4,6 +4,8 @@ export async function register() {
   startBackupScheduler();
   const { startIndexWorker } = await import('@/lib/ai/worker');
   startIndexWorker();
+  const { startPhotoThumbnailWorker } = await import('@/lib/photos/worker');
+  startPhotoThumbnailWorker();
   const { seedInitialChangeHistory, logSystemChange } = await import('@/lib/backup/change-log');
   seedInitialChangeHistory();
   const { migrateLegacyProviderDefaults } = await import('@/lib/ai/db');
