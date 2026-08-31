@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { PurchaseOrder } from '@/types';
+import { triggerPrint, isTauri } from '@/lib/tauri-print';
 
 const fmtNum = (n: number | undefined, currency: string) => {
   if (!n) return '-';
@@ -65,7 +66,10 @@ function POPrintContent() {
         .print-btn:hover { background: #2a4f82; }
       `}</style>
 
-      <button className="print-btn no-print" onClick={() => window.print()}>🖨 PDF 인쇄</button>
+      {isTauri() && (
+        <button className="print-btn no-print" style={{ right: 160 }} onClick={() => window.history.back()}>← 뒤로가기</button>
+      )}
+      <button className="print-btn no-print" onClick={() => triggerPrint()}>🖨 PDF 인쇄</button>
 
       <div className="header-row">
         <div>

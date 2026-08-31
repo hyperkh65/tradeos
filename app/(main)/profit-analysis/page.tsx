@@ -10,6 +10,7 @@ import {
   Copy, Printer, Upload, Folder, Download, Archive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { triggerPrint } from '@/lib/tauri-print';
 import { useState, useEffect, useCallback } from 'react';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -462,7 +463,7 @@ export default function ProfitAnalysisPage() {
   // ── Print ─────────────────────────────────────────────────────────────────────
 
   function handlePrint() {
-    window.print();
+    triggerPrint();
   }
 
   // ── Excel export (서버 API → ExcelJS 표 형식) ────────────────────────────────

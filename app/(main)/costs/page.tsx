@@ -6,6 +6,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { openPrintUrl } from '@/lib/tauri-print';
 import {
   Plus, X, FileText, Download, Check, AlertCircle, Clock, ChevronDown,
   Printer, Search, Trash2, Upload, Paperclip, Sparkles, Eye,
@@ -1098,7 +1099,7 @@ function CostModal({ record, onClose, onSave }: {
         setCreatedInvoiceId(invId);
       }
       onSave();
-      if (invId) window.open(`/costs/invoice-print?id=${invId}`, '_blank');
+      if (invId) openPrintUrl(`/costs/invoice-print?id=${invId}`);
     } catch (e) { alert(`오류: ${e}`); }
     finally { setSaving(false); }
   };
@@ -1134,7 +1135,7 @@ function CostModal({ record, onClose, onSave }: {
           <div className="flex items-center gap-2">
             {!isNew && (form.disposition === 'internal' || isDetailType) && (
               <button type="button"
-                onClick={() => window.open(isDetailType ? `/costs/cert-print?id=${record!.id}` : `/costs/expense-print?id=${record!.id}`, '_blank')}
+                onClick={() => openPrintUrl(isDetailType ? `/costs/cert-print?id=${record!.id}` : `/costs/expense-print?id=${record!.id}`)}
                 className="flex items-center gap-1.5 text-xs text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50">
                 <Printer className="w-3.5 h-3.5" />{isDetailType ? '인보이스 출력' : '비용서 출력'}
               </button>
@@ -1526,7 +1527,7 @@ function CostModal({ record, onClose, onSave }: {
               {createdInvoiceId ? (
                 <div className="flex items-center gap-2">
                   <div className="text-xs text-green-700 flex items-center gap-1"><Check className="w-3.5 h-3.5" />인보이스 발행됨</div>
-                  <button type="button" onClick={() => window.open(`/costs/invoice-print?id=${createdInvoiceId}`, '_blank')}
+                  <button type="button" onClick={() => openPrintUrl(`/costs/invoice-print?id=${createdInvoiceId}`)}
                     className="text-xs border border-green-400 text-green-700 px-2.5 py-1 rounded-lg hover:bg-green-100 flex items-center gap-1">
                     <Printer className="w-3.5 h-3.5" />인보이스 출력
                   </button>
@@ -1830,7 +1831,7 @@ function ForeignInvoiceModal({ records, onClose, onSave }: {
       if (!res.ok) throw new Error('저장 실패');
       const data = await res.json();
       onSave();
-      if (data.data?.id) window.open(`/costs/invoice-print?id=${data.data.id}`, '_blank');
+      if (data.data?.id) openPrintUrl(`/costs/invoice-print?id=${data.data.id}`);
     } catch (e) { alert(`오류: ${e}`); }
     finally { setSaving(false); }
   };
@@ -2193,12 +2194,12 @@ function CostsPageInner() {
                         <td className="px-3 py-2 whitespace-nowrap">
                           {r.isAutoAllocated && <span className="text-[10px] text-blue-400">자동</span>}
                           {r.disposition === 'internal' && (
-                            <button type="button" onClick={e => { e.stopPropagation(); window.open(`/costs/expense-print?id=${r.id}`, '_blank'); }} className="text-[10px] text-slate-400 hover:text-slate-700 ml-1" title="비용서 출력">
+                            <button type="button" onClick={e => { e.stopPropagation(); openPrintUrl(`/costs/expense-print?id=${r.id}`); }} className="text-[10px] text-slate-400 hover:text-slate-700 ml-1" title="비용서 출력">
                               <Printer className="w-3 h-3" />
                             </button>
                           )}
                           {DETAIL_COST_TYPES.has(r.costType) && (
-                            <button type="button" onClick={e => { e.stopPropagation(); window.open(`/costs/cert-print?id=${r.id}`, '_blank'); }} className="text-[10px] text-orange-400 hover:text-orange-700 ml-1" title="인보이스 출력">
+                            <button type="button" onClick={e => { e.stopPropagation(); openPrintUrl(`/costs/cert-print?id=${r.id}`); }} className="text-[10px] text-orange-400 hover:text-orange-700 ml-1" title="인보이스 출력">
                               <FileText className="w-3 h-3" />
                             </button>
                           )}
@@ -2231,7 +2232,7 @@ function CostsPageInner() {
                           {inv.status === 'draft' ? '초안' : inv.status === 'sent' ? '발송됨' : inv.status === 'paid' ? '수금완료' : '취소'}
                         </div>
                       </div>
-                      <button onClick={() => window.open(`/costs/invoice-print?id=${inv.id}`, '_blank')} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded">
+                      <button onClick={() => openPrintUrl(`/costs/invoice-print?id=${inv.id}`)} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded">
                         <Download className="w-4 h-4" />
                       </button>
                     </div>

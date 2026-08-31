@@ -11,6 +11,7 @@ import { calcTradeStatementTotals, type TradeStatementItem } from '@/lib/trade-s
 import { calcSettlementTotals, emptySettlementItem, type SettlementItem } from '@/lib/settlement-statement';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { cn } from '@/lib/utils';
+import { triggerPrint } from '@/lib/tauri-print';
 
 const ADMIN_PASSWORD = '1209';
 const SALE_TYPES = ['일반', '직수출', '내수', '샘플', '반품'];
@@ -1285,8 +1286,8 @@ function SalePrintModal({ sale, company, companies, onClose }: {
   const handlePrint = () => {
     const orig = document.title;
     document.title = `${sale.businessId}_${sale.customer}_${sale.saleDate}`.replace(/\s/g, '_');
-    window.print();
     window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+    triggerPrint().finally(() => { document.title = orig; });
   };
 
   const td: React.CSSProperties = { padding: '6px 8px', border: '1px solid #e0e0e0', verticalAlign: 'middle' };

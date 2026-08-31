@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { CostRecord, CostLineItem } from '@/app/api/cost-records/route';
+import { triggerPrint, isTauri } from '@/lib/tauri-print';
 
 const TYPE_TITLES: Record<string, { ko: string; en: string }> = {
   certification: { ko: '인증비 청구서', en: 'CERTIFICATION INVOICE' },
@@ -118,7 +119,10 @@ function CertPrintContent() {
         .print-btn { position: fixed; top: 18px; right: 18px; background: #1e3a5f; color: white; border: none; padding: 10px 22px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
       `}</style>
 
-      <button className="no-print print-btn" onClick={() => window.print()}>🖨 인쇄 / PDF</button>
+      {isTauri() && (
+        <button className="no-print print-btn" style={{ right: 160 }} onClick={() => window.history.back()}>← 뒤로가기</button>
+      )}
+      <button className="no-print print-btn" onClick={() => triggerPrint()}>🖨 인쇄 / PDF</button>
 
       <div style={{ padding: '0 0 40px' }}>
         {/* ── 헤더 배너 ── */}

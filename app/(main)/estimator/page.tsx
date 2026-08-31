@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { triggerPrint } from '@/lib/tauri-print';
 import {
   Plus, Trash2, Upload, Copy, FileSpreadsheet, X, Check,
   Printer, ChevronDown, ChevronRight, Paperclip, FileDown, Save, RefreshCw,
@@ -627,8 +628,7 @@ export default function EstimatorPage() {
     const parts = [draft.name, dateStr, userName].filter(Boolean);
     const prev = document.title;
     document.title = parts.join('_');
-    window.print();
-    setTimeout(() => { document.title = prev; }, 2000);
+    triggerPrint().finally(() => { document.title = prev; });
   };
 
   const inCls = 'h-7 text-xs px-1.5 w-full';

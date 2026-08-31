@@ -9,6 +9,7 @@ import {
   AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { openPrintUrl } from '@/lib/tauri-print';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   Import, ImportItem, ImportDocument, ImportDocType,
@@ -1706,7 +1707,7 @@ function ImportModal({
                           </span>
                         )}
                         <button type="button"
-                          onClick={() => window.open(`/purchase-orders/print?id=${encodeURIComponent(linkedPO.id)}`, '_blank')}
+                          onClick={() => openPrintUrl(`/purchase-orders/print?id=${encodeURIComponent(linkedPO.id)}`)}
                           className="ml-auto flex items-center gap-1 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
                           <Download className="w-3 h-3" /> PO PDF
                         </button>

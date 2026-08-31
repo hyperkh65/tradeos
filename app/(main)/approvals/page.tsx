@@ -11,6 +11,7 @@ import {
   Trash2, Link2, Send, Pencil, Eye, ZoomIn, RotateCcw, Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { triggerPrint, openPrintUrl, isTauri } from '@/lib/tauri-print';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const RichEditor = dynamic(() => import('@/components/approvals/RichEditor').then(m => m.RichEditor), { ssr: false });
@@ -317,6 +318,14 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive, onReuse }: {
   ${attachments.length > 0 ? `<p class="section-title">첨부파일</p><div class="attachments">${attachments.map(a => `<div class="att-item">📎 ${a.original_name} (${formatFileSize(a.size)})</div>`).join('')}</div>` : ''}
 </body>
 </html>`;
+    if (isTauri()) {
+      // Tauri는 window.open('', '_blank')으로 새 창을 못 띄운다(팝업용 WKWebView delegate
+      // 미구현) — PO/견적서와 같은 /print 라우트(sessionStorage 핸드오프)로 대체한다.
+      sessionStorage.setItem('doc_print_html', printContent);
+      sessionStorage.setItem('doc_print_title', apr.form_title);
+      openPrintUrl('/print');
+      return;
+    }
     const w = window.open('', '_blank');
     if (w) { w.document.write(printContent); w.document.close(); w.focus(); w.print(); }
   };
@@ -371,7 +380,7 @@ function ApprovalDetail({ apr, myId, myName, onAction, onArchive, onReuse }: {
               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={handlePrint}>
                 <Download className="w-3.5 h-3.5" />PDF
               </Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={() => window.print()}>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="인쇄" onClick={() => triggerPrint()}>
                 <Printer className="w-3.5 h-3.5" />
               </Button>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={apr.archived ? '보관 해제' : '보관'} onClick={onArchive}>

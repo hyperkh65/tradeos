@@ -62,11 +62,21 @@ fn resolve_server_url(app: &tauri::AppHandle) -> Url {
     Url::parse(&fallback).unwrap_or_else(|_| Url::parse(DEFAULT_SERVER_URL).expect("default server url must be valid"))
 }
 
+// JS window.print()는 WKWebView(macOS)에서 print panel delegate가 없으면 조용히
+// no-op된다. WebviewWindow::print()는 이 문제를 우회하는 네이티브 인쇄 패널 호출이다
+// (Tauri 2.11 기준 macOS/wry에서만 지원 — 다른 플랫폼에서는 에러를 반환하고, 그 경우
+// JS 쪽(lib/tauri-print.ts)에서 window.print()로 폴백한다).
+#[tauri::command]
+fn native_print(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![native_print])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

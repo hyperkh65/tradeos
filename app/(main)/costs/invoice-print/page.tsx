@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { ForeignInvoice } from '@/app/api/foreign-invoices/route';
+import { triggerPrint, isTauri } from '@/lib/tauri-print';
 
 interface CompanySettings {
   name: string; ceo: string; bizNo: string; bizType: string; bizItem: string;
@@ -88,11 +89,14 @@ function InvoicePrintContent() {
         .print-btn:hover { background: #333; }
       `}</style>
 
+      {isTauri() && (
+        <button className="no-print print-btn" style={{ right: 160 }} onClick={() => window.history.back()}>← 뒤로가기</button>
+      )}
       <button className="no-print print-btn" onClick={() => {
         const orig = document.title;
         document.title = inv.businessId;
-        window.print();
         window.addEventListener('afterprint', () => { document.title = orig; }, { once: true });
+        triggerPrint().finally(() => { document.title = orig; });
       }}>🖨 PDF 인쇄</button>
 
       <div id="inv-print-area" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', background: 'white', padding: '10mm', boxSizing: 'border-box', position: 'relative' }}>

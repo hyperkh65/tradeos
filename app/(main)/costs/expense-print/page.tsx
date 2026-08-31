@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { CostRecord } from '@/app/api/cost-records/route';
+import { triggerPrint, isTauri } from '@/lib/tauri-print';
 
 const COST_TYPE_LABELS: Record<string, string> = {
   duty: '관세', vat: '수입부가세', customs_broker: '관세사비',
@@ -49,7 +50,10 @@ function ExpensePrintContent() {
         .seal-box { border: 2px solid #333; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #555; }
       `}</style>
 
-      <button className="print-btn no-print" onClick={() => window.print()}>🖨 비용서 인쇄</button>
+      {isTauri() && (
+        <button className="print-btn no-print" style={{ right: 160 }} onClick={() => window.history.back()}>← 뒤로가기</button>
+      )}
+      <button className="print-btn no-print" onClick={() => triggerPrint()}>🖨 비용서 인쇄</button>
 
       <div style={{ padding: '40px 50px', maxWidth: 800, margin: '0 auto' }}>
         {/* 헤더 */}
