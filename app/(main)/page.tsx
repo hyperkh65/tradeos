@@ -1,6 +1,7 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
+import { InstallBanner } from '@/components/desktop/install-banner';
 import {
   Boxes, Ship, AlertCircle, CheckSquare, FileText, Clock,
   TrendingUp, TrendingDown, BarChart2, Users, Package,
@@ -342,6 +343,8 @@ export default function HomePage() {
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader />
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
+
+        <InstallBanner />
 
         {/* ── 헤더 ── */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
