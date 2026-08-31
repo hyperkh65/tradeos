@@ -8,10 +8,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Images, Folder, FolderPlus, ChevronRight, ChevronDown, Upload, Loader2,
   Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
-  Search, SlidersHorizontal, Calendar as CalendarIcon, ArrowUpDown,
+  Search, SlidersHorizontal, Calendar as CalendarIcon, ArrowUpDown, Trash2,
 } from 'lucide-react';
 import { PhotoViewer } from '@/components/photos/photo-viewer';
 import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
+import { TrashView } from '@/components/photos/trash-view';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -78,6 +79,7 @@ export default function PhotosPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
 
   // ── 검색/필터/정렬/무한스크롤(요청서 21~26번) ──────────────────────────────
   const [filters, setFilters] = useState<PhotoFilters>(EMPTY_FILTERS);
@@ -287,9 +289,14 @@ export default function PhotosPage() {
             </button>
           </div>
           <div className={cn('flex items-center gap-1.5 px-1.5 py-1 rounded-md text-sm cursor-pointer hover:bg-muted mb-0.5',
-            selectedFolderId === null && 'bg-primary/10 text-primary font-medium')}
-            onClick={() => setSelectedFolderId(null)}>
+            !showTrash && selectedFolderId === null && 'bg-primary/10 text-primary font-medium')}
+            onClick={() => { setShowTrash(false); setSelectedFolderId(null); }}>
             <Images className="w-3.5 h-3.5 text-primary" /> 전체 사진
+          </div>
+          <div className={cn('flex items-center gap-1.5 px-1.5 py-1 rounded-md text-sm cursor-pointer hover:bg-muted mb-1',
+            showTrash && 'bg-primary/10 text-primary font-medium')}
+            onClick={() => { setShowTrash(true); setSelectedPhoto(null); }}>
+            <Trash2 className="w-3.5 h-3.5 text-muted-foreground" /> 휴지통
           </div>
           {showNewFolder === 'root' && (
             <div className="flex items-center gap-1 py-1 pl-1.5">
@@ -301,6 +308,10 @@ export default function PhotosPage() {
           {tree.map(f => <FolderNode key={f.id} node={f} depth={0} />)}
         </div>
 
+        {showTrash ? (
+          <TrashView isAdmin={currentUser?.role === 'admin'} />
+        ) : (
+        <>
         {/* ── 가운데: 그리드 ── */}
         <div
           className={cn('flex-1 flex flex-col min-w-0 relative', dragOver && 'ring-2 ring-primary ring-inset')}
@@ -482,7 +493,25 @@ export default function PhotosPage() {
           <div className="w-72 shrink-0 border-l border-border overflow-y-auto p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-muted-foreground">사진 정보</span>
-              <button onClick={() => setSelectedPhoto(null)}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+              <div className="flex items-center gap-2">
+                {!!currentUser && (currentUser.id === selectedPhoto.uploadedBy || currentUser.role === 'admin') && (
+                  <button
+                    title="휴지통으로 이동"
+                    onClick={async () => {
+                      if (!confirm(`"${selectedPhoto.originalFileName}"을(를) 휴지통으로 이동할까요?`)) return;
+                      const res = await fetch(`/api/photos/${selectedPhoto.id}`, { method: 'DELETE' });
+                      if (res.ok) {
+                        setPhotos(prev => prev.filter(p => p.id !== selectedPhoto.id));
+                        setSelectedPhoto(null);
+                      }
+                    }}
+                    className="text-muted-foreground hover:text-red-500"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button onClick={() => setSelectedPhoto(null)}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+              </div>
             </div>
             <button
               type="button"
@@ -521,6 +550,8 @@ export default function PhotosPage() {
               }}
             />
           </div>
+        )}
+        </>
         )}
       </div>
 
