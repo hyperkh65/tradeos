@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container, Images,
 } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
@@ -72,6 +72,7 @@ const navGroups = [
     label: '문서',
     items: [
       { label: '파일', href: '/files', icon: FolderOpen },
+      { label: '사진첩', href: '/photos', icon: Images },
       { label: '문서양식', href: '/documents', icon: FileText },
     ],
   },

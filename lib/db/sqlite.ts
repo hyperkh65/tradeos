@@ -2005,6 +2005,283 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 데스크톱 앱 릴리스 끝 ─────────────────────────────────────────────────
 
+  // ── 사진첩(Photo Library) 시작 ───────────────────────────────────────────
+  // 원본은 NAS(lib/photos/storage.ts → lib/storage/nas.ts, 기존 UPLOAD_DIR 하위
+  // photos/ 폴더)에 그대로 보관하고, 여기는 metadata와 관계만 저장한다(BLOB 저장 금지).
+  // 폴더(photo_folders)=실제 저장 위치, 앨범(photo_albums)=여러 폴더 사진을 묶는 논리적
+  // 컬렉션 — 앨범에 넣어도 원본 복제 없음(photo_album_items가 참조만 함).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_folders (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      parent_folder_id TEXT,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      owner_user_id TEXT,
+      cover_photo_id TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      deleted_by TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photos (
+      id TEXT PRIMARY KEY,
+      folder_id TEXT,
+      original_file_name TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      extension TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      hash TEXT NOT NULL,
+      captured_at TEXT,
+      camera_make TEXT,
+      camera_model TEXT,
+      orientation INTEGER,
+      gps_lat REAL,
+      gps_lng REAL,
+      has_gps INTEGER NOT NULL DEFAULT 0,
+      title TEXT,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'processing',
+      preview_error TEXT,
+      uploaded_by TEXT,
+      uploaded_by_name TEXT,
+      uploaded_at TEXT NOT NULL,
+      updated_by TEXT,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      deleted_by TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 파생본(썸네일/프리뷰/워터마크) — photos row와 분리해 종류별 여러 개, 재생성 시
+  // UNIQUE(photo_id, kind)로 덮어쓰기(중복 누적 방지).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_derivatives (
+      id TEXT PRIMARY KEY,
+      photo_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      format TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(photo_id, kind)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_albums (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      owner_user_id TEXT,
+      cover_photo_id TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      deleted_by TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_album_items (
+      id TEXT PRIMARY KEY,
+      album_id TEXT NOT NULL,
+      photo_id TEXT NOT NULL,
+      added_by TEXT,
+      added_at TEXT NOT NULL,
+      UNIQUE(album_id, photo_id)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_tags (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_tag_links (
+      photo_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (photo_id, tag_id)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_comments (
+      id TEXT PRIMARY KEY,
+      photo_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      deleted_at TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_favorites (
+      photo_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (photo_id, user_id)
+    )`);
+  } catch { /* already exists */ }
+
+  // 업무 Entity 연결 — expenses.related_type/related_id와 동일한 제네릭 패턴.
+  // entity_id는 각 엔티티 테이블의 id(TEXT, business_id 아님)를 참조.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_entity_links (
+      id TEXT PRIMARY KEY,
+      photo_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(photo_id, entity_type, entity_id)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_internal_shares (
+      id TEXT PRIMARY KEY,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      shared_with_user_id TEXT NOT NULL,
+      permission_level TEXT NOT NULL DEFAULT 'view',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 외부 공유 — approval_doc_links/supplier_request_links와 동일한 보안 패턴
+  // (token_hash가 실제 인증 경로, token_encrypted는 생성자 재열람 편의용)에
+  // 비밀번호(scrypt 해시, 평문/역가능 암호화 금지)와 만료를 추가한 확장판.
+  // target_type='selection'일 때는 target_id를 비워두고 photo_share_items로 개별
+  // 사진 목록을 참조한다(1장/여러장/앨범/폴더 전부 지원, 요청서 27번).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_shares (
+      id TEXT PRIMARY KEY,
+      target_type TEXT NOT NULL,
+      target_id TEXT,
+      token_hash TEXT UNIQUE NOT NULL,
+      token_encrypted TEXT,
+      title TEXT,
+      message TEXT,
+      password_hash TEXT,
+      password_salt TEXT,
+      allow_download INTEGER NOT NULL DEFAULT 1,
+      allow_original_download INTEGER NOT NULL DEFAULT 0,
+      allow_zip INTEGER NOT NULL DEFAULT 1,
+      watermark INTEGER NOT NULL DEFAULT 0,
+      starts_at TEXT,
+      expires_at TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoked_by TEXT,
+      revoked_reason TEXT,
+      last_accessed_at TEXT,
+      view_count INTEGER NOT NULL DEFAULT 0,
+      download_count INTEGER NOT NULL DEFAULT 0
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_share_items (
+      share_id TEXT NOT NULL,
+      photo_id TEXT NOT NULL,
+      PRIMARY KEY (share_id, photo_id)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_share_access_logs (
+      id TEXT PRIMARY KEY,
+      share_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 요청서 13번 전체 액션(UPLOAD/MOVE/COPY/ADD_TO_ALBUM/... /PERMANENT_DELETE) 기록,
+  // 일반 사용자가 삭제할 수 없게 애플리케이션 레벨에서만 write(별도 삭제 API 없음).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_audit_logs (
+      id TEXT PRIMARY KEY,
+      photo_id TEXT,
+      user_id TEXT,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 백그라운드 썸네일/프리뷰 생성 큐 — lib/ai/db.ts의 ai_index_jobs와 동일한 패턴
+  // (claim-then-process + stale sweep), lib/photos/worker.ts가 폴링한다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_jobs (
+      id TEXT PRIMARY KEY,
+      photo_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      processed_at TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 단일 행 설정 테이블(id='default') — ai_settings와 유사하게 관리자 화면에서 UPDATE.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS photo_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      max_upload_size_mb INTEGER NOT NULL DEFAULT 50,
+      max_files_per_batch INTEGER NOT NULL DEFAULT 50,
+      allowed_extensions TEXT NOT NULL DEFAULT 'jpg,jpeg,png,webp,heic,heif,gif',
+      trash_retention_days INTEGER NOT NULL DEFAULT 30,
+      allow_external_share INTEGER NOT NULL DEFAULT 1,
+      max_external_share_days INTEGER NOT NULL DEFAULT 30,
+      allow_passwordless_external_share INTEGER NOT NULL DEFAULT 1,
+      default_allow_original_download INTEGER NOT NULL DEFAULT 0,
+      default_watermark INTEGER NOT NULL DEFAULT 0,
+      show_exif_gps INTEGER NOT NULL DEFAULT 0,
+      duplicate_policy TEXT NOT NULL DEFAULT 'ask',
+      thumb_small_px INTEGER NOT NULL DEFAULT 240,
+      thumb_medium_px INTEGER NOT NULL DEFAULT 480,
+      preview_large_px INTEGER NOT NULL DEFAULT 1600,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT
+    )`);
+  } catch { /* already exists */ }
+  // ── 사진첩(Photo Library) 끝 ─────────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -2074,6 +2351,29 @@ function ensureIndexes(db: Database.Database) {
     `CREATE INDEX IF NOT EXISTS idx_supplier_closures_project   ON supplier_closure_snapshots(project_id, closed_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_supplier_audit_project      ON supplier_audit_logs(project_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_supplier_projects_status    ON supplier_request_projects(status, created_at DESC)`,
+    // 사진첩 — 그리드 조회(폴더별 최신순), 촬영일 Timeline, 업로더/휴지통 필터, 중복해시 조회가 빈번함
+    `CREATE INDEX IF NOT EXISTS idx_photos_folder        ON photos(folder_id, deleted_at, uploaded_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_captured       ON photos(captured_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_uploaded_by    ON photos(uploaded_by, uploaded_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_deleted        ON photos(deleted_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_hash           ON photos(hash)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_derivatives_photo ON photo_derivatives(photo_id, kind)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_folders_parent  ON photo_folders(parent_folder_id, deleted_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_album_items_album ON photo_album_items(album_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_album_items_photo ON photo_album_items(photo_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_tag_links_tag   ON photo_tag_links(tag_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_comments_photo  ON photo_comments(photo_id, created_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_favorites_user  ON photo_favorites(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_entity_links_entity ON photo_entity_links(entity_type, entity_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_entity_links_photo  ON photo_entity_links(photo_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_internal_shares_target ON photo_internal_shares(target_type, target_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_internal_shares_user   ON photo_internal_shares(shared_with_user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_shares_token    ON photo_shares(token_hash, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_share_items_share ON photo_share_items(share_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_share_access_logs_share ON photo_share_access_logs(share_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_audit_logs_photo ON photo_audit_logs(photo_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_jobs_status     ON photo_jobs(status, created_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_photo_jobs_photo      ON photo_jobs(photo_id)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }
