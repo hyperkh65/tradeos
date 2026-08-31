@@ -20,8 +20,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: npm install
+      # 데스크톱 셸은 원격 URL을 그대로 로드하는 얇은 래퍼라 프론트엔드 빌드가 필요
+      # 없다 — 필요한 건 @tauri-apps/cli뿐이다. package.json 전체로 `npm install`을
+      # 돌리면 그룹웨어 웹앱의 네이티브 모듈(better-sqlite3 등)까지 컴파일하려다
+      # Visual Studio C++ 빌드 도구가 없어서 실패한다(실제로 겪은 에러).
+      - name: Install Tauri CLI
+        run: npm install --no-save @tauri-apps/cli@^2.11.4
 
       - name: Build Windows installers
         run: npx tauri build
