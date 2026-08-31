@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Images, Folder, FolderPlus, ChevronRight, ChevronDown, Upload, Loader2,
-  Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw,
+  Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
 } from 'lucide-react';
+import { PhotoViewer } from '@/components/photos/photo-viewer';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -19,6 +20,7 @@ interface Photo {
   id: string; originalFileName: string; width: number | null; height: number | null;
   fileSize: number; status: 'processing' | 'ready' | 'failed'; capturedAt: string | null;
   uploadedAt: string; uploadedBy: string; uploadedByName: string; title: string | null; folderId: string | null;
+  isFavorited: boolean;
 }
 type ViewMode = 'grid-large' | 'grid-medium' | 'grid-small' | 'list';
 type UploadItem = { file: File; status: 'pending' | 'uploading' | 'ok' | 'duplicate' | 'error'; error?: string };
@@ -52,6 +54,7 @@ export default function PhotosPage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid-medium');
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState<string | null | 'root'>(null);
@@ -286,10 +289,11 @@ export default function PhotosPage() {
               </table>
             ) : (
               <div className={cn('grid gap-2', GRID_SIZE_CLASS[viewMode])}>
-                {photos.map(p => (
-                  <button key={p.id} type="button" onClick={() => setSelectedPhoto(p)}
+                {photos.map((p, i) => (
+                  <button key={p.id} type="button" onClick={() => setSelectedPhoto(p)} onDoubleClick={() => setViewerIndex(i)}
                     className={cn('aspect-square rounded-lg overflow-hidden border-2 border-transparent bg-muted relative group',
                       selectedPhoto?.id === p.id && 'border-primary')}>
+                    {p.isFavorited && <Star className="absolute top-1 right-1 w-3.5 h-3.5 fill-yellow-400 text-yellow-400 z-10 drop-shadow" />}
                     {p.status === 'ready' ? (
                       <img src={`/api/photos/${p.id}/media/thumb_medium`} alt={p.originalFileName} className="w-full h-full object-cover" loading="lazy" />
                     ) : p.status === 'processing' ? (
@@ -324,11 +328,22 @@ export default function PhotosPage() {
               <span className="text-xs font-semibold text-muted-foreground">사진 정보</span>
               <button onClick={() => setSelectedPhoto(null)}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
             </div>
-            <div className="aspect-video rounded-lg overflow-hidden bg-muted mb-3">
+            <button
+              type="button"
+              onClick={() => {
+                const idx = photos.findIndex(p => p.id === selectedPhoto.id);
+                if (idx >= 0) setViewerIndex(idx);
+              }}
+              className="block w-full aspect-video rounded-lg overflow-hidden bg-muted mb-3 relative group"
+              title="크게 보기"
+            >
               {selectedPhoto.status === 'ready' && (
                 <img src={`/api/photos/${selectedPhoto.id}/media/preview_large`} alt="" className="w-full h-full object-contain" />
               )}
-            </div>
+              <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Maximize2 className="w-5 h-5 text-white" />
+              </span>
+            </button>
             <div className="space-y-1.5 text-xs">
               <div className="font-medium text-sm break-all">{selectedPhoto.title || selectedPhoto.originalFileName}</div>
               <InfoRow label="파일명" value={selectedPhoto.originalFileName} />
@@ -341,6 +356,19 @@ export default function PhotosPage() {
           </div>
         )}
       </div>
+
+      {viewerIndex !== null && photos[viewerIndex] && (
+        <PhotoViewer
+          photos={photos}
+          index={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+          onIndexChange={setViewerIndex}
+          onFavoriteToggled={(photoId, favorited) => {
+            setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, isFavorited: favorited } : p));
+            setSelectedPhoto(prev => prev && prev.id === photoId ? { ...prev, isFavorited: favorited } : prev);
+          }}
+        />
+      )}
     </div>
   );
 }

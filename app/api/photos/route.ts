@@ -27,7 +27,13 @@ export async function GET(req: NextRequest) {
     ? db.prepare(`SELECT * FROM photos WHERE folder_id=? AND deleted_at IS NULL ORDER BY uploaded_at DESC LIMIT 500`).all(folderId)
     : db.prepare(`SELECT * FROM photos WHERE folder_id IS NULL AND deleted_at IS NULL ORDER BY uploaded_at DESC LIMIT 500`).all();
 
-  const photos = (rows as Record<string, unknown>[]).map(r => ({
+  const typedRows = rows as Record<string, unknown>[];
+  const favoriteIds = typedRows.length
+    ? new Set((db.prepare(`SELECT photo_id FROM photo_favorites WHERE user_id=? AND photo_id IN (${typedRows.map(() => '?').join(',')})`)
+        .all(user.id, ...typedRows.map(r => r.id as string)) as { photo_id: string }[]).map(r => r.photo_id))
+    : new Set<string>();
+
+  const photos = typedRows.map(r => ({
     id: r.id,
     originalFileName: r.original_file_name,
     width: r.width,
@@ -40,6 +46,7 @@ export async function GET(req: NextRequest) {
     uploadedByName: r.uploaded_by_name,
     title: r.title,
     folderId: r.folder_id,
+    isFavorited: favoriteIds.has(r.id as string),
   }));
 
   return NextResponse.json({ photos });
