@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle, HardDrive, Download, RotateCcw, AlertTriangle, Sparkles, ShieldCheck } from 'lucide-react';
+import { Loader2, CheckCircle2, User, Key, Database, Building2, RefreshCw, PlusCircle, HardDrive, Download, RotateCcw, AlertTriangle, Sparkles, ShieldCheck, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { LogoMark } from '@/components/brand/logo-mark';
 import { UpdateCheckCard } from '@/components/desktop/update-check-card';
@@ -237,6 +237,11 @@ export default function SettingsPage() {
             {isAdmin && (
               <Link href="/settings/disaster-recovery" className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors -mb-px whitespace-nowrap">
                 <ShieldCheck className="w-4 h-4" />재해복구
+              </Link>
+            )}
+            {isAdmin && (
+              <Link href="/settings/app-releases" className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors -mb-px whitespace-nowrap">
+                <Rocket className="w-4 h-4" />앱 및 설치
               </Link>
             )}
           </div>
