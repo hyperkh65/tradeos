@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     uploadedBy: r.uploaded_by,
     uploadedByName: r.uploaded_by_name,
     title: r.title,
+    description: r.description,
     folderId: r.folder_id,
     isFavorited: favoriteIds.has(r.id as string),
   }));

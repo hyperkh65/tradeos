@@ -10,6 +10,7 @@ import {
   Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
 } from 'lucide-react';
 import { PhotoViewer } from '@/components/photos/photo-viewer';
+import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -19,7 +20,7 @@ interface PhotoFolder {
 interface Photo {
   id: string; originalFileName: string; width: number | null; height: number | null;
   fileSize: number; status: 'processing' | 'ready' | 'failed'; capturedAt: string | null;
-  uploadedAt: string; uploadedBy: string; uploadedByName: string; title: string | null; folderId: string | null;
+  uploadedAt: string; uploadedBy: string; uploadedByName: string; title: string | null; description: string | null; folderId: string | null;
   isFavorited: boolean;
 }
 type ViewMode = 'grid-large' | 'grid-medium' | 'grid-small' | 'list';
@@ -61,6 +62,13 @@ export default function PhotosPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(j => {
+      if (j?.user?.id) setCurrentUser({ id: j.user.id, role: j.user.role });
+    }).catch(() => {});
+  }, []);
 
   // 사용자별 마지막 보기방식 저장(요청서 4번) — 별도 설정 테이블 없이 localStorage로 충분.
   useEffect(() => {
@@ -353,6 +361,17 @@ export default function PhotosPage() {
               <InfoRow label="업로드일" value={fmtDate(selectedPhoto.uploadedAt)} />
               <InfoRow label="촬영일" value={fmtDate(selectedPhoto.capturedAt)} />
             </div>
+            <PhotoDetailPanel
+              photoId={selectedPhoto.id}
+              title={selectedPhoto.title}
+              description={selectedPhoto.description}
+              currentUserId={currentUser?.id ?? null}
+              canEdit={!!currentUser && (currentUser.id === selectedPhoto.uploadedBy || currentUser.role === 'admin')}
+              onDescriptionSaved={(nextTitle, nextDescription) => {
+                setPhotos(prev => prev.map(p => p.id === selectedPhoto.id ? { ...p, title: nextTitle, description: nextDescription } : p));
+                setSelectedPhoto(prev => prev ? { ...prev, title: nextTitle, description: nextDescription } : prev);
+              }}
+            />
           </div>
         )}
       </div>

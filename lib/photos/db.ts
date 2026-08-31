@@ -111,6 +111,16 @@ export function getPhotoById(id: string): PhotoRow | null {
   return row ? rowToPhoto(row) : null;
 }
 
+/** 사진의 실질적 소유자(=업로더)/공개여부 — 공개여부는 소속 폴더를 따른다(폴더 없음 = 최상위
+ * = 전체 공개로 취급). favorite 라우트에서 이미 쓰던 것과 동일한 규칙을 공용 헬퍼로 뺀 것. */
+export function getPhotoOwnership(photo: PhotoRow): { ownerUserId: string | null; isPublic: boolean } {
+  if (!photo.folderId) return { ownerUserId: photo.uploadedBy, isPublic: true };
+  const db = getDb();
+  const folder = db.prepare(`SELECT is_public FROM photo_folders WHERE id=?`)
+    .get(photo.folderId) as { is_public: number } | undefined;
+  return { ownerUserId: photo.uploadedBy, isPublic: folder ? !!folder.is_public : true };
+}
+
 /** 중복 감지(요청서 41번) — 삭제되지 않은 사진 중 같은 SHA-256 해시가 있는지 확인. */
 export function findPhotoByHash(hash: string): PhotoRow | null {
   const db = getDb();
