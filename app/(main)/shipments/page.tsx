@@ -9,7 +9,7 @@ import {
   FileText, Download, File,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { downloadFile } from '@/lib/tauri-print';
+import { FilePreviewModal } from '@/components/files/file-preview-modal';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { Shipment, CargoItem, ShipDocument, ShipDocType, PurchaseOrder } from '@/types';
@@ -165,6 +165,7 @@ function ShipmentModal({
   const [posBySupplier, setPosBySupplier] = useState<Record<string, PurchaseOrder[]>>({});
   const [poPreview, setPoPreview] = useState<PurchaseOrder | null>(null); // 선택된 PO 미리보기
   const [documents, setDocuments] = useState<ShipDocument[]>(item?.documents || []);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docMsg, setDocMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 저장 전 대기 파일
@@ -941,7 +942,7 @@ function ShipmentModal({
                     <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', DOC_TYPE_COLOR[doc.docType])}>
                       {doc.docType === 'other' && doc.customName ? doc.customName : DOC_TYPE_LABEL[doc.docType]}
                     </span>
-                    <button type="button" onClick={() => downloadFile(doc.url, doc.originalName)} className="text-blue-500 hover:text-blue-700">
+                    <button type="button" onClick={() => setPreviewDoc({ url: doc.url, name: doc.originalName })} className="text-blue-500 hover:text-blue-700">
                       <Download className="w-3.5 h-3.5" />
                     </button>
                     <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600">
@@ -950,6 +951,9 @@ function ShipmentModal({
                   </div>
                 ))}
               </div>
+            )}
+            {previewDoc && (
+              <FilePreviewModal url={previewDoc.url} name={previewDoc.name} onClose={() => setPreviewDoc(null)} />
             )}
           </div>
 

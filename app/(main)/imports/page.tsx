@@ -9,7 +9,8 @@ import {
   AlertCircle, Info, Wand2, Lock, History, ChevronDown, ChevronRight, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { openAppUrl, downloadFile } from '@/lib/tauri-print';
+import { openAppUrl } from '@/lib/tauri-print';
+import { FilePreviewModal } from '@/components/files/file-preview-modal';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   Import, ImportItem, ImportDocument, ImportDocType,
@@ -110,6 +111,7 @@ function ImportModal({
   const [rateMsg, setRateMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [documents, setDocuments] = useState<ImportDocument[]>(item?.documents || []);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
   const [pendingFiles, setPendingFiles] = useState<{ file: File; docType: ImportDocType }[]>([]);
   const [uploadDocType, setUploadDocType] = useState<ImportDocType>('clearance_cert');
   const [parseLoading, setParseLoading] = useState(false);
@@ -637,6 +639,11 @@ function ImportModal({
           ))}
         </div>
 
+        {/* ── 첨부파일 미리보기 모달 (탭과 무관하게 항상 렌더링) ── */}
+        {previewDoc && (
+          <FilePreviewModal url={previewDoc.url} name={previewDoc.name} onClose={() => setPreviewDoc(null)} />
+        )}
+
         {/* ── 시트 선택 모달 (탭과 무관하게 항상 렌더링) ── */}
         {sheetModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => setSheetModal(null)}>
@@ -819,8 +826,8 @@ function ImportModal({
                     <div className="flex items-center gap-1.5 text-xs text-blue-600">
                       <FileText className="w-3.5 h-3.5" />선적 인보이스 있음 —
                       <button type="button" onClick={() => {
-                        const u = linkedShipment.documents.find(d => d.docType === 'invoice')?.url;
-                        if (u) downloadFile(u);
+                        const d = linkedShipment.documents.find(d => d.docType === 'invoice');
+                        if (d) setPreviewDoc({ url: d.url, name: d.originalName });
                       }} className="underline">보기</button>
                     </div>
                   )}
@@ -1720,7 +1727,7 @@ function ImportModal({
                           f.isStamped ? 'bg-teal-50 border-teal-100' : 'bg-orange-50 border-orange-100')}>
                           <FileText className={cn('w-3.5 h-3.5 shrink-0', f.isStamped ? 'text-teal-400' : 'text-orange-400')} />
                           <span className={cn('flex-1 truncate font-medium', f.isStamped ? 'text-teal-900' : 'text-orange-900')}>{f.name}</span>
-                          <button type="button" onClick={() => downloadFile(f.url, f.name)}
+                          <button type="button" onClick={() => setPreviewDoc({ url: f.url, name: f.name })}
                             className={cn('shrink-0', f.isStamped ? 'text-teal-500 hover:text-teal-700' : 'text-orange-500 hover:text-orange-700')}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -1788,7 +1795,7 @@ function ImportModal({
                               <span className="text-[10px]">파싱</span>
                             </button>
                           )}
-                          <button type="button" onClick={() => downloadFile(doc.url, doc.originalName)}
+                          <button type="button" onClick={() => setPreviewDoc({ url: doc.url, name: doc.originalName })}
                             className={cn('shrink-0', isBL ? 'text-indigo-500 hover:text-indigo-700' : 'text-blue-500 hover:text-blue-700')}>
                             <Download className="w-3.5 h-3.5" />
                           </button>
@@ -1859,7 +1866,7 @@ function ImportModal({
                             <Wand2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button type="button" onClick={() => downloadFile(doc.url, doc.originalName)} className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => setPreviewDoc({ url: doc.url, name: doc.originalName })} className="text-blue-500 hover:text-blue-700 shrink-0"><Download className="w-3.5 h-3.5" /></button>
                         {canEdit && <button type="button" onClick={() => deleteDoc(doc.id)} className="text-red-400 hover:text-red-600 shrink-0"><X className="w-3.5 h-3.5" /></button>}
                       </div>
                     ))}

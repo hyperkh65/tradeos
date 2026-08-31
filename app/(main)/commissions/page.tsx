@@ -7,6 +7,7 @@ import { Landmark, Plus, Loader2, X, Upload, Trash2, Lock, Unlock, Pencil, Eye, 
 import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/tauri-print';
+import { FilePreviewModal } from '@/components/files/file-preview-modal';
 import { DepositManager, type DepositEntry, type DepositManagerHandle } from '@/components/deposits/deposit-manager';
 import { AccountManageModal } from '@/components/deposits/account-manage-modal';
 
@@ -209,6 +210,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
   });
   const [saving, setSaving] = useState(false);
   const [invoiceFiles, setInvoiceFiles] = useState<CommissionFile[]>(item?.invoiceFiles || []);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
   const [deposits, setDeposits] = useState<DepositEntry[]>(item?.deposits || []);
   const [savedId, setSavedId] = useState(item?.id || '');
   const [uploading, setUploading] = useState<'invoice' | null>(null);
@@ -276,7 +278,7 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
         <div className="space-y-1">
           {files.map((f, i) => (
             <div key={i} className="flex items-center justify-between text-xs border rounded-lg px-2.5 py-1.5">
-              <button type="button" onClick={() => downloadFile(f.url, f.originalName)} className="truncate max-w-[220px] hover:underline text-left">{f.originalName}</button>
+              <button type="button" onClick={() => setPreviewDoc({ url: f.url, name: f.originalName })} className="truncate max-w-[220px] hover:underline text-left">{f.originalName}</button>
               {!readOnly && <button onClick={() => removeFile(type, f)} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>}
             </div>
           ))}
@@ -292,6 +294,9 @@ function CommissionModal({ item, accounts, knownCompanies, onAccountsRefresh, on
           <h2 className="font-semibold">{readOnly ? '커미션 세부내역 (마감됨)' : item ? '커미션 수정' : '커미션 등록'}</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-muted-foreground" /></button>
         </div>
+        {previewDoc && (
+          <FilePreviewModal url={previewDoc.url} name={previewDoc.name} onClose={() => setPreviewDoc(null)} />
+        )}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {readOnly && (
             <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
