@@ -229,3 +229,12 @@ export function buildNasPath(
   };
   return `${folderMap[type] ?? 'etc'}/${fileName}`;
 }
+
+/** relativePath를 실제 로컬 파일시스템 절대경로로 바꾼다. WebDAV가 설정되어
+ * 있으면(원격 저장이라 로컬 절대경로가 존재하지 않음) null을 반환한다 —
+ * 호출자가 이 경우를 명시적으로 처리해야 한다(English Shorts 렌더 워커가
+ * FFmpeg Docker 컨테이너의 bind mount와 동일한 절대경로를 계산할 때 사용). */
+export function resolveLocalPath(relativePath: string): string | null {
+  if (isWebDavConfigured()) return null;
+  return localPath(relativePath);
+}

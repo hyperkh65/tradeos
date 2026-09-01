@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { nasExists } from '@/lib/storage/nas';
+import { nasExists, resolveLocalPath } from '@/lib/storage/nas';
 import { buildFontStagingPath, uploadEnglishShortsFile } from './storage';
 
 /** ASS 자막 큐(하나의 화면 표시 구간). */
@@ -110,10 +110,18 @@ export function buildAssFile(cues: AssCue[], opts: AssStyleOptions = {}): string
   return `${header}\n${events}\n`;
 }
 
+export interface DeployedFont {
+  relativePath: string;
+  /** FFmpeg 컨테이너가 볼 수 있는 절대경로 — WebDAV 저장소 설정에서는 로컬
+   * 절대경로가 없으므로 null(호출자는 이 경우 자막 없이 렌더링하거나 명확히
+   * 실패시켜야 한다, 조용히 자막이 있는 척하지 않는다). */
+  absolutePath: string | null;
+}
+
 /** 번들 폰트(public/fonts/subtitles) → 렌더 워커(FFmpeg 컨테이너)와 공유하는
  * bind mount 경로로 1회 시딩. 이미 있으면 아무것도 하지 않는다(멱등, 워커
  * 시작 시마다 호출해도 안전). */
-export async function ensureSubtitleFontDeployed(): Promise<string> {
+export async function ensureSubtitleFontDeployed(): Promise<DeployedFont> {
   const stagedPath = buildFontStagingPath();
   const alreadyThere = await nasExists(stagedPath);
   if (!alreadyThere) {
@@ -121,5 +129,5 @@ export async function ensureSubtitleFontDeployed(): Promise<string> {
     const buffer = await fs.readFile(sourcePath);
     await uploadEnglishShortsFile(stagedPath, buffer, 'font/otf');
   }
-  return stagedPath;
+  return { relativePath: stagedPath, absolutePath: resolveLocalPath(stagedPath) };
 }

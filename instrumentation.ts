@@ -6,6 +6,8 @@ export async function register() {
   startIndexWorker();
   const { startPhotoThumbnailWorker } = await import('@/lib/photos/worker');
   startPhotoThumbnailWorker();
+  const { startEnglishShortsRenderWorker } = await import('@/lib/admin-tools/english-shorts/worker');
+  startEnglishShortsRenderWorker();
   const { seedInitialChangeHistory, logSystemChange } = await import('@/lib/backup/change-log');
   seedInitialChangeHistory();
   const { checkAndNotifyPostRestoreExternalShares } = await import('@/lib/backup/post-restore');
