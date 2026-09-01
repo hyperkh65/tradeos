@@ -95,11 +95,11 @@ export async function analyzeExpression(expression: string, ctx: { userId: strin
 
   const parsed = extractJsonBlock(result.content);
   if (!parsed) {
-    throw new Error('AI 응답에서 유효한 JSON을 추출하지 못했습니다.');
+    throw new Error('AI 응답에서 유효한 JSON을 추출하지 못했습니다. RAW:' + result.content.slice(0, 800));
   }
   const analysis = validateAnalysis(parsed);
   if (!analysis) {
-    throw new Error('AI 응답에 필요한 필드가 누락되었습니다.');
+    throw new Error('AI 응답에 필요한 필드가 누락되었습니다. RAW:' + result.content.slice(0, 800));
   }
 
   return { analysis, providerId: result.providerId, providerName: result.providerName, model: result.model, rawResponse: result.content };
