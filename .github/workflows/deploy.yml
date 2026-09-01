@@ -151,6 +151,8 @@ jobs:
             UPLOAD_DIR="/volume1/web/tradeos/data/uploads" \
             DOCVERIFY_CONTAINER="tradeos-docverify" \
             DOCVERIFY_DOCKER_BIN="/var/packages/ContainerManager/target/usr/bin/docker" \
+            FFMPEG_CONTAINER="tradeos-ffmpeg" \
+            FFMPEG_DOCKER_BIN="/var/packages/ContainerManager/target/usr/bin/docker" \
             AI_ENABLED="${{ secrets.TRADEOS_AI_ENABLED }}" \
             QDRANT_URL="http://127.0.0.1:6333" \
             NOTION_TOKEN="${{ secrets.TRADEOS_NOTION_TOKEN }}" \
@@ -234,5 +236,49 @@ jobs:
                 echo "qdrant container already running and healthy"
               else
                 echo "WARNING: qdrant container is running but not responding on :6333 — 재시작이 필요할 수 있음"
+              fi
+            fi
+
+      # English Shorts Studio(Admin Tools) FFmpeg 렌더 사이드카. docverify와 달리
+      # 리포 밖 커스텀 이미지가 아니라 유지보수되는 공개 이미지(linuxserver/ffmpeg,
+      # libass/fontconfig 내장)를 쓴다. 이 이미지는 원래 1회성 변환 작업용이라
+      # 컨테이너가 뜨자마자 종료되므로, entrypoint를 tail로 덮어써 장기 실행시키고
+      # docverify와 동일한 docker exec 패턴으로 호출한다. Qdrant와 같은 이유로
+      # 핵심 배포 이후 continue-on-error + 백그라운드로 pull한다(최초 pull은
+      # 수백MB라 이 NAS의 느린 디스크 I/O와 겹치면 핵심 배포 스텝이 타임아웃난 전례 있음).
+      - name: Ensure FFmpeg container running
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: hy64.synology.me
+          username: urjent
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          command_timeout: 45s
+          script: |
+            DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
+            if ! $DOCKER ps --format '{{.Names}}' | grep -qx tradeos-ffmpeg; then
+              $DOCKER rm -f tradeos-ffmpeg 2>/dev/null || true
+              nohup $DOCKER run -d --name tradeos-ffmpeg --restart unless-stopped \
+                --entrypoint tail \
+                -v /volume1/web/tradeos/data:/volume1/web/tradeos/data \
+                -v /tmp:/tmp \
+                linuxserver/ffmpeg -f /dev/null > /tmp/tradeos-ffmpeg-start.log 2>&1 &
+              disown
+              echo "ffmpeg container start requested in background(핵심 배포는 이미 끝났음)"
+              READY=0
+              for i in $(seq 1 15); do
+                sleep 2
+                if $DOCKER exec tradeos-ffmpeg ffmpeg -version >/dev/null 2>&1; then READY=1; break; fi
+              done
+              if [ "$READY" = "1" ]; then
+                echo "ffmpeg ready after ~$((i*2))s"
+              else
+                echo "ffmpeg not ready yet within 30s — 계속 백그라운드에서 pull/기동 중(다음 렌더 요청부터 재시도)"
+              fi
+            else
+              if $DOCKER exec tradeos-ffmpeg ffmpeg -version >/dev/null 2>&1; then
+                echo "ffmpeg container already running and healthy"
+              else
+                echo "WARNING: ffmpeg container is running but ffmpeg -version failed — 재시작이 필요할 수 있음"
               fi
             fi
