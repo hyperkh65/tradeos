@@ -91,15 +91,20 @@ export async function analyzeExpression(expression: string, ctx: { userId: strin
     { role: 'user', content: expression },
   ];
 
-  const result = await providerRouter.chat(messages, { maxTokens: 900, temperature: 0.4 }, { userId: ctx.userId, userName: ctx.userName });
+  // maxTokens는 900이었으나 실제로는 502(빈 응답)가 계속 발생했다 — 기본 모델
+  // (@cf/zai-org/glm-4.7-flash)가 추론(reasoning) 토큰을 먼저 소비하는 모델이라
+  // 900으로는 reasoning만 채우고 실제 답변(content)이 비어버린다(OpenAIProvider는
+  // choices[0].message.content만 읽고 reasoning_content는 보지 않음, lib/ai/providers/openai.ts:77).
+  // 실제 프로덕션 호출로 재현/확인 후 4000으로 올려 재검증함(Phase 22).
+  const result = await providerRouter.chat(messages, { maxTokens: 4000, temperature: 0.4 }, { userId: ctx.userId, userName: ctx.userName });
 
   const parsed = extractJsonBlock(result.content);
   if (!parsed) {
-    throw new Error('AI 응답에서 유효한 JSON을 추출하지 못했습니다. RAW:' + result.content.slice(0, 800));
+    throw new Error('AI 응답에서 유효한 JSON을 추출하지 못했습니다.');
   }
   const analysis = validateAnalysis(parsed);
   if (!analysis) {
-    throw new Error('AI 응답에 필요한 필드가 누락되었습니다. RAW:' + result.content.slice(0, 800));
+    throw new Error('AI 응답에 필요한 필드가 누락되었습니다.');
   }
 
   return { analysis, providerId: result.providerId, providerName: result.providerName, model: result.model, rawResponse: result.content };
