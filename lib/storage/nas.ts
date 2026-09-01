@@ -43,6 +43,7 @@ function getClient() {
     createDirectory: (p: string) => Promise<void>;
     deleteFile: (p: string) => Promise<void>;
     getDirectoryContents: (p: string) => Promise<unknown>;
+    stat: (p: string) => Promise<{ size?: number; data?: { size: number } }>;
   };
 }
 
@@ -149,6 +150,53 @@ export async function nasEnsureDir(dirPath: string): Promise<void> {
 export async function nasExists(storedPath: string): Promise<boolean> {
   if (!isWebDavConfigured()) return fs.existsSync(storedPath);
   try { return await getClient().exists(storedPath); } catch { return false; }
+}
+
+/** 파일 크기 조회(Phase 13 저장공간 대시보드/무결성검사용). 못 찾으면 null. */
+export async function nasStat(storedPath: string): Promise<{ size: number } | null> {
+  if (!isWebDavConfigured()) {
+    try { return { size: fs.statSync(storedPath).size }; } catch { return null; }
+  }
+  try {
+    const st = await getClient().stat(storedPath);
+    const size = st.size ?? st.data?.size;
+    return typeof size === 'number' ? { size } : null;
+  } catch { return null; }
+}
+
+/** relativeDir(예: 'photos') 아래 모든 파일을 재귀적으로 나열 — 무결성검사의 Orphan(NAS엔
+ * 있는데 DB엔 없는 파일) 탐지에 쓴다. 반환값은 nasUpload가 돌려주는 것과 동일한 형태의
+ * "실제 저장 경로"(로컬은 절대경로, WebDAV는 풀 경로)라 DB의 stored_path와 직접 비교 가능. */
+export async function nasListFilesRecursive(relativeDir: string): Promise<string[]> {
+  if (!isWebDavConfigured()) {
+    const root = localPath(relativeDir);
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else out.push(full);
+      }
+    };
+    walk(root);
+    return out;
+  }
+
+  const fullDir = `${BASE}/${relativeDir}`.replace(/\/+/g, '/');
+  const client = getClient();
+  const out: string[] = [];
+  const walk = async (dir: string) => {
+    let items: { type: string; filename: string }[];
+    try { items = (await client.getDirectoryContents(dir)) as { type: string; filename: string }[]; } catch { return; }
+    for (const item of items) {
+      if (item.type === 'directory') await walk(item.filename);
+      else out.push(item.filename);
+    }
+  };
+  await walk(fullDir);
+  return out;
 }
 
 export async function nasHealthCheck(): Promise<boolean> {

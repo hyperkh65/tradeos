@@ -31,7 +31,7 @@ export async function processPhotoJob(photoId: string): Promise<void> {
     const path = buildDerivativePath(photoId, kind);
     const res = await uploadPhotoFile(path, buf, 'image/webp');
     if (!res.success || !res.path) throw new Error(`파생본 저장 실패(${kind}): ${res.error}`);
-    upsertDerivative(photoId, kind, res.path, meta.width || 0, meta.height || 0, 'webp');
+    upsertDerivative(photoId, kind, res.path, meta.width || 0, meta.height || 0, 'webp', buf.length);
   }
 
   setPhotoStatus(photoId, 'ready');

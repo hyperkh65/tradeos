@@ -151,26 +151,26 @@ export function setPhotoStatus(id: string, status: PhotoRow['status'], previewEr
 
 export type DerivativeKind = 'thumb_small' | 'thumb_medium' | 'preview_large' | 'watermarked';
 
-export function upsertDerivative(photoId: string, kind: DerivativeKind, storedPath: string, width: number, height: number, format: string): void {
+export function upsertDerivative(photoId: string, kind: DerivativeKind, storedPath: string, width: number, height: number, format: string, fileSize?: number): void {
   const db = getDb();
-  db.prepare(`INSERT INTO photo_derivatives (id, photo_id, kind, stored_path, width, height, format, created_at)
-    VALUES (?,?,?,?,?,?,?,?)
-    ON CONFLICT(photo_id, kind) DO UPDATE SET stored_path=excluded.stored_path, width=excluded.width, height=excluded.height, format=excluded.format, created_at=excluded.created_at`)
-    .run(newId(), photoId, kind, storedPath, width, height, format, now());
+  db.prepare(`INSERT INTO photo_derivatives (id, photo_id, kind, stored_path, width, height, format, file_size, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(photo_id, kind) DO UPDATE SET stored_path=excluded.stored_path, width=excluded.width, height=excluded.height, format=excluded.format, file_size=excluded.file_size, created_at=excluded.created_at`)
+    .run(newId(), photoId, kind, storedPath, width, height, format, fileSize ?? null, now());
 }
 
-export interface DerivativeRow { kind: DerivativeKind; storedPath: string; width: number | null; height: number | null; format: string }
+export interface DerivativeRow { kind: DerivativeKind; storedPath: string; width: number | null; height: number | null; format: string; fileSize: number | null }
 
 export function getDerivatives(photoId: string): DerivativeRow[] {
   const db = getDb();
-  const rows = db.prepare(`SELECT kind, stored_path, width, height, format FROM photo_derivatives WHERE photo_id=?`).all(photoId) as Record<string, unknown>[];
-  return rows.map(r => ({ kind: r.kind as DerivativeKind, storedPath: r.stored_path as string, width: r.width as number | null, height: r.height as number | null, format: r.format as string }));
+  const rows = db.prepare(`SELECT kind, stored_path, width, height, format, file_size FROM photo_derivatives WHERE photo_id=?`).all(photoId) as Record<string, unknown>[];
+  return rows.map(r => ({ kind: r.kind as DerivativeKind, storedPath: r.stored_path as string, width: r.width as number | null, height: r.height as number | null, format: r.format as string, fileSize: r.file_size as number | null }));
 }
 
 export function getDerivative(photoId: string, kind: DerivativeKind): DerivativeRow | null {
   const db = getDb();
-  const row = db.prepare(`SELECT kind, stored_path, width, height, format FROM photo_derivatives WHERE photo_id=? AND kind=?`).get(photoId, kind) as Record<string, unknown> | undefined;
-  return row ? { kind: row.kind as DerivativeKind, storedPath: row.stored_path as string, width: row.width as number | null, height: row.height as number | null, format: row.format as string } : null;
+  const row = db.prepare(`SELECT kind, stored_path, width, height, format, file_size FROM photo_derivatives WHERE photo_id=? AND kind=?`).get(photoId, kind) as Record<string, unknown> | undefined;
+  return row ? { kind: row.kind as DerivativeKind, storedPath: row.stored_path as string, width: row.width as number | null, height: row.height as number | null, format: row.format as string, fileSize: row.file_size as number | null } : null;
 }
 
 // ── 백그라운드 썸네일 큐 — lib/ai/db.ts의 ai_index_jobs와 동일한 claim-then-process 패턴 ──

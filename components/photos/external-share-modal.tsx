@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, Copy, Check, Link as LinkIcon } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -21,6 +21,19 @@ export function ExternalShareModal({ photoIds, onClose }: ExternalShareModalProp
   const [result, setResult] = useState<{ url: string } | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const [maxDays, setMaxDays] = useState<number | null>(null);
+
+  // 관리자 설정의 기본값(원본다운로드/워터마크 기본값, 최대 허용기간)을 반영 — 요청서 46번.
+  useEffect(() => {
+    fetch('/api/photos/settings').then(r => r.json()).then(j => {
+      if (!j.settings) return;
+      setAllowOriginalDownload(j.settings.defaultAllowOriginalDownload);
+      setWatermark(j.settings.defaultWatermark);
+      setMaxDays(j.settings.maxExternalShareDays);
+      setExpiresInDays(prev => String(Math.min(Number(prev) || j.settings.maxExternalShareDays, j.settings.maxExternalShareDays)));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const create = async () => {
     setCreating(true);
@@ -84,8 +97,8 @@ export function ExternalShareModal({ photoIds, onClose }: ExternalShareModalProp
                 className="w-full h-8 text-xs border border-border rounded-md px-2 bg-background" />
             </div>
             <div>
-              <label className="text-[11px] text-muted-foreground block mb-1">만료(일)</label>
-              <input type="number" min={1} value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)}
+              <label className="text-[11px] text-muted-foreground block mb-1">만료(일){maxDays != null && ` — 최대 ${maxDays}일`}</label>
+              <input type="number" min={1} max={maxDays ?? undefined} value={expiresInDays} onChange={e => setExpiresInDays(e.target.value)}
                 className="w-full h-8 text-xs border border-border rounded-md px-2 bg-background" />
             </div>
             <label className="flex items-center gap-2 text-xs">

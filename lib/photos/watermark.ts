@@ -37,6 +37,6 @@ export async function getOrCreateWatermarkedPreview(photoId: string): Promise<{ 
   const uploadResult = await uploadPhotoFile(path, watermarked, 'image/webp');
   if (!uploadResult.success || !uploadResult.path) return null;
 
-  upsertDerivative(photoId, 'watermarked', uploadResult.path, width, height, 'webp');
+  upsertDerivative(photoId, 'watermarked', uploadResult.path, width, height, 'webp', watermarked.length);
   return { storedPath: uploadResult.path };
 }

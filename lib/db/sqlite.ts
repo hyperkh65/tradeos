@@ -2282,6 +2282,9 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 사진첩(Photo Library) 끝 ─────────────────────────────────────────────
 
+  // Phase 13: 저장공간 대시보드가 파생본 용량을 매번 NAS stat 없이 합산할 수 있도록.
+  try { db.exec(`ALTER TABLE photo_derivatives ADD COLUMN file_size INTEGER`); } catch { /* already exists */ }
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 

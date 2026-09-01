@@ -7,6 +7,7 @@ import { hashSharePassword, verifySharePassword } from '@/lib/photos/share-passw
 import { canManageExternalShare, isPhotoAdmin } from '@/lib/photos/permissions';
 import { writePhotoAuditLog } from '@/lib/photos/audit';
 import { getPhotoOwnership, getPhotoById } from '@/lib/photos/db';
+import { getPhotoSettings } from '@/lib/photos/settings';
 
 export type ShareResult<T> = { ok: true; data: T } | { ok: false; error: string; status: number };
 
@@ -53,6 +54,13 @@ export interface CreateShareInput {
  * 명시적으로 사진 목록을 담고(target_id 없음), folder/album이면 target_id만 저장하고
  * 실제 사진 목록은 접근 시점에 동적으로 계산한다(이후 추가된 사진도 자동 포함). */
 export function createExternalShare(user: User, input: CreateShareInput): ShareResult<{ id: string; token: string }> {
+  const settings = getPhotoSettings();
+  // 요청서 46번: 관리자 설정의 "외부공유 허용/비밀번호 없는 공유 허용/최대 기간"을
+  // UI에서 껐다 켰다만 하고 실제로는 아무도 강제하지 않으면 가짜 설정이 된다 — 여기서 강제한다.
+  if (!settings.allowExternalShare) return { ok: false, error: '관리자 설정에서 외부 공유가 비활성화되어 있습니다', status: 403 };
+  if (!input.password && !settings.allowPasswordlessExternalShare) {
+    return { ok: false, error: '비밀번호 없는 외부 공유는 허용되지 않습니다. 비밀번호를 설정하세요', status: 400 };
+  }
   if (input.targetType === 'selection' && (!input.photoIds || input.photoIds.length === 0)) {
     return { ok: false, error: '공유할 사진을 선택하세요', status: 400 };
   }
@@ -73,7 +81,9 @@ export function createExternalShare(user: User, input: CreateShareInput): ShareR
   const id = newId();
   const token = generateShareToken();
   const ts = now();
-  const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86400000).toISOString() : null;
+  // 만료 없음(무제한 링크)도 "최대 허용 기간" 정책을 우회하는 셈이라 항상 상한을 적용한다.
+  const expiresInDays = Math.min(input.expiresInDays ?? settings.maxExternalShareDays, settings.maxExternalShareDays);
+  const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
   const pw = input.password ? hashSharePassword(input.password) : null;
 
   db.prepare(`INSERT INTO photo_shares
