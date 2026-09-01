@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container, Images,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container, Images, Wrench,
 } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
@@ -167,6 +167,11 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
 
         {/* Bottom icons */}
         <div className="shrink-0 border-t border-sidebar-border py-2 px-1.5 space-y-0.5">
+          {me?.role === 'admin' && (
+            <button onClick={() => handleNav('/admin/tools')} title="관리자 도구" className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+              <Wrench className="w-4 h-4" />
+            </button>
+          )}
           <button onClick={() => handleNav('/admin')} title="사용자 관리" className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
             <Users className="w-4 h-4" />
           </button>
@@ -256,6 +261,15 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
 
       {/* Bottom */}
       <div className="shrink-0 border-t border-sidebar-border p-2 space-y-0.5">
+        {me?.role === 'admin' && (
+          <button
+            onClick={() => handleNav('/admin/tools')}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <Wrench className="w-4 h-4 text-muted-foreground" />
+            관리자 도구
+          </button>
+        )}
         <button
           onClick={() => handleNav('/admin')}
           className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"

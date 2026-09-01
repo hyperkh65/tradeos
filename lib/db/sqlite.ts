@@ -2285,6 +2285,61 @@ function runMigrations(db: Database.Database) {
   // Phase 13: 저장공간 대시보드가 파생본 용량을 매번 NAS stat 없이 합산할 수 있도록.
   try { db.exec(`ALTER TABLE photo_derivatives ADD COLUMN file_size INTEGER`); } catch { /* already exists */ }
 
+  // ── Admin Tools Platform 시작 ─────────────────────────────────────────────
+  // 관리자 전용 "업무 도구" 플랫폼 — 하드코딩된 메뉴 if문 대신 registry 기반으로
+  // 도구를 계속 추가할 수 있게 한다. 첫 실제 도구: English Shorts Studio.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS admin_tools (
+      id TEXT PRIMARY KEY,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon TEXT,
+      category TEXT,
+      route TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      required_permission TEXT NOT NULL DEFAULT 'ADMIN_TOOLS_USE',
+      version TEXT,
+      maintenance_mode INTEGER NOT NULL DEFAULT 0,
+      beta INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      settings_schema_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS admin_tools_audit_logs (
+      id TEXT PRIMARY KEY,
+      tool_slug TEXT,
+      user_id TEXT,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS admin_tools_platform_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      platform_enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT
+    )`);
+  } catch { /* already exists */ }
+  // 첫 실제 도구 시딩(멱등 — slug UNIQUE라 재실행해도 중복 안 됨)
+  try {
+    const ts = new Date().toISOString();
+    db.exec(`INSERT OR IGNORE INTO admin_tools
+      (id, slug, name, description, icon, category, route, enabled, required_permission, version, sort_order, created_at, updated_at)
+      VALUES ('admtool_english_shorts', 'english-shorts', '영어 표현 쇼츠 제작기', '영어 표현을 교육용 Shorts 영상으로 제작합니다.',
+      'Clapperboard', '콘텐츠 제작', '/admin/tools/english-shorts', 1, 'ADMIN_TOOLS_USE', '1.0.0', 0, '${ts}', '${ts}')`);
+  } catch { /* already exists */ }
+  // ── Admin Tools Platform 끝 ───────────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -2377,6 +2432,8 @@ function ensureIndexes(db: Database.Database) {
     `CREATE INDEX IF NOT EXISTS idx_photo_audit_logs_photo ON photo_audit_logs(photo_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_photo_jobs_status     ON photo_jobs(status, created_at)`,
     `CREATE INDEX IF NOT EXISTS idx_photo_jobs_photo      ON photo_jobs(photo_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_tools_slug      ON admin_tools(slug)`,
+    `CREATE INDEX IF NOT EXISTS idx_admin_tools_audit_logs_tool ON admin_tools_audit_logs(tool_slug, created_at DESC)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }
