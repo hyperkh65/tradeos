@@ -9,13 +9,15 @@ import {
   Images, Folder, FolderPlus, ChevronRight, ChevronDown, Upload, Loader2,
   Grid3X3, LayoutGrid, List, X, ImageIcon, RefreshCw, Star, Maximize2,
   Search, SlidersHorizontal, Calendar as CalendarIcon, ArrowUpDown, Trash2,
-  Share2, CheckSquare, Square, Tag as TagIcon, FolderInput,
+  Share2, CheckSquare, Square, Tag as TagIcon, FolderInput, Plus, Camera, FileImage,
 } from 'lucide-react';
 import { PhotoViewer } from '@/components/photos/photo-viewer';
 import { PhotoDetailPanel } from '@/components/photos/photo-detail-panel';
 import { TrashView } from '@/components/photos/trash-view';
 import { FolderShareModal } from '@/components/photos/folder-share-modal';
 import { ExternalShareModal } from '@/components/photos/external-share-modal';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
 interface PhotoFolder {
@@ -84,6 +86,12 @@ export default function PhotosPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [shareModalFolder, setShareModalFolder] = useState<PhotoFolder | null>(null);
+
+  // ── 모바일(요청서 Phase14): 폴더 시트/업로드 FAB 시트 + 반응형 감지 ────────────
+  const isMobile = useIsMobile();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [showMobileFolders, setShowMobileFolders] = useState(false);
+  const [showMobileUpload, setShowMobileUpload] = useState(false);
 
   // ── 그리드 다중선택 + 일괄 처리(요청서 39번) ────────────────────────────────
   const [selectMode, setSelectMode] = useState(false);
@@ -226,6 +234,27 @@ export default function PhotosPage() {
   useEffect(() => { loadFolders(); }, [loadFolders]);
   useEffect(() => { loadPhotos(selectedFolderId); setSelectedPhoto(null); }, [selectedFolderId, loadPhotos]);
 
+  // 데스크톱(요청서 Phase14) — Ctrl/Cmd+V 클립보드 붙여넣기 업로드. 클립보드에 실제
+  // 이미지 데이터가 있을 때만 동작하므로 검색창 등에 일반 텍스트를 붙여넣는 것과 충돌하지 않는다.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (showTrash) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) { e.preventDefault(); doUpload(files); }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTrash, selectedFolderId]);
+
   // 무한 스크롤 — 그리드 하단 sentinel이 보이면 다음 커서 페이지를 이어붙인다(요청서 26번).
   useEffect(() => {
     const el = sentinelRef.current;
@@ -310,16 +339,16 @@ export default function PhotosPage() {
 
   const currentFolder = folders.find(f => f.id === selectedFolderId) || null;
 
-  function FolderNode({ node, depth }: { node: PhotoFolder; depth: number }) {
+  function FolderNode({ node, depth, onSelect }: { node: PhotoFolder; depth: number; onSelect?: () => void }) {
     const hasChildren = (node.children?.length ?? 0) > 0;
     const isExpanded = expanded.has(node.id);
     return (
       <div>
         <div
-          className={cn('flex items-center gap-1 px-1.5 py-1 rounded-md text-sm cursor-pointer hover:bg-muted',
+          className={cn('flex items-center gap-1 px-1.5 py-2 md:py-1 rounded-md text-sm cursor-pointer hover:bg-muted',
             selectedFolderId === node.id && 'bg-primary/10 text-primary font-medium')}
           style={{ paddingLeft: 8 + depth * 14 }}
-          onClick={() => setSelectedFolderId(node.id)}
+          onClick={() => { setSelectedFolderId(node.id); setShowTrash(false); onSelect?.(); }}
         >
           <button type="button" onClick={e => { e.stopPropagation(); toggleExpand(node.id); }}
             className={cn('shrink-0', !hasChildren && 'invisible')}>
@@ -335,7 +364,7 @@ export default function PhotosPage() {
             </button>
           )}
         </div>
-        {isExpanded && hasChildren && node.children!.map(c => <FolderNode key={c.id} node={c} depth={depth + 1} />)}
+        {isExpanded && hasChildren && node.children!.map(c => <FolderNode key={c.id} node={c} depth={depth + 1} onSelect={onSelect} />)}
         {showNewFolder === node.id && (
           <div className="flex items-center gap-1 py-1" style={{ paddingLeft: 8 + (depth + 1) * 14 }}>
             <Input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
@@ -356,10 +385,13 @@ export default function PhotosPage() {
       } />
       <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
         onChange={e => { doUpload(Array.from(e.target.files || [])); e.target.value = ''; }} />
+      {/* 모바일 FAB "촬영" 옵션 전용 — capture 속성으로 카메라 앱을 바로 연다(요청서 Phase14). */}
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => { doUpload(Array.from(e.target.files || [])); e.target.value = ''; setShowMobileUpload(false); }} />
 
-      <div className="flex-1 flex min-h-0">
-        {/* ── 왼쪽: 폴더 트리 ── */}
-        <div className="w-56 shrink-0 border-r border-border overflow-y-auto p-2">
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+        {/* ── 왼쪽: 폴더 트리(데스크톱) ── */}
+        <div className="hidden md:block w-56 shrink-0 border-r border-border overflow-y-auto p-2">
           <div className="flex items-center justify-between mb-1 px-1">
             <span className="text-xs font-semibold text-muted-foreground">폴더</span>
             <button type="button" onClick={() => setShowNewFolder('root')} className="text-muted-foreground hover:text-foreground" title="새 폴더">
@@ -386,6 +418,15 @@ export default function PhotosPage() {
           {tree.map(f => <FolderNode key={f.id} node={f} depth={0} />)}
         </div>
 
+        {/* ── 모바일: 현재 위치 바(탭하면 폴더 시트) ── */}
+        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+          <button type="button" onClick={() => setShowMobileFolders(true)} className="flex items-center gap-1.5 text-sm font-medium min-w-0 flex-1">
+            {showTrash ? <Trash2 className="w-4 h-4 text-muted-foreground shrink-0" /> : <Folder className="w-4 h-4 text-amber-500 shrink-0" />}
+            <span className="truncate">{showTrash ? '휴지통' : currentFolder ? currentFolder.name : '전체 사진'}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          </button>
+        </div>
+
         {showTrash ? (
           <TrashView isAdmin={currentUser?.role === 'admin'} />
         ) : (
@@ -397,11 +438,11 @@ export default function PhotosPage() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 gap-2">
-            <div className="text-xs text-muted-foreground truncate shrink-0">
+          <div className="flex flex-col md:flex-row md:items-center justify-between px-3 py-2 border-b border-border shrink-0 gap-2">
+            <div className="hidden md:block text-xs text-muted-foreground truncate shrink-0">
               사진첩 {isSearchActive ? '> 검색 결과' : currentFolder ? `> ${currentFolder.name}` : '> 전체 사진'} · {photos.length}장{nextCursor ? '+' : ''}
             </div>
-            <div className="flex-1 flex items-center gap-1 max-w-md">
+            <div className="flex-1 flex items-center gap-1 md:max-w-md">
               <div className="relative flex-1">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
@@ -415,7 +456,7 @@ export default function PhotosPage() {
               </div>
               <Button size="icon-xs" variant={showFilterPanel || isSearchActive ? 'secondary' : 'ghost'} onClick={() => setShowFilterPanel(v => !v)} title="필터"><SlidersHorizontal className="w-3.5 h-3.5" /></Button>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0 overflow-x-auto">
               <div className="relative">
                 <Button size="icon-xs" variant={showSortMenu ? 'secondary' : 'ghost'} onClick={() => setShowSortMenu(v => !v)} title="정렬"><ArrowUpDown className="w-3.5 h-3.5" /></Button>
                 {showSortMenu && (
@@ -605,72 +646,89 @@ export default function PhotosPage() {
           )}
         </div>
 
-        {/* ── 오른쪽: 정보 패널 ── */}
+        {/* ── 오른쪽: 정보 패널(데스크톱) / 하단 시트(모바일, 요청서 Phase14) ── */}
         {selectedPhoto && (
-          <div className="w-72 shrink-0 border-l border-border overflow-y-auto p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-muted-foreground">사진 정보</span>
-              <div className="flex items-center gap-2">
-                {!!currentUser && (currentUser.id === selectedPhoto.uploadedBy || currentUser.role === 'admin') && (
-                  <button
-                    title="휴지통으로 이동"
-                    onClick={async () => {
-                      if (!confirm(`"${selectedPhoto.originalFileName}"을(를) 휴지통으로 이동할까요?`)) return;
-                      const res = await fetch(`/api/photos/${selectedPhoto.id}`, { method: 'DELETE' });
-                      if (res.ok) {
-                        setPhotos(prev => prev.filter(p => p.id !== selectedPhoto.id));
-                        setSelectedPhoto(null);
-                      }
-                    }}
-                    className="text-muted-foreground hover:text-red-500"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <button onClick={() => setSelectedPhoto(null)}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
-              </div>
+          <>
+            <div className="hidden md:block w-72 shrink-0 border-l border-border overflow-y-auto p-3">
+              <PhotoInfoContent
+                photo={selectedPhoto} photos={photos} currentUser={currentUser}
+                onClose={() => setSelectedPhoto(null)} setViewerIndex={setViewerIndex}
+                setPhotos={setPhotos} setSelectedPhoto={setSelectedPhoto}
+              />
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const idx = photos.findIndex(p => p.id === selectedPhoto.id);
-                if (idx >= 0) setViewerIndex(idx);
-              }}
-              className="block w-full aspect-video rounded-lg overflow-hidden bg-muted mb-3 relative group"
-              title="크게 보기"
-            >
-              {selectedPhoto.status === 'ready' && (
-                <img src={`/api/photos/${selectedPhoto.id}/media/preview_large`} alt="" className="w-full h-full object-contain" />
-              )}
-              <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <Maximize2 className="w-5 h-5 text-white" />
-              </span>
-            </button>
-            <div className="space-y-1.5 text-xs">
-              <div className="font-medium text-sm break-all">{selectedPhoto.title || selectedPhoto.originalFileName}</div>
-              <InfoRow label="파일명" value={selectedPhoto.originalFileName} />
-              <InfoRow label="크기" value={fmtSize(selectedPhoto.fileSize)} />
-              <InfoRow label="해상도" value={selectedPhoto.width && selectedPhoto.height ? `${selectedPhoto.width}×${selectedPhoto.height}` : '-'} />
-              <InfoRow label="업로더" value={selectedPhoto.uploadedByName} />
-              <InfoRow label="업로드일" value={fmtDate(selectedPhoto.uploadedAt)} />
-              <InfoRow label="촬영일" value={fmtDate(selectedPhoto.capturedAt)} />
-            </div>
-            <PhotoDetailPanel
-              photoId={selectedPhoto.id}
-              title={selectedPhoto.title}
-              description={selectedPhoto.description}
-              currentUserId={currentUser?.id ?? null}
-              canEdit={!!currentUser && (currentUser.id === selectedPhoto.uploadedBy || currentUser.role === 'admin')}
-              onDescriptionSaved={(nextTitle, nextDescription) => {
-                setPhotos(prev => prev.map(p => p.id === selectedPhoto.id ? { ...p, title: nextTitle, description: nextDescription } : p));
-                setSelectedPhoto(prev => prev ? { ...prev, title: nextTitle, description: nextDescription } : prev);
-              }}
-            />
-          </div>
+            {isMobile && (
+              <BottomSheet onClose={() => setSelectedPhoto(null)} className="p-3">
+                <PhotoInfoContent
+                  photo={selectedPhoto} photos={photos} currentUser={currentUser}
+                  onClose={() => setSelectedPhoto(null)} setViewerIndex={setViewerIndex}
+                  setPhotos={setPhotos} setSelectedPhoto={setSelectedPhoto}
+                />
+              </BottomSheet>
+            )}
+          </>
         )}
         </>
         )}
       </div>
+
+      {/* ── 모바일: 폴더 시트(요청서 Phase14) ── */}
+      {showMobileFolders && (
+        <BottomSheet onClose={() => setShowMobileFolders(false)} title="폴더">
+          <div className="p-2">
+            <div className="flex items-center justify-between mb-1 px-1">
+              <span className="text-xs font-semibold text-muted-foreground">폴더</span>
+              <button type="button" onClick={() => setShowNewFolder('root')} className="text-muted-foreground hover:text-foreground" title="새 폴더">
+                <FolderPlus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className={cn('flex items-center gap-1.5 px-1.5 py-2 rounded-md text-sm cursor-pointer hover:bg-muted mb-0.5',
+              !showTrash && selectedFolderId === null && 'bg-primary/10 text-primary font-medium')}
+              onClick={() => { setShowTrash(false); setSelectedFolderId(null); setShowMobileFolders(false); }}>
+              <Images className="w-4 h-4 text-primary" /> 전체 사진
+            </div>
+            <div className={cn('flex items-center gap-1.5 px-1.5 py-2 rounded-md text-sm cursor-pointer hover:bg-muted mb-1',
+              showTrash && 'bg-primary/10 text-primary font-medium')}
+              onClick={() => { setShowTrash(true); setSelectedPhoto(null); setShowMobileFolders(false); }}>
+              <Trash2 className="w-4 h-4 text-muted-foreground" /> 휴지통
+            </div>
+            {showNewFolder === 'root' && (
+              <div className="flex items-center gap-1 py-1 pl-1.5">
+                <Input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createFolder(null); } if (e.key === 'Escape') setShowNewFolder(null); }}
+                  placeholder="폴더 이름" className="h-7 text-sm" />
+              </div>
+            )}
+            {tree.map(f => <FolderNode key={f.id} node={f} depth={0} onSelect={() => setShowMobileFolders(false)} />)}
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* ── 모바일: 업로드 FAB + 액션 시트(촬영/갤러리/파일, 요청서 Phase14) ── */}
+      {isMobile && !showTrash && !selectMode && (
+        <button
+          type="button"
+          onClick={() => setShowMobileUpload(true)}
+          className="md:hidden fixed right-4 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+          aria-label="사진 올리기"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
+      {showMobileUpload && (
+        <BottomSheet onClose={() => setShowMobileUpload(false)} title="사진 올리기">
+          <div className="p-3 space-y-1.5" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <button type="button" onClick={() => cameraInputRef.current?.click()}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+              <Camera className="w-5 h-5 text-primary" />촬영
+            </button>
+            <button type="button" onClick={() => { fileInputRef.current?.click(); setShowMobileUpload(false); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+              <FileImage className="w-5 h-5 text-primary" />갤러리에서 선택
+            </button>
+          </div>
+        </BottomSheet>
+      )}
 
       {viewerIndex !== null && photos[viewerIndex] && (
         <PhotoViewer
@@ -693,6 +751,79 @@ export default function PhotosPage() {
         <ExternalShareModal photoIds={[...selectedIds]} onClose={() => { setShowExternalShareModal(false); setSelectedIds(new Set()); setSelectMode(false); }} />
       )}
     </div>
+  );
+}
+
+/** 데스크톱 오른쪽 정보패널 / 모바일 하단시트(BottomSheet)가 공유하는 내용 —
+ * 메타데이터 + "크게 보기" + 삭제/닫기 + 태그·댓글·설명 편집(PhotoDetailPanel). */
+function PhotoInfoContent({ photo, photos, currentUser, onClose, setViewerIndex, setPhotos, setSelectedPhoto }: {
+  photo: Photo; photos: Photo[]; currentUser: { id: string; role: string } | null;
+  onClose: () => void; setViewerIndex: (i: number | null) => void;
+  setPhotos: React.Dispatch<React.SetStateAction<Photo[]>>;
+  setSelectedPhoto: React.Dispatch<React.SetStateAction<Photo | null>>;
+}) {
+  const canEdit = !!currentUser && (currentUser.id === photo.uploadedBy || currentUser.role === 'admin');
+  return (
+    <>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-muted-foreground">사진 정보</span>
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <button
+              title="휴지통으로 이동"
+              onClick={async () => {
+                if (!confirm(`"${photo.originalFileName}"을(를) 휴지통으로 이동할까요?`)) return;
+                const res = await fetch(`/api/photos/${photo.id}`, { method: 'DELETE' });
+                if (res.ok) {
+                  setPhotos(prev => prev.filter(p => p.id !== photo.id));
+                  onClose();
+                }
+              }}
+              className="text-muted-foreground hover:text-red-500"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onClose}><X className="w-3.5 h-3.5 text-muted-foreground" /></button>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          const idx = photos.findIndex(p => p.id === photo.id);
+          if (idx >= 0) setViewerIndex(idx);
+        }}
+        className="block w-full aspect-video rounded-lg overflow-hidden bg-muted mb-3 relative group"
+        title="크게 보기"
+      >
+        {photo.status === 'ready' && (
+          <img src={`/api/photos/${photo.id}/media/preview_large`} alt="" className="w-full h-full object-contain" />
+        )}
+        <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <Maximize2 className="w-5 h-5 text-white" />
+        </span>
+      </button>
+      <div className="space-y-1.5 text-xs">
+        <div className="font-medium text-sm break-all">{photo.title || photo.originalFileName}</div>
+        <InfoRow label="파일명" value={photo.originalFileName} />
+        <InfoRow label="크기" value={fmtSize(photo.fileSize)} />
+        <InfoRow label="해상도" value={photo.width && photo.height ? `${photo.width}×${photo.height}` : '-'} />
+        <InfoRow label="업로더" value={photo.uploadedByName} />
+        <InfoRow label="업로드일" value={fmtDate(photo.uploadedAt)} />
+        <InfoRow label="촬영일" value={fmtDate(photo.capturedAt)} />
+      </div>
+      <PhotoDetailPanel
+        photoId={photo.id}
+        title={photo.title}
+        description={photo.description}
+        currentUserId={currentUser?.id ?? null}
+        canEdit={canEdit}
+        onDescriptionSaved={(nextTitle, nextDescription) => {
+          setPhotos(prev => prev.map(p => p.id === photo.id ? { ...p, title: nextTitle, description: nextDescription } : p));
+          setSelectedPhoto(prev => prev ? { ...prev, title: nextTitle, description: nextDescription } : prev);
+        }}
+      />
+    </>
   );
 }
 

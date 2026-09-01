@@ -94,6 +94,11 @@ pub fn run() {
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(900.0, 600.0)
                 .resizable(true)
+                // Windows(WebView2)는 기본적으로 OS 드래그앤드롭을 자체 핸들러가 가로채서
+                // 프론트엔드의 HTML5 dataTransfer.files가 항상 비어있게 된다(사진첩/파일/
+                // 제품 등 여러 화면의 기존 onDrop이 Windows에서만 조용히 동작 안 하던 원인).
+                // macOS(WKWebView)는 원래 문제 없어 이 호출이 사실상 no-op이다.
+                .disable_drag_drop_handler()
                 .on_navigation(move |url| {
                     if is_allowed_host(url) || url.scheme() == "tauri" {
                         return true;
