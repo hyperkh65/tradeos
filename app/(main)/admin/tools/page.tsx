@@ -1,8 +1,8 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { Loader2, ShieldAlert, Clapperboard, Wrench } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Loader2, ShieldAlert, Clapperboard, Wrench, Power, Hammer } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -21,18 +21,35 @@ export default function AdminToolsPage() {
   const [me, setMe] = useState<{ role: string } | null | undefined>(undefined);
   const [tools, setTools] = useState<AdminTool[]>([]);
   const [loading, setLoading] = useState(true);
+  const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(j => setMe(j.user ?? null));
   }, []);
 
-  useEffect(() => {
-    if (me === undefined) return;
-    if (me?.role !== 'admin') { setLoading(false); return; }
+  const loadTools = useCallback(() => {
     fetch('/api/admin-tools').then(r => r.json()).then(j => {
       setTools(Array.isArray(j.tools) ? j.tools : []);
     }).finally(() => setLoading(false));
-  }, [me]);
+  }, []);
+
+  useEffect(() => {
+    if (me === undefined) return;
+    if (me?.role !== 'admin') { setLoading(false); return; }
+    loadTools();
+  }, [me, loadTools]);
+
+  const toggleTool = async (slug: string, patch: { enabled?: boolean; maintenanceMode?: boolean }) => {
+    setTogglingSlug(slug);
+    try {
+      const res = await fetch(`/api/admin-tools/${slug}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+      });
+      if (res.ok) loadTools();
+    } finally {
+      setTogglingSlug(null);
+    }
+  };
 
   if (me === undefined || loading) {
     return (
@@ -91,6 +108,20 @@ export default function AdminToolsPage() {
                           {!tool.enabled ? '비활성화' : tool.maintenanceMode ? '점검 중' : '정상'}
                         </span>
                         {!disabled && <span className="text-xs text-primary font-medium">열기 →</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-2 border-t" onClick={e => { e.preventDefault(); e.stopPropagation(); }}>
+                        <button
+                          onClick={() => toggleTool(tool.slug, { enabled: !tool.enabled })}
+                          disabled={togglingSlug === tool.slug}
+                          className="h-7 px-2 rounded-md border border-input text-[11px] font-medium hover:bg-muted/50 flex items-center gap-1 disabled:opacity-50">
+                          <Power className="w-3 h-3" />{tool.enabled ? '비활성화' : '활성화'}
+                        </button>
+                        <button
+                          onClick={() => toggleTool(tool.slug, { maintenanceMode: !tool.maintenanceMode })}
+                          disabled={togglingSlug === tool.slug || !tool.enabled}
+                          className="h-7 px-2 rounded-md border border-input text-[11px] font-medium hover:bg-muted/50 flex items-center gap-1 disabled:opacity-50">
+                          <Hammer className="w-3 h-3" />{tool.maintenanceMode ? '점검 해제' : '점검 설정'}
+                        </button>
                       </div>
                     </div>
                   );

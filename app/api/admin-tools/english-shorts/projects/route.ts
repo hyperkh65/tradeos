@@ -4,6 +4,7 @@ import {
   listProjects, insertProject, findExpressionByNormalized, insertExpression, normalizeExpression,
 } from '@/lib/admin-tools/english-shorts/db';
 import { writeEnglishShortsAuditLog } from '@/lib/admin-tools/english-shorts/audit';
+import { requireEnglishShortsToolActive } from '@/lib/admin-tools/english-shorts/tool-status';
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdminToolsUser();
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await requireAdminToolsUser();
   if (!auth.ok) return auth.response;
+  const toolActive = await requireEnglishShortsToolActive();
+  if (!toolActive.ok) return toolActive.response;
   const { user } = auth;
   const body = await req.json().catch(() => ({}));
   const expressionText = typeof body.expression === 'string' ? body.expression.trim() : '';

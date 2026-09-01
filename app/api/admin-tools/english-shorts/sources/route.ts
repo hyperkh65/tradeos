@@ -10,6 +10,7 @@ import { insertSource, findSourceByHash, listSources } from '@/lib/admin-tools/e
 import { getEnglishShortsSettings } from '@/lib/admin-tools/english-shorts/settings';
 import { probeFile } from '@/lib/admin-tools/english-shorts/ffmpeg-exec';
 import { writeEnglishShortsAuditLog } from '@/lib/admin-tools/english-shorts/audit';
+import { requireEnglishShortsToolActive } from '@/lib/admin-tools/english-shorts/tool-status';
 import { newId } from '@/lib/db/sqlite';
 
 export const maxDuration = 300;
@@ -23,6 +24,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const auth = await requireAdminToolsUser();
   if (!auth.ok) return auth.response;
+  const toolActive = await requireEnglishShortsToolActive();
+  if (!toolActive.ok) return toolActive.response;
   const { user } = auth;
 
   const formData = await req.formData();

@@ -3,6 +3,7 @@ import { requireAdminToolsUser } from '@/lib/admin-tools/auth';
 import { getProjectById, listProjectSources, updateProject } from '@/lib/admin-tools/english-shorts/db';
 import { enqueueRenderJob, listRenderJobsForProject } from '@/lib/admin-tools/english-shorts/render-db';
 import { writeEnglishShortsAuditLog } from '@/lib/admin-tools/english-shorts/audit';
+import { requireEnglishShortsToolActive } from '@/lib/admin-tools/english-shorts/tool-status';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminToolsUser();
@@ -20,6 +21,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminToolsUser();
   if (!auth.ok) return auth.response;
+  const toolActive = await requireEnglishShortsToolActive();
+  if (!toolActive.ok) return toolActive.response;
   const { user } = auth;
   const { id } = await params;
   const project = getProjectById(id);
