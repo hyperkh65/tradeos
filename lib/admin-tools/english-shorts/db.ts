@@ -519,3 +519,41 @@ export function getTemplateById(id: string): TemplateRow | null {
   const row = db.prepare(`SELECT * FROM es_templates WHERE id=?`).get(id) as Record<string, unknown> | undefined;
   return row ? rowToTemplate(row) : null;
 }
+
+/** 프로젝트 복제 — 같은 expression을 참조하는 새 프로젝트를 만들고 제목/설명/
+ * 캡션/해시태그/템플릿+설정/연결된 소스(트림·순서 포함)를 그대로 복사한다.
+ * 렌더 결과물(output_*)은 절대 복사하지 않는다(새 프로젝트는 아직 렌더된 적
+ * 없는 상태로 시작해야 한다 — 가짜로 이미 렌더된 것처럼 보이면 안 됨). */
+export function duplicateProject(projectId: string, createdBy: string, createdByName: string): ProjectRow {
+  const db = getDb();
+  const original = getProjectById(projectId);
+  if (!original) throw new Error('원본 프로젝트를 찾을 수 없습니다');
+
+  const newProjectId = newId();
+  const businessId = nextBizId('ES');
+  const ts = now();
+  const links = listProjectSources(projectId);
+  const hasSources = links.length > 0;
+
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO es_projects
+      (id, business_id, expression_id, title, description, caption, hashtags_json, template_id, template_settings_json,
+       status, created_by, created_by_name, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        newProjectId, businessId, original.expressionId, original.title, original.description, original.caption,
+        JSON.stringify(original.hashtags), original.templateId,
+        original.templateSettings ? JSON.stringify(original.templateSettings) : null,
+        hasSources ? 'ready' : 'draft', createdBy, createdByName, ts, ts,
+      );
+    const insertLink = db.prepare(`INSERT INTO es_project_sources
+      (id, project_id, source_id, position, trim_start_sec, trim_end_sec, clip_label, created_at)
+      VALUES (?,?,?,?,?,?,?,?)`);
+    for (const link of links) {
+      insertLink.run(newId(), newProjectId, link.sourceId, link.position, link.trimStartSec, link.trimEndSec, link.clipLabel, ts);
+    }
+  });
+  tx();
+
+  return getProjectById(newProjectId)!;
+}

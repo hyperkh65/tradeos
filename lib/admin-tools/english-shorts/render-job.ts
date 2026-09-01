@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { getProjectById, updateProject, listProjectSources } from './db';
 import {
   claimNextRenderJobs, updateRenderJobProgress, completeRenderJob, failRenderJob,
-  recoverStaleRenderJobs, insertRenderLog, type RenderJobRow,
+  recoverStaleRenderJobs, insertRenderLog, getRenderJobById, markRenderJobCancelled, type RenderJobRow,
 } from './render-db';
 import { renderProjectVideo, extractThumbnail, type RenderClipInput } from './render-pipeline';
 import { buildAssFile, ensureSubtitleFontDeployed, type AssStyleOptions } from './ass-builder';
@@ -152,6 +152,16 @@ export async function processNextRenderJobs(): Promise<void> {
 
   const jobs = claimNextRenderJobs();
   for (const job of jobs) {
+    // claim 직후 최신 상태를 다시 확인 — claim과 이 tick 사이에 사용자가
+    // 취소를 요청했을 수 있다(요청서 취소 요구사항, 인코딩이 이미 진행 중인
+    // 프로세스를 강제 종료하는 기능까지는 이번 phase 범위 밖 — 정직하게
+    // "인코딩 시작 전" 취소만 확실히 보장한다).
+    const fresh = getRenderJobById(job.id);
+    if (fresh?.cancelRequested) {
+      markRenderJobCancelled(job.id);
+      insertRenderLog(job.id, 'info', '인코딩 시작 전 취소 요청이 확인되어 렌더를 중단했습니다');
+      continue;
+    }
     try {
       await processRenderJob(job);
     } catch (e) {

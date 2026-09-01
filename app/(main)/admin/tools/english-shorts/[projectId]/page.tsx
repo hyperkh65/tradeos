@@ -1,9 +1,12 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { Loader2, Clapperboard, Sparkles, Plus, Trash2, GripVertical, RefreshCw, LayoutTemplate, Check } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import {
+  Loader2, Clapperboard, Sparkles, Plus, Trash2, GripVertical, RefreshCw, LayoutTemplate, Check,
+  Film, Download, Copy, Ban, X,
+} from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 interface Expression {
@@ -33,14 +36,30 @@ interface ProjectSourceLink {
 interface LibrarySource {
   id: string; originalFileName: string | null; durationSec: number | null; extension: string | null;
 }
+interface RenderJob {
+  id: string; status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  stage: string | null; progress: number; attempts: number; lastError: string | null;
+  outputVideoPath: string | null; outputDurationSec: number | null; cancelRequested: boolean;
+}
+
+const RENDER_STATUS_LABEL: Record<RenderJob['status'], string> = {
+  queued: '대기 중', processing: '렌더링 중', completed: '완료', failed: '실패', cancelled: '취소됨',
+};
 
 const fmtDuration = (s: number | null) => s == null ? '-' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
 export default function ProjectEditorPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.projectId as string;
 
   const [project, setProject] = useState<Project | null>(null);
+  const [renderJob, setRenderJob] = useState<RenderJob | null>(null);
+  const [startingRender, setStartingRender] = useState(false);
+  const [cancellingRender, setCancellingRender] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [expression, setExpression] = useState<Expression | null>(null);
   const [links, setLinks] = useState<ProjectSourceLink[]>([]);
   const [library, setLibrary] = useState<LibrarySource[]>([]);
@@ -65,16 +84,19 @@ export default function ProjectEditorPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [pRes, sRes, libRes, tplRes] = await Promise.all([
+      const [pRes, sRes, libRes, tplRes, renderRes] = await Promise.all([
         fetch(`/api/admin-tools/english-shorts/projects/${projectId}`),
         fetch(`/api/admin-tools/english-shorts/projects/${projectId}/sources`),
         fetch('/api/admin-tools/english-shorts/sources'),
         fetch('/api/admin-tools/english-shorts/templates'),
+        fetch(`/api/admin-tools/english-shorts/projects/${projectId}/render`),
       ]);
       const pJson = await pRes.json();
       const sJson = await sRes.json();
       const libJson = await libRes.json();
       const tplJson = await tplRes.json();
+      const renderJson = await renderRes.json();
+      if (Array.isArray(renderJson.jobs) && renderJson.jobs.length > 0) setRenderJob(renderJson.jobs[0]);
       if (pJson.project) {
         setProject(pJson.project);
         setTitle(pJson.project.title || '');
@@ -94,6 +116,22 @@ export default function ProjectEditorPage() {
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 렌더 잡이 대기/처리 중이면 3초마다 상태만 가볍게 폴링(전체 load() 재호출 아님).
+  useEffect(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (!renderJob || (renderJob.status !== 'queued' && renderJob.status !== 'processing')) return;
+    pollRef.current = setInterval(async () => {
+      const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}/render/${renderJob.id}`);
+      const j = await res.json();
+      if (j.job) {
+        setRenderJob(j.job);
+        if (j.job.status === 'completed') load();
+      }
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderJob?.id, renderJob?.status]);
 
   const analyze = async (regenerate: boolean) => {
     if (!expression) return;
@@ -145,6 +183,51 @@ export default function ProjectEditorPage() {
       if (res.ok) load();
     } finally {
       setSavingTemplate(false);
+    }
+  };
+
+  const startRender = async () => {
+    setStartingRender(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}/render`, { method: 'POST' });
+      const j = await res.json();
+      if (res.status === 409) { setRenderJob(j.job); return; }
+      if (!res.ok) { setErrorMsg(j.error || '렌더 시작 실패'); return; }
+      setRenderJob(j.job);
+    } finally {
+      setStartingRender(false);
+    }
+  };
+
+  const cancelRender = async () => {
+    if (!renderJob) return;
+    setCancellingRender(true);
+    try {
+      const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}/render/${renderJob.id}/cancel`, { method: 'POST' });
+      const j = await res.json();
+      if (j.job) setRenderJob(j.job);
+    } finally {
+      setCancellingRender(false);
+    }
+  };
+
+  const copySummary = async () => {
+    const text = [title, description, hashtags.split(',').map(h => h.trim()).filter(Boolean).map(h => `#${h}`).join(' ')]
+      .filter(Boolean).join('\n\n');
+    await navigator.clipboard.writeText(text);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2000);
+  };
+
+  const duplicateProject = async () => {
+    setDuplicating(true);
+    try {
+      const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}/duplicate`, { method: 'POST' });
+      const j = await res.json();
+      if (res.ok && j.project) router.push(`/admin/tools/english-shorts/${j.project.id}`);
+    } finally {
+      setDuplicating(false);
     }
   };
 
@@ -343,6 +426,77 @@ export default function ProjectEditorPage() {
                     <Plus className="w-3 h-3" />{s.originalFileName} ({fmtDuration(s.durationSec)})
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 렌더링 + 결과물 */}
+        <div className="bg-card border rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5"><Film className="w-4 h-4 text-primary" />렌더링</h2>
+            {renderJob && (
+              <span className={cn('text-xs px-2 py-0.5 rounded-full',
+                renderJob.status === 'completed' && 'bg-green-100 text-green-700',
+                renderJob.status === 'failed' && 'bg-red-100 text-red-600',
+                (renderJob.status === 'queued' || renderJob.status === 'processing') && 'bg-blue-100 text-blue-700',
+                renderJob.status === 'cancelled' && 'bg-muted text-muted-foreground')}>
+                {RENDER_STATUS_LABEL[renderJob.status]}
+              </span>
+            )}
+          </div>
+
+          {(!renderJob || renderJob.status === 'failed' || renderJob.status === 'cancelled') && (
+            <button onClick={startRender} disabled={startingRender || links.length === 0}
+              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 flex items-center gap-1.5">
+              {startingRender ? <Loader2 className="w-4 h-4 animate-spin" /> : <Film className="w-4 h-4" />}
+              {renderJob?.status === 'failed' ? '다시 렌더링' : '렌더링 시작'}
+            </button>
+          )}
+          {links.length === 0 && !renderJob && <p className="text-xs text-muted-foreground">연결된 소스 클립이 있어야 렌더링할 수 있습니다.</p>}
+
+          {renderJob && (renderJob.status === 'queued' || renderJob.status === 'processing') && (
+            <div className="space-y-2">
+              <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-primary transition-all" style={{ width: `${renderJob.progress}%` }} />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{renderJob.stage || RENDER_STATUS_LABEL[renderJob.status]} ({renderJob.progress}%)</span>
+                <button onClick={cancelRender} disabled={cancellingRender || renderJob.cancelRequested}
+                  className="text-xs text-muted-foreground hover:text-red-500 flex items-center gap-1 disabled:opacity-50">
+                  <Ban className="w-3.5 h-3.5" />{renderJob.cancelRequested ? '취소 요청됨' : '취소'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {renderJob?.status === 'failed' && (
+            <p className="text-xs text-red-600">{renderJob.lastError} (시도 {renderJob.attempts}회)</p>
+          )}
+          {renderJob?.status === 'cancelled' && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><X className="w-3.5 h-3.5" />취소된 렌더입니다.</p>
+          )}
+
+          {renderJob?.status === 'completed' && renderJob.outputVideoPath && (
+            <div className="space-y-2">
+              <video controls className="w-full max-w-[240px] rounded-lg border bg-black mx-auto"
+                src={`/api/admin-tools/english-shorts/projects/${projectId}/render/${renderJob.id}/download`} />
+              <div className="flex flex-wrap gap-1.5">
+                <a href={`/api/admin-tools/english-shorts/projects/${projectId}/render/${renderJob.id}/download`}
+                  className="h-8 px-3 rounded-md border border-input text-xs font-medium hover:bg-muted/50 flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5" />다운로드
+                </a>
+                <button onClick={copySummary} className="h-8 px-3 rounded-md border border-input text-xs font-medium hover:bg-muted/50 flex items-center gap-1.5">
+                  <Copy className="w-3.5 h-3.5" />{copiedText ? '복사됨' : '제목/설명/해시태그 복사'}
+                </button>
+                <button onClick={duplicateProject} disabled={duplicating}
+                  className="h-8 px-3 rounded-md border border-input text-xs font-medium hover:bg-muted/50 flex items-center gap-1.5 disabled:opacity-50">
+                  {duplicating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}복제
+                </button>
+                <button onClick={startRender} disabled={startingRender}
+                  className="h-8 px-3 rounded-md border border-input text-xs font-medium hover:bg-muted/50 flex items-center gap-1.5 disabled:opacity-50">
+                  {startingRender ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}재렌더링
+                </button>
               </div>
             </div>
           )}
