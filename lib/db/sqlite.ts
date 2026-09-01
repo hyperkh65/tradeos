@@ -2340,6 +2340,179 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── Admin Tools Platform 끝 ───────────────────────────────────────────────
 
+  // ── English Shorts Studio 시작 ────────────────────────────────────────────
+  // 첫 실제 Admin Tool — 영어 표현을 교육용 Shorts로 제작. id는 전부 newId(),
+  // 사람이 보는 번호가 필요한 es_projects만 business_id(nextBizId('ES')).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_expressions (
+      id TEXT PRIMARY KEY,
+      expression TEXT NOT NULL,
+      expression_normalized TEXT UNIQUE NOT NULL,
+      korean_meaning TEXT,
+      explanation TEXT,
+      examples_json TEXT NOT NULL DEFAULT '[]',
+      suggested_title TEXT,
+      suggested_description TEXT,
+      suggested_caption TEXT,
+      hashtags_json TEXT NOT NULL DEFAULT '[]',
+      ai_provider_id TEXT,
+      ai_model TEXT,
+      raw_response TEXT,
+      used_count INTEGER NOT NULL DEFAULT 0,
+      last_used_at TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_sources (
+      id TEXT PRIMARY KEY,
+      source_kind TEXT NOT NULL DEFAULT 'upload',
+      hash TEXT,
+      reference_url TEXT,
+      original_file_name TEXT,
+      stored_path TEXT,
+      mime_type TEXT,
+      extension TEXT,
+      file_size INTEGER,
+      width INTEGER,
+      height INTEGER,
+      duration_sec REAL,
+      video_codec TEXT,
+      audio_codec TEXT,
+      title TEXT,
+      notes TEXT,
+      source_origin TEXT,
+      rights_note TEXT,
+      usage_note TEXT,
+      uploaded_by TEXT,
+      uploaded_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      deleted_by TEXT
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_templates (
+      id TEXT PRIMARY KEY,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      layout_json TEXT NOT NULL,
+      thumbnail_preview_path TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_projects (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      expression_id TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      caption TEXT,
+      hashtags_json TEXT NOT NULL DEFAULT '[]',
+      template_id TEXT,
+      template_settings_json TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      output_video_path TEXT,
+      output_thumbnail_path TEXT,
+      output_duration_sec REAL,
+      render_settings_json TEXT,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      deleted_by TEXT
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_project_sources (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      trim_start_sec REAL NOT NULL DEFAULT 0,
+      trim_end_sec REAL,
+      clip_label TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS media_render_jobs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      stage TEXT,
+      progress INTEGER NOT NULL DEFAULT 0,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      output_video_path TEXT,
+      output_thumbnail_path TEXT,
+      output_duration_sec REAL,
+      output_file_size INTEGER,
+      cancel_requested INTEGER NOT NULL DEFAULT 0,
+      requested_by TEXT,
+      requested_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_render_logs (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_audit_logs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT,
+      source_id TEXT,
+      user_id TEXT,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS es_settings (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      max_upload_size_mb INTEGER NOT NULL DEFAULT 300,
+      allowed_extensions TEXT NOT NULL DEFAULT 'mp4,mov,webm,m4v',
+      max_clips_per_project INTEGER NOT NULL DEFAULT 8,
+      max_render_concurrency INTEGER NOT NULL DEFAULT 1,
+      render_stale_processing_minutes INTEGER NOT NULL DEFAULT 15,
+      render_max_attempts INTEGER NOT NULL DEFAULT 3,
+      default_template_id TEXT,
+      subtitle_font_path TEXT,
+      ffmpeg_container TEXT NOT NULL DEFAULT 'tradeos-ffmpeg',
+      output_fps INTEGER NOT NULL DEFAULT 30,
+      output_video_bitrate_k INTEGER NOT NULL DEFAULT 6000,
+      output_audio_bitrate_k INTEGER NOT NULL DEFAULT 128,
+      getyarn_search_base_url TEXT NOT NULL DEFAULT 'https://getyarn.it/find-yarn?text=',
+      updated_at TEXT NOT NULL,
+      updated_by TEXT
+    )`);
+  } catch { /* already exists */ }
+  // ── English Shorts Studio 끝 ──────────────────────────────────────────────
+
   // Data migrations (idempotent)
   try { db.exec(`UPDATE purchase_orders SET currency='CNY' WHERE currency='RMB'`); } catch { /* ignore */ }
 
@@ -2434,6 +2607,18 @@ function ensureIndexes(db: Database.Database) {
     `CREATE INDEX IF NOT EXISTS idx_photo_jobs_photo      ON photo_jobs(photo_id)`,
     `CREATE INDEX IF NOT EXISTS idx_admin_tools_slug      ON admin_tools(slug)`,
     `CREATE INDEX IF NOT EXISTS idx_admin_tools_audit_logs_tool ON admin_tools_audit_logs(tool_slug, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_expressions_normalized ON es_expressions(expression_normalized)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_es_sources_hash ON es_sources(hash) WHERE hash IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_es_sources_deleted    ON es_sources(deleted_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_projects_status    ON es_projects(status, created_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_projects_deleted   ON es_projects(deleted_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_projects_expression ON es_projects(expression_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_project_sources_project ON es_project_sources(project_id, position)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_project_sources_source  ON es_project_sources(source_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_media_render_jobs_status ON media_render_jobs(status, created_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_media_render_jobs_project ON media_render_jobs(project_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_render_logs_job    ON es_render_logs(job_id, created_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_es_audit_logs_project ON es_audit_logs(project_id, created_at DESC)`,
   ];
   for (const sql of idxList) {
     try { db.exec(sql); } catch { /* ignore */ }
