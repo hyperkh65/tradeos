@@ -1,9 +1,10 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { Loader2, Clapperboard, Upload, Trash2, Video } from 'lucide-react';
+import { Loader2, Clapperboard, Upload, Trash2, Video, Plus, Camera, FileVideo } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface SourceRow {
   id: string; sourceKind: string; originalFileName: string | null; extension: string | null;
@@ -19,7 +20,10 @@ export default function SourceLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const [showMobileUpload, setShowMobileUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
 
   const load = () => {
     setLoading(true);
@@ -59,22 +63,54 @@ export default function SourceLibraryPage() {
     <div className="flex flex-col h-full">
       <AppHeader title="소스 클립 라이브러리" icon={<Clapperboard className="w-5 h-5" />}
         actions={
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            영상 업로드
-          </button>
+          !isMobile && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              영상 업로드
+            </button>
+          )
         }
       />
       <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+      {/* 모바일 FAB "촬영" 옵션 전용 — 사진첩과 동일 패턴(요청서 Phase18), capture 속성으로 카메라 앱을 바로 연다. */}
+      <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; setShowMobileUpload(false); }} />
 
       <div className="flex-1 overflow-auto p-4 lg:p-6 space-y-4">
         {uploadMsg && (
           <div className="px-4 py-2.5 rounded-lg text-sm bg-muted border">{uploadMsg}</div>
+        )}
+
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setShowMobileUpload(true)}
+            disabled={uploading}
+            className="fixed right-4 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+            style={{ bottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+            aria-label="영상 올리기"
+          >
+            {uploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Plus className="w-6 h-6" />}
+          </button>
+        )}
+        {showMobileUpload && (
+          <BottomSheet onClose={() => setShowMobileUpload(false)} title="영상 올리기">
+            <div className="p-3 space-y-1.5" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              <button type="button" onClick={() => cameraInputRef.current?.click()}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+                <Camera className="w-5 h-5 text-primary" />촬영
+              </button>
+              <button type="button" onClick={() => { fileInputRef.current?.click(); setShowMobileUpload(false); }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+                <FileVideo className="w-5 h-5 text-primary" />갤러리/파일에서 선택
+              </button>
+            </div>
+          </BottomSheet>
         )}
 
         <div className="bg-card border rounded-xl overflow-hidden">
@@ -86,6 +122,7 @@ export default function SourceLibraryPage() {
               <p className="text-sm">업로드된 소스 클립이 없습니다.</p>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
@@ -118,6 +155,7 @@ export default function SourceLibraryPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

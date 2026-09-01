@@ -3,11 +3,13 @@
 import { AppHeader } from '@/components/layout/header';
 import {
   Loader2, Clapperboard, Sparkles, Plus, Trash2, GripVertical, RefreshCw, LayoutTemplate, Check,
-  Film, Download, Copy, Ban, X,
+  Film, Download, Copy, Ban, X, Camera, FileVideo, Upload,
 } from 'lucide-react';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Expression {
   id: string; expression: string; koreanMeaning: string | null; explanation: string | null;
@@ -60,6 +62,11 @@ export default function ProjectEditorPage() {
   const [copiedText, setCopiedText] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [uploadingClip, setUploadingClip] = useState(false);
+  const [showMobileUpload, setShowMobileUpload] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   const [expression, setExpression] = useState<Expression | null>(null);
   const [links, setLinks] = useState<ProjectSourceLink[]>([]);
   const [library, setLibrary] = useState<LibrarySource[]>([]);
@@ -238,6 +245,24 @@ export default function ProjectEditorPage() {
     if (res.ok) load(); else { const j = await res.json().catch(() => ({})); setErrorMsg(j.error || '추가 실패'); }
   };
 
+  /** 모바일에서 라이브러리를 거치지 않고 촬영/갤러리/파일 → 업로드 → 이 프로젝트에
+   * 바로 연결(요청서 Phase18 — 표현입력→AI생성→프로젝트목록→소스업로드→
+   * 상태확인→다운로드 흐름 중 "소스업로드" 단계를 별도 화면 이동 없이 완결). */
+  const uploadAndAttach = async (file: File) => {
+    setUploadingClip(true);
+    setErrorMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/admin-tools/english-shorts/sources', { method: 'POST', body: fd });
+      const j = await res.json();
+      if (!res.ok) { setErrorMsg(j.error || '업로드 실패'); return; }
+      await addSource(j.source.id);
+    } finally {
+      setUploadingClip(false);
+    }
+  };
+
   const removeLink = async (linkId: string) => {
     const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}/sources/${linkId}`, { method: 'DELETE' });
     if (res.ok) load();
@@ -388,7 +413,33 @@ export default function ProjectEditorPage() {
 
         {/* 소스 클립 */}
         <div className="bg-card border rounded-xl p-4 space-y-3">
-          <h2 className="text-sm font-semibold">영상 소스 ({links.length}개)</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">영상 소스 ({links.length}개)</h2>
+            <button
+              onClick={() => isMobile ? setShowMobileUpload(true) : fileInputRef.current?.click()}
+              disabled={uploadingClip}
+              className="h-8 px-3 rounded-md border border-input text-xs font-medium hover:bg-muted/50 flex items-center gap-1.5 disabled:opacity-50">
+              {uploadingClip ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}클립 업로드
+            </button>
+          </div>
+          <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndAttach(f); e.target.value = ''; }} />
+          <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndAttach(f); e.target.value = ''; setShowMobileUpload(false); }} />
+          {showMobileUpload && (
+            <BottomSheet onClose={() => setShowMobileUpload(false)} title="클립 업로드">
+              <div className="p-3 space-y-1.5" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                <button type="button" onClick={() => cameraInputRef.current?.click()}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+                  <Camera className="w-5 h-5 text-primary" />촬영
+                </button>
+                <button type="button" onClick={() => { fileInputRef.current?.click(); setShowMobileUpload(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-muted text-sm">
+                  <FileVideo className="w-5 h-5 text-primary" />갤러리/파일에서 선택
+                </button>
+              </div>
+            </BottomSheet>
+          )}
           {links.length === 0 ? (
             <p className="text-xs text-muted-foreground">아직 연결된 클립이 없습니다.</p>
           ) : (

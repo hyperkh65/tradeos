@@ -71,14 +71,20 @@ export default function EnglishShortsHomePage() {
       <AppHeader title="영어 표현 쇼츠 제작기" icon={<Clapperboard className="w-5 h-5" />}
         actions={
           <div className="flex items-center gap-1.5">
-            <Link href="/admin/tools/english-shorts/library" className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
-              <Video className="w-4 h-4" />소스 라이브러리
+            {/* 모바일 간소화 플로우(요청서 Phase18) — 핵심 흐름(표현입력→AI생성→
+              프로젝트목록→소스업로드→상태확인→다운로드)에 필요 없는 보조 내비게이션은
+              모바일에서 아이콘만 남기고, 데스크톱에서만 라벨을 보여준다. */}
+            <Link href="/admin/tools/english-shorts/library" title="소스 라이브러리"
+              className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
+              <Video className="w-4 h-4" /><span className="hidden md:inline">소스 라이브러리</span>
             </Link>
-            <Link href="/admin/tools/english-shorts/templates" className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
-              <LayoutIcon className="w-4 h-4" />템플릿
+            <Link href="/admin/tools/english-shorts/templates" title="템플릿"
+              className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
+              <LayoutIcon className="w-4 h-4" /><span className="hidden md:inline">템플릿</span>
             </Link>
-            <Link href="/admin/tools/english-shorts/settings" className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
-              <Settings className="w-4 h-4" />설정
+            <Link href="/admin/tools/english-shorts/settings" title="설정"
+              className="h-9 px-3 rounded-md border border-input text-sm font-medium hover:bg-muted/50 flex items-center gap-1.5">
+              <Settings className="w-4 h-4" /><span className="hidden md:inline">설정</span>
             </Link>
           </div>
         }
@@ -126,6 +132,7 @@ export default function EnglishShortsHomePage() {
           ) : projects.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-16">아직 만든 프로젝트가 없습니다.</p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
@@ -149,6 +156,7 @@ export default function EnglishShortsHomePage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
