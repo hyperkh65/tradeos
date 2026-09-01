@@ -1,4 +1,4 @@
-import { getDb, newId, now } from '@/lib/db/sqlite';
+import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 
 export interface SourceRow {
   id: string;
@@ -122,4 +122,223 @@ export function countProjectReferences(sourceId: string): number {
   const db = getDb();
   const row = db.prepare(`SELECT COUNT(*) as c FROM es_project_sources WHERE source_id=?`).get(sourceId) as { c: number };
   return row.c;
+}
+
+// ── 표현(Expression) ────────────────────────────────────────────────────
+
+export interface ExpressionRow {
+  id: string;
+  expression: string;
+  expressionNormalized: string;
+  koreanMeaning: string | null;
+  explanation: string | null;
+  examples: { en: string; ko: string }[];
+  suggestedTitle: string | null;
+  suggestedDescription: string | null;
+  suggestedCaption: string | null;
+  hashtags: string[];
+  aiProviderId: string | null;
+  aiModel: string | null;
+  usedCount: number;
+  lastUsedAt: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function rowToExpression(r: Record<string, unknown>): ExpressionRow {
+  let examples: { en: string; ko: string }[] = [];
+  let hashtags: string[] = [];
+  try { examples = JSON.parse((r.examples_json as string) || '[]'); } catch { /* ignore */ }
+  try { hashtags = JSON.parse((r.hashtags_json as string) || '[]'); } catch { /* ignore */ }
+  return {
+    id: r.id as string, expression: r.expression as string, expressionNormalized: r.expression_normalized as string,
+    koreanMeaning: r.korean_meaning as string | null, explanation: r.explanation as string | null, examples,
+    suggestedTitle: r.suggested_title as string | null, suggestedDescription: r.suggested_description as string | null,
+    suggestedCaption: r.suggested_caption as string | null, hashtags,
+    aiProviderId: r.ai_provider_id as string | null, aiModel: r.ai_model as string | null,
+    usedCount: r.used_count as number, lastUsedAt: r.last_used_at as string | null,
+    createdBy: r.created_by as string | null, createdByName: r.created_by_name as string | null,
+    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+  };
+}
+
+export function normalizeExpression(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function findExpressionByNormalized(normalized: string): ExpressionRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM es_expressions WHERE expression_normalized=?`).get(normalized) as Record<string, unknown> | undefined;
+  return row ? rowToExpression(row) : null;
+}
+
+export function getExpressionById(id: string): ExpressionRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM es_expressions WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  return row ? rowToExpression(row) : null;
+}
+
+export function listExpressions(search?: string): ExpressionRow[] {
+  const db = getDb();
+  const rows = search
+    ? db.prepare(`SELECT * FROM es_expressions WHERE expression_normalized LIKE ? ORDER BY created_at DESC LIMIT 200`).all(`%${normalizeExpression(search)}%`)
+    : db.prepare(`SELECT * FROM es_expressions ORDER BY created_at DESC LIMIT 200`).all();
+  return (rows as Record<string, unknown>[]).map(rowToExpression);
+}
+
+export interface InsertExpressionInput {
+  expression: string;
+  koreanMeaning?: string | null;
+  explanation?: string | null;
+  examples?: { en: string; ko: string }[];
+  suggestedTitle?: string | null;
+  suggestedDescription?: string | null;
+  suggestedCaption?: string | null;
+  hashtags?: string[];
+  aiProviderId?: string | null;
+  aiModel?: string | null;
+  rawResponse?: string | null;
+  createdBy: string;
+  createdByName: string;
+}
+
+export function insertExpression(input: InsertExpressionInput): ExpressionRow {
+  const db = getDb();
+  const id = newId();
+  const ts = now();
+  const normalized = normalizeExpression(input.expression);
+  db.prepare(`INSERT INTO es_expressions
+    (id, expression, expression_normalized, korean_meaning, explanation, examples_json, suggested_title,
+     suggested_description, suggested_caption, hashtags_json, ai_provider_id, ai_model, raw_response,
+     created_by, created_by_name, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`).run(
+    id, input.expression, normalized, input.koreanMeaning ?? null, input.explanation ?? null,
+    JSON.stringify(input.examples ?? []), input.suggestedTitle ?? null,
+    input.suggestedDescription ?? null, input.suggestedCaption ?? null, JSON.stringify(input.hashtags ?? []),
+    input.aiProviderId ?? null, input.aiModel ?? null, input.rawResponse ?? null,
+    input.createdBy, input.createdByName, ts, ts,
+  );
+  return getExpressionById(id)!;
+}
+
+export function touchExpressionUsage(id: string): void {
+  const db = getDb();
+  db.prepare(`UPDATE es_expressions SET used_count = used_count + 1, last_used_at=? WHERE id=?`).run(now(), id);
+}
+
+// ── 프로젝트(Project) ───────────────────────────────────────────────────
+
+export interface ProjectRow {
+  id: string;
+  businessId: string;
+  expressionId: string;
+  title: string | null;
+  description: string | null;
+  caption: string | null;
+  hashtags: string[];
+  templateId: string | null;
+  templateSettings: Record<string, unknown> | null;
+  status: 'draft' | 'source_required' | 'ready' | 'rendering' | 'completed' | 'failed' | 'archived';
+  outputVideoPath: string | null;
+  outputThumbnailPath: string | null;
+  outputDurationSec: number | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deletedBy: string | null;
+}
+
+function rowToProject(r: Record<string, unknown>): ProjectRow {
+  let hashtags: string[] = [];
+  let templateSettings: Record<string, unknown> | null = null;
+  try { hashtags = JSON.parse((r.hashtags_json as string) || '[]'); } catch { /* ignore */ }
+  if (r.template_settings_json) { try { templateSettings = JSON.parse(r.template_settings_json as string); } catch { /* ignore */ } }
+  return {
+    id: r.id as string, businessId: r.business_id as string, expressionId: r.expression_id as string,
+    title: r.title as string | null, description: r.description as string | null, caption: r.caption as string | null, hashtags,
+    templateId: r.template_id as string | null, templateSettings,
+    status: r.status as ProjectRow['status'],
+    outputVideoPath: r.output_video_path as string | null, outputThumbnailPath: r.output_thumbnail_path as string | null,
+    outputDurationSec: r.output_duration_sec as number | null,
+    createdBy: r.created_by as string | null, createdByName: r.created_by_name as string | null,
+    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+    deletedAt: r.deleted_at as string | null, deletedBy: r.deleted_by as string | null,
+  };
+}
+
+export function insertProject(expressionId: string, createdBy: string, createdByName: string): ProjectRow {
+  const db = getDb();
+  const id = newId();
+  const businessId = nextBizId('ES');
+  const ts = now();
+  db.prepare(`INSERT INTO es_projects (id, business_id, expression_id, status, created_by, created_by_name, created_at, updated_at)
+    VALUES (?,?,?,'draft',?,?,?,?)`).run(id, businessId, expressionId, createdBy, createdByName, ts, ts);
+  return getProjectById(id)!;
+}
+
+export function getProjectById(id: string): ProjectRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM es_projects WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  return row ? rowToProject(row) : null;
+}
+
+export interface ListProjectsOptions {
+  status?: ProjectRow['status'];
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+export function listProjects(opts: ListProjectsOptions = {}): (ProjectRow & { expression: string })[] {
+  const db = getDb();
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  if (!opts.includeDeleted) conds.push('p.deleted_at IS NULL');
+  if (opts.status) { conds.push('p.status=?'); params.push(opts.status); }
+  if (opts.search) { conds.push('e.expression_normalized LIKE ?'); params.push(`%${normalizeExpression(opts.search)}%`); }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const rows = db.prepare(`
+    SELECT p.*, e.expression as expression FROM es_projects p
+    JOIN es_expressions e ON e.id = p.expression_id
+    ${where} ORDER BY p.created_at DESC LIMIT 500
+  `).all(...params) as Record<string, unknown>[];
+  return rows.map(r => ({ ...rowToProject(r), expression: r.expression as string }));
+}
+
+export interface UpdateProjectInput {
+  title?: string | null;
+  description?: string | null;
+  caption?: string | null;
+  hashtags?: string[];
+  templateId?: string | null;
+  templateSettings?: Record<string, unknown> | null;
+  status?: ProjectRow['status'];
+  outputVideoPath?: string | null;
+  outputThumbnailPath?: string | null;
+  outputDurationSec?: number | null;
+}
+
+export function updateProject(id: string, patch: UpdateProjectInput): ProjectRow | null {
+  const db = getDb();
+  const existing = getProjectById(id);
+  if (!existing) return null;
+  const merged = { ...existing, ...patch };
+  db.prepare(`UPDATE es_projects SET title=?, description=?, caption=?, hashtags_json=?, template_id=?,
+    template_settings_json=?, status=?, output_video_path=?, output_thumbnail_path=?, output_duration_sec=?, updated_at=?
+    WHERE id=?`).run(
+    merged.title, merged.description, merged.caption, JSON.stringify(merged.hashtags ?? []), merged.templateId,
+    merged.templateSettings ? JSON.stringify(merged.templateSettings) : null, merged.status,
+    merged.outputVideoPath, merged.outputThumbnailPath, merged.outputDurationSec, now(), id,
+  );
+  return getProjectById(id);
+}
+
+export function softDeleteProject(id: string, deletedBy: string): boolean {
+  const db = getDb();
+  const res = db.prepare(`UPDATE es_projects SET deleted_at=?, deleted_by=?, updated_at=? WHERE id=? AND deleted_at IS NULL`)
+    .run(now(), deletedBy, now(), id);
+  return res.changes > 0;
 }
