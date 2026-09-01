@@ -369,3 +369,95 @@ export function softDeleteProject(id: string, deletedBy: string): boolean {
     .run(now(), deletedBy, now(), id);
   return res.changes > 0;
 }
+
+// ── 프로젝트-소스 연결(순서/트림) ──────────────────────────────────────────
+
+export interface ProjectSourceRow {
+  id: string;
+  projectId: string;
+  sourceId: string;
+  position: number;
+  trimStartSec: number;
+  trimEndSec: number | null;
+  clipLabel: string | null;
+  createdAt: string;
+  source: SourceRow;
+}
+
+function rowToProjectSource(r: Record<string, unknown>): ProjectSourceRow {
+  return {
+    id: r.link_id as string, projectId: r.project_id as string, sourceId: r.source_id as string,
+    position: r.position as number, trimStartSec: r.trim_start_sec as number, trimEndSec: r.trim_end_sec as number | null,
+    clipLabel: r.clip_label as string | null, createdAt: r.link_created_at as string,
+    source: rowToSource(r),
+  };
+}
+
+/** JOIN해서 소스 메타데이터까지 한 번에 반환 — 순서(position) 그대로 정렬.
+ * ps.id/s.id처럼 컬럼명이 겹치는 경우 SQLite/better-sqlite3는 나중에 선택된 컬럼이
+ * 덮어쓰므로(마지막 s.*가 이김) link 쪽 id/created_at은 반드시 별칭을 줘야 한다. */
+export function listProjectSources(projectId: string): ProjectSourceRow[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT ps.id as link_id, ps.project_id, ps.source_id, ps.position, ps.trim_start_sec, ps.trim_end_sec,
+           ps.clip_label, ps.created_at as link_created_at,
+           s.*
+    FROM es_project_sources ps JOIN es_sources s ON s.id = ps.source_id
+    WHERE ps.project_id=? ORDER BY ps.position ASC
+  `).all(projectId) as Record<string, unknown>[];
+  return rows.map(rowToProjectSource);
+}
+
+export function countProjectSources(projectId: string): number {
+  const db = getDb();
+  const row = db.prepare(`SELECT COUNT(*) as c FROM es_project_sources WHERE project_id=?`).get(projectId) as { c: number };
+  return row.c;
+}
+
+/** 새 클립은 항상 맨 뒤에 붙는다(position = 현재 최대값+1). */
+export function attachProjectSource(projectId: string, sourceId: string, trimStartSec = 0, trimEndSec: number | null = null): ProjectSourceRow {
+  const db = getDb();
+  const maxPos = db.prepare(`SELECT COALESCE(MAX(position), -1) as m FROM es_project_sources WHERE project_id=?`).get(projectId) as { m: number };
+  const id = newId();
+  db.prepare(`INSERT INTO es_project_sources (id, project_id, source_id, position, trim_start_sec, trim_end_sec, created_at)
+    VALUES (?,?,?,?,?,?,?)`).run(id, projectId, sourceId, maxPos.m + 1, trimStartSec, trimEndSec, now());
+  return listProjectSources(projectId).find(ps => ps.id === id)!;
+}
+
+export interface UpdateProjectSourceInput {
+  trimStartSec?: number;
+  trimEndSec?: number | null;
+  clipLabel?: string | null;
+}
+
+export function updateProjectSource(linkId: string, patch: UpdateProjectSourceInput): void {
+  const db = getDb();
+  const existing = db.prepare(`SELECT trim_start_sec, trim_end_sec, clip_label FROM es_project_sources WHERE id=?`).get(linkId) as
+    { trim_start_sec: number; trim_end_sec: number | null; clip_label: string | null } | undefined;
+  if (!existing) return;
+  const merged = {
+    trimStartSec: patch.trimStartSec ?? existing.trim_start_sec,
+    trimEndSec: patch.trimEndSec !== undefined ? patch.trimEndSec : existing.trim_end_sec,
+    clipLabel: patch.clipLabel !== undefined ? patch.clipLabel : existing.clip_label,
+  };
+  db.prepare(`UPDATE es_project_sources SET trim_start_sec=?, trim_end_sec=?, clip_label=? WHERE id=?`)
+    .run(merged.trimStartSec, merged.trimEndSec, merged.clipLabel, linkId);
+}
+
+export function detachProjectSource(linkId: string): boolean {
+  const db = getDb();
+  const res = db.prepare(`DELETE FROM es_project_sources WHERE id=?`).run(linkId);
+  return res.changes > 0;
+}
+
+/** 순서 재배열 — 프론트에서 드래그로 정렬한 전체 linkId 배열을 그대로 받아
+ * 0부터 다시 채번한다(중간에 구멍 생기지 않게, 트랜잭션으로 원자적 처리). */
+export function reorderProjectSources(projectId: string, orderedLinkIds: string[]): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    orderedLinkIds.forEach((linkId, idx) => {
+      db.prepare(`UPDATE es_project_sources SET position=? WHERE id=? AND project_id=?`).run(idx, linkId, projectId);
+    });
+  });
+  tx();
+}

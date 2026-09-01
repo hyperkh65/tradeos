@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/layout/header';
 import { Loader2, Clapperboard, Plus, Search, ExternalLink, Video, Layout as LayoutIcon, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 interface ProjectRow {
@@ -28,6 +29,7 @@ function buildGetYarnSearchUrl(expression: string): string {
 }
 
 export default function EnglishShortsHomePage() {
+  const router = useRouter();
   const [expression, setExpression] = useState('');
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +138,8 @@ export default function EnglishShortsHomePage() {
               </thead>
               <tbody className="divide-y">
                 {projects.map(p => (
-                  <tr key={p.id} className="hover:bg-muted/30">
+                  <tr key={p.id} className="hover:bg-muted/30 cursor-pointer"
+                    onClick={() => router.push(`/admin/tools/english-shorts/${p.id}`)}>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{p.businessId}</td>
                     <td className="px-3 py-2 font-medium">{p.expression}</td>
                     <td className="px-3 py-2"><span className={cn('text-xs px-2 py-0.5 rounded-full', STATUS_COLOR[p.status])}>{STATUS_LABEL[p.status] || p.status}</span></td>
