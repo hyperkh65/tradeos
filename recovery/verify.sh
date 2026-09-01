@@ -32,6 +32,7 @@ check "database_has_users" "[ \"\$(sqlite3 '$TARGET/data/nexport.db' 'SELECT COU
 check "database_has_products" "sqlite3 '$TARGET/data/nexport.db' 'SELECT COUNT(*) FROM products' "
 check "attachments_dir" "[ -d '$TARGET/data/uploads' ]"
 check "qdrant" "curl -sf -o /dev/null http://127.0.0.1:6333/"
+check "ffmpeg_container" "docker exec tradeos-ffmpeg ffmpeg -version"
 check "ai_config_table" "sqlite3 '$TARGET/data/nexport.db' 'SELECT COUNT(*) FROM ai_settings' "
 check "api_health" "curl -sf -o /dev/null '$BASE_URL/api/storage/health'"
 

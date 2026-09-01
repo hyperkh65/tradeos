@@ -36,7 +36,7 @@ function readDockerInfo(): { available: boolean; containers: DockerContainerInfo
   try {
     const version = execFileSync(dockerBin, ['version', '--format', '{{.Server.Version}}'], { timeout: 5000 }).toString().trim();
     const containers: DockerContainerInfo[] = [];
-    for (const name of ['tradeos-qdrant', 'tradeos-docverify']) {
+    for (const name of ['tradeos-qdrant', 'tradeos-docverify', 'tradeos-ffmpeg']) {
       try {
         const raw = execFileSync(dockerBin, ['inspect', name], { timeout: 5000 }).toString();
         const info = JSON.parse(raw)[0];

@@ -7,6 +7,7 @@
 export interface NonSecretAppConfig {
   port: string;
   docverifyContainer: string;
+  ffmpegContainer: string;
   aiEnabled: string;
   notionDbIds: Record<string, string>;
 }
@@ -29,6 +30,7 @@ export function collectNonSecretConfig(): NonSecretAppConfig {
   return {
     port: process.env.PORT || '3103',
     docverifyContainer: process.env.DOCVERIFY_CONTAINER || 'tradeos-docverify',
+    ffmpegContainer: process.env.FFMPEG_CONTAINER || 'tradeos-ffmpeg',
     aiEnabled: process.env.AI_ENABLED || 'true',
     notionDbIds,
   };

@@ -87,6 +87,7 @@ export function getSourceOfTruthRegistry(): BackupDomain[] {
  * 도메인이 "이미 다 커버하고 있다"는 전제를 계속 신뢰할 수 있는지 확인하는 정보성
  * 기준선이다(새 테이블이 생겨도 백업 자체는 자동으로 커버되므로 실패 사유는 아님). */
 const KNOWN_TABLES_BASELINE = new Set([
+  'admin_tools', 'admin_tools_audit_logs', 'admin_tools_platform_settings',
   'ai_conversations', 'ai_document_index', 'ai_index_jobs', 'ai_messages', 'ai_prompt_settings',
   'ai_providers', 'ai_settings', 'ai_tool_logs', 'ai_usage_logs', 'ai_vector_collections',
   'approval_attachments', 'approval_comments', 'approval_doc_attachments', 'approval_doc_audit_logs',
@@ -97,10 +98,12 @@ const KNOWN_TABLES_BASELINE = new Set([
   'approval_doc_sections', 'approval_doc_submission_versions', 'approval_doc_templates',
   'approval_doc_test_items', 'approval_doc_validation_acknowledgements', 'approvals', 'backup_runs',
   'bank_accounts', 'biz_sequences', 'calendar_events', 'channels', 'chart_of_accounts', 'claims',
-  'commissions', 'companies', 'company_brand_profiles', 'cost_records', 'documents', 'estimator_cases',
+  'commissions', 'companies', 'company_brand_profiles', 'cost_records', 'documents',
+  'es_expressions', 'es_sources', 'es_templates', 'es_projects', 'es_project_sources',
+  'es_render_logs', 'es_audit_logs', 'es_settings', 'estimator_cases',
   'expenses', 'file_folders', 'file_items', 'foreign_invoices', 'forwarder_rates', 'imports',
   'inspections', 'inventory', 'journal_entries', 'journal_lines', 'leave_policies', 'leave_requests',
-  'mail', 'mail_accounts', 'mail_contacts', 'mail_ext_messages', 'mail_sync_cursors', 'messages',
+  'mail', 'mail_accounts', 'mail_contacts', 'mail_ext_messages', 'mail_sync_cursors', 'media_render_jobs', 'messages',
   'notifications', 'photo_album_items', 'photo_albums', 'photo_audit_logs', 'photo_comments',
   'photo_derivatives', 'photo_entity_links', 'photo_favorites', 'photo_folders', 'photo_internal_shares',
   'photo_jobs', 'photo_settings', 'photo_share_access_logs', 'photo_share_items', 'photo_shares',

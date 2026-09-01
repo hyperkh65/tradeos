@@ -87,8 +87,20 @@ if [ -x "$DOCKER" ] || command -v docker >/dev/null 2>&1; then
       && echo "       docverify 컨테이너 기동됨" \
       || echo "       [경고] docverify 이미지가 없어 기동하지 못했습니다 — 문서검증 기능만 영향받습니다(핵심 그룹웨어는 정상)."
   fi
+  # English Shorts Studio(Admin Tools) 렌더 사이드카 — docverify와 달리 리포 밖
+  # 커스텀 이미지가 아니라 공개 이미지(linuxserver/ffmpeg)라 tar 로드가 필요 없고
+  # Docker가 registry에서 직접 pull한다(Qdrant와 동일한 방식).
+  if ! $DOCKER_BIN ps --format '{{.Names}}' | grep -qx tradeos-ffmpeg; then
+    $DOCKER_BIN rm -f tradeos-ffmpeg 2>/dev/null || true
+    $DOCKER_BIN run -d --name tradeos-ffmpeg --restart unless-stopped \
+      --entrypoint tail \
+      -v "$TARGET/data:$TARGET/data" -v /tmp:/tmp \
+      linuxserver/ffmpeg -f /dev/null \
+      && echo "       ffmpeg 컨테이너 기동됨" \
+      || echo "       [경고] ffmpeg 컨테이너를 기동하지 못했습니다 — English Shorts 렌더링 기능만 영향받습니다(핵심 그룹웨어는 정상)."
+  fi
 else
-  echo "       [경고] Docker를 찾을 수 없어 Qdrant/docverify를 건너뜁니다 — preflight.sh를 다시 확인하세요."
+  echo "       [경고] Docker를 찾을 수 없어 Qdrant/docverify/ffmpeg를 건너뜁니다 — preflight.sh를 다시 확인하세요."
 fi
 
 echo "[8/9] 시크릿/설정 복원 중..."
@@ -100,6 +112,7 @@ if [ -f "$WORKDIR/config/application-config.json" ]; then
     const lines = [];
     lines.push('PORT=' + cfg.port);
     lines.push('DOCVERIFY_CONTAINER=' + cfg.docverifyContainer);
+    lines.push('FFMPEG_CONTAINER=' + cfg.ffmpegContainer);
     lines.push('AI_ENABLED=' + cfg.aiEnabled);
     for (const [k, v] of Object.entries(cfg.notionDbIds || {})) lines.push(k + '=' + JSON.stringify(v));
     require('fs').appendFileSync('$ENV_FILE', lines.join('\n') + '\n');
