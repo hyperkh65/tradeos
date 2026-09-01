@@ -43,7 +43,7 @@ const EXCLUDED_TABLES = new Set(['backup_runs', 'backup_packages', 'restore_test
  * `filename`(예: msy3rj968qi7.xls) 뿐이고 `name`은 업로더가 올릴 때 쓴 원본 이름이라
  * 디스크에 그 이름 그대로 존재할 이유가 없다. */
 const METADATA_FIELD_NAMES = new Set([
-  'name', 'originalname', 'original_filename', 'original_name', 'displayname', 'display_name',
+  'name', 'originalname', 'original_filename', 'original_file_name', 'original_name', 'displayname', 'display_name',
   'file_name', 'file_type', 'filetype', 'mimetype', 'mime_type',
   'uploadedat', 'uploaded_at', 'createdat', 'created_at', 'updatedat', 'updated_at',
   'size', 'filesize', 'file_size', 'description', 'id',
@@ -116,8 +116,16 @@ export function auditAttachments(): AttachmentAuditResult {
   const files = scanUploadedFiles();
   const uploadDir = getUploadDir();
   const fileByRelPath = new Map(files.map(f => [f.relPath, f]));
-  const fileBasenames = new Map<string, string>(); // basename -> relPath (파일명만으로도 참조되는 경우 대비)
-  for (const f of files) fileBasenames.set(path.basename(f.relPath), f.relPath);
+  // basename -> relPath[] (파일명만으로도 참조되는 경우 대비). 배열인 이유: 사진첩
+  // 파생본(photos/derivative/{kind}/{photoId}.webp)처럼 같은 파일명이 kind별 하위
+  // 폴더에 반복되는 경우가 있어 basename이 유일하지 않다 — Map<string,string>이면
+  // 뒤에 스캔된 kind가 앞의 것을 덮어써 나머지 kind들이 전부 orphan으로 오탐된다.
+  const fileBasenames = new Map<string, string[]>();
+  for (const f of files) {
+    const base = path.basename(f.relPath);
+    const arr = fileBasenames.get(base);
+    if (arr) arr.push(f.relPath); else fileBasenames.set(base, [f.relPath]);
+  }
 
   const db = getDb();
   const refColumns = findFileRefColumns();
@@ -141,11 +149,18 @@ export function auditAttachments(): AttachmentAuditResult {
         const base = path.basename(leaf);
         if (!/\.[a-zA-Z0-9]{1,6}$/.test(base) && !fileBasenames.has(base)) continue; // 확장자도 없고 알려진 파일명도 아니면 첨부파일 참조가 아닐 가능성이 큼
         totalDbFileReferences++;
-        // 1) UPLOAD_DIR 기준 상대경로로 바로 존재하는지, 2) 파일명만으로 매칭되는지 확인
-        const relGuess = leaf.replace(/^\//, '').replace(/^uploads\//, '');
-        const resolved = fileByRelPath.has(relGuess) ? relGuess : fileBasenames.get(base);
-        if (resolved) {
-          referencedRelPaths.add(resolved);
+        // 1) UPLOAD_DIR 절대경로로 저장된 값이면(사진첩처럼 stored_path가 nasUpload가
+        //    돌려준 로컬 절대경로인 경우) 그 접두사를 정확히 제거해 실제 상대경로를 얻고,
+        //    2) 아니면 기존처럼 선행 슬래시/uploads/ 접두사만 제거해 추정, 3) 그래도 못
+        //    찾으면 파일명만으로 매칭(이 경우 basename이 여러 개면 전부 참조된 것으로 처리).
+        const uploadDirPrefix = uploadDir.endsWith(path.sep) ? uploadDir : uploadDir + path.sep;
+        const relGuess = leaf.startsWith(uploadDirPrefix)
+          ? leaf.slice(uploadDirPrefix.length)
+          : leaf.replace(/^\//, '').replace(/^uploads\//, '');
+        if (fileByRelPath.has(relGuess)) {
+          referencedRelPaths.add(relGuess);
+        } else if (fileBasenames.has(base)) {
+          for (const candidate of fileBasenames.get(base)!) referencedRelPaths.add(candidate);
         } else if (fs.existsSync(path.join(uploadDir, relGuess))) {
           referencedRelPaths.add(relGuess);
         } else {

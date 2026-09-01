@@ -8,6 +8,8 @@ export async function register() {
   startPhotoThumbnailWorker();
   const { seedInitialChangeHistory, logSystemChange } = await import('@/lib/backup/change-log');
   seedInitialChangeHistory();
+  const { checkAndNotifyPostRestoreExternalShares } = await import('@/lib/backup/post-restore');
+  checkAndNotifyPostRestoreExternalShares().catch(e => console.error('[post-restore check]', e));
   const { migrateLegacyProviderDefaults } = await import('@/lib/ai/db');
   const migratedCount = migrateLegacyProviderDefaults();
   if (migratedCount > 0) {

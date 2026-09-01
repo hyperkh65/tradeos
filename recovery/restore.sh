@@ -119,6 +119,10 @@ fi
 echo "SQLITE_DB_PATH=$TARGET/data/nexport.db" >> "$ENV_FILE"
 echo "UPLOAD_DIR=$TARGET/data/uploads" >> "$ENV_FILE"
 echo "QDRANT_URL=http://127.0.0.1:6333" >> "$ENV_FILE"
+# 서버가 이 값을 읽어 사진첩 외부 공유 링크 재검토 알림을 관리자에게 1회 발송한다
+# (lib/backup/post-restore.ts) — 옛 환경에서 발급된 공유 링크가 새 환경에서도 계속
+# 유효한 게 맞는지는 사람이 판단해야 하는 문제라 자동 폐기 대신 알림만 남긴다.
+echo "RECOVERY_RESTORED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$ENV_FILE"
 echo "       .env 초안 생성됨: $ENV_FILE (검토 후 실제 .env로 사용하거나 프로세스 매니저에 반영하세요)"
 
 echo "[9/10] 문서 배치..."
