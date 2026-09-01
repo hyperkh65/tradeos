@@ -228,6 +228,33 @@ export function touchExpressionUsage(id: string): void {
   db.prepare(`UPDATE es_expressions SET used_count = used_count + 1, last_used_at=? WHERE id=?`).run(now(), id);
 }
 
+export interface UpdateExpressionAiFieldsInput {
+  koreanMeaning: string | null;
+  explanation: string | null;
+  examples: { en: string; ko: string }[];
+  suggestedTitle: string | null;
+  suggestedDescription: string | null;
+  suggestedCaption: string | null;
+  hashtags: string[];
+  aiProviderId: string | null;
+  aiModel: string | null;
+  rawResponse: string | null;
+}
+
+/** AI 재분석(regenerate:true) 결과로 기존 row를 덮어쓴다 — 관리자가 이후 직접 수정한
+ * 값(es_projects 쪽 title/description 등)은 건드리지 않고 es_expressions(원천 캐시)만 갱신. */
+export function updateExpressionAiFields(id: string, input: UpdateExpressionAiFieldsInput): ExpressionRow | null {
+  const db = getDb();
+  db.prepare(`UPDATE es_expressions SET korean_meaning=?, explanation=?, examples_json=?, suggested_title=?,
+    suggested_description=?, suggested_caption=?, hashtags_json=?, ai_provider_id=?, ai_model=?, raw_response=?, updated_at=?
+    WHERE id=?`).run(
+    input.koreanMeaning, input.explanation, JSON.stringify(input.examples), input.suggestedTitle,
+    input.suggestedDescription, input.suggestedCaption, JSON.stringify(input.hashtags),
+    input.aiProviderId, input.aiModel, input.rawResponse, now(), id,
+  );
+  return getExpressionById(id);
+}
+
 // ── 프로젝트(Project) ───────────────────────────────────────────────────
 
 export interface ProjectRow {
