@@ -5,6 +5,7 @@ import { Loader2, Clapperboard, Upload, Trash2, Video, Plus, Camera, FileVideo }
 import { useEffect, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface SourceRow {
   id: string; sourceKind: string; originalFileName: string | null; extension: string | null;
@@ -21,6 +22,7 @@ export default function SourceLibraryPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [showMobileUpload, setShowMobileUpload] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
@@ -59,6 +61,16 @@ export default function SourceLibraryPage() {
     if (res.ok) load();
   };
 
+  /** 사진첩과 동일한 드래그앤드롭 업로드(요청서 Phase19 — Windows WebView2에서
+   * disable_drag_drop_handler()가 이미 전역 적용돼 있어 별도 Tauri 쪽 코드
+   * 없이도 동작해야 함). */
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('video/'));
+    if (file) upload(file);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <AppHeader title="소스 클립 라이브러리" icon={<Clapperboard className="w-5 h-5" />}
@@ -81,7 +93,17 @@ export default function SourceLibraryPage() {
       <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; setShowMobileUpload(false); }} />
 
-      <div className="flex-1 overflow-auto p-4 lg:p-6 space-y-4">
+      <div
+        className={cn('flex-1 overflow-auto p-4 lg:p-6 space-y-4 relative', dragOver && 'ring-2 ring-primary ring-inset')}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+      >
+        {dragOver && (
+          <div className="absolute inset-0 z-40 bg-primary/5 border-2 border-dashed border-primary flex items-center justify-center pointer-events-none">
+            <div className="bg-background rounded-lg px-4 py-3 shadow-lg text-sm font-medium">여기에 놓아서 업로드</div>
+          </div>
+        )}
         {uploadMsg && (
           <div className="px-4 py-2.5 rounded-lg text-sm bg-muted border">{uploadMsg}</div>
         )}
