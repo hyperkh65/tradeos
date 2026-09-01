@@ -461,3 +461,61 @@ export function reorderProjectSources(projectId: string, orderedLinkIds: string[
   });
   tx();
 }
+
+export interface TemplateSettingsField {
+  key: string;
+  label: string;
+  type: 'select' | 'number' | 'color' | 'boolean';
+  options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+  step?: number;
+}
+export interface TemplateLayout {
+  kind: string;
+  defaults: Record<string, unknown>;
+  settingsSchema: TemplateSettingsField[];
+}
+export interface TemplateRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  layout: TemplateLayout;
+  thumbnailPreviewPath: string | null;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function rowToTemplate(r: Record<string, unknown>): TemplateRow {
+  return {
+    id: r.id as string,
+    slug: r.slug as string,
+    name: r.name as string,
+    description: r.description as string | null,
+    layout: JSON.parse(r.layout_json as string),
+    thumbnailPreviewPath: r.thumbnail_preview_path as string | null,
+    enabled: !!r.enabled,
+    sortOrder: r.sort_order as number,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  };
+}
+
+export function listTemplates(includeDisabled = false): TemplateRow[] {
+  const db = getDb();
+  const rows = db.prepare(
+    includeDisabled
+      ? `SELECT * FROM es_templates ORDER BY sort_order ASC`
+      : `SELECT * FROM es_templates WHERE enabled=1 ORDER BY sort_order ASC`
+  ).all() as Record<string, unknown>[];
+  return rows.map(rowToTemplate);
+}
+
+export function getTemplateById(id: string): TemplateRow | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM es_templates WHERE id=?`).get(id) as Record<string, unknown> | undefined;
+  return row ? rowToTemplate(row) : null;
+}

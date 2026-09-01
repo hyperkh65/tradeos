@@ -1,7 +1,7 @@
 'use client';
 
 import { AppHeader } from '@/components/layout/header';
-import { Loader2, Clapperboard, Sparkles, Plus, Trash2, GripVertical, RefreshCw } from 'lucide-react';
+import { Loader2, Clapperboard, Sparkles, Plus, Trash2, GripVertical, RefreshCw, LayoutTemplate, Check } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,15 @@ interface Expression {
 interface Project {
   id: string; businessId: string; expressionId: string; title: string | null; description: string | null;
   caption: string | null; hashtags: string[]; status: string;
+  templateId: string | null; templateSettings: Record<string, unknown> | null;
+}
+interface TemplateSettingsField {
+  key: string; label: string; type: 'select' | 'number' | 'color' | 'boolean';
+  options?: { value: string; label: string }[]; min?: number; max?: number; step?: number;
+}
+interface Template {
+  id: string; slug: string; name: string; description: string | null;
+  layout: { kind: string; defaults: Record<string, unknown>; settingsSchema: TemplateSettingsField[] };
 }
 interface SourceInfo {
   id: string; originalFileName: string | null; durationSec: number | null; extension: string | null;
@@ -35,11 +44,17 @@ export default function ProjectEditorPage() {
   const [expression, setExpression] = useState<Expression | null>(null);
   const [links, setLinks] = useState<ProjectSourceLink[]>([]);
   const [library, setLibrary] = useState<LibrarySource[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // 템플릿 선택 + 설정값 로컬 상태(설정값 폼 — 드래그앤드롭 에디터 아님, 요청서 26번)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [templateSettings, setTemplateSettings] = useState<Record<string, unknown>>({});
 
   // 프로젝트 필드 편집 로컬 상태
   const [title, setTitle] = useState('');
@@ -50,24 +65,29 @@ export default function ProjectEditorPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [pRes, sRes, libRes] = await Promise.all([
+      const [pRes, sRes, libRes, tplRes] = await Promise.all([
         fetch(`/api/admin-tools/english-shorts/projects/${projectId}`),
         fetch(`/api/admin-tools/english-shorts/projects/${projectId}/sources`),
         fetch('/api/admin-tools/english-shorts/sources'),
+        fetch('/api/admin-tools/english-shorts/templates'),
       ]);
       const pJson = await pRes.json();
       const sJson = await sRes.json();
       const libJson = await libRes.json();
+      const tplJson = await tplRes.json();
       if (pJson.project) {
         setProject(pJson.project);
         setTitle(pJson.project.title || '');
         setDescription(pJson.project.description || '');
         setCaption(pJson.project.caption || '');
         setHashtags((pJson.project.hashtags || []).join(', '));
+        setSelectedTemplateId(pJson.project.templateId || null);
+        setTemplateSettings(pJson.project.templateSettings || {});
       }
       if (pJson.expression) setExpression(pJson.expression);
       if (Array.isArray(sJson.sources)) setLinks(sJson.sources);
       if (Array.isArray(libJson.sources)) setLibrary(libJson.sources);
+      if (Array.isArray(tplJson.templates)) setTemplates(tplJson.templates);
     } finally {
       setLoading(false);
     }
@@ -107,6 +127,24 @@ export default function ProjectEditorPage() {
       if (res.ok) load();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const pickTemplate = (tpl: Template) => {
+    setSelectedTemplateId(tpl.id);
+    setTemplateSettings({ ...tpl.layout.defaults });
+  };
+
+  const saveTemplateSelection = async () => {
+    setSavingTemplate(true);
+    try {
+      const res = await fetch(`/api/admin-tools/english-shorts/projects/${projectId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId: selectedTemplateId, templateSettings }),
+      });
+      if (res.ok) load();
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
@@ -188,6 +226,56 @@ export default function ProjectEditorPage() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">아직 분석하지 않았습니다.</p>
+          )}
+        </div>
+
+        {/* 템플릿 선택 (요청서 26번 — 드래그앤드롭 에디터 대신 설정값 폼) */}
+        <div className="bg-card border rounded-xl p-4 space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-1.5"><LayoutTemplate className="w-4 h-4 text-primary" />템플릿</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {templates.map(tpl => (
+              <button key={tpl.id} onClick={() => pickTemplate(tpl)}
+                className={cn('text-left p-3 rounded-lg border text-xs space-y-1 hover:bg-muted/50',
+                  selectedTemplateId === tpl.id && 'border-primary bg-primary/5')}>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{tpl.name}</span>
+                  {selectedTemplateId === tpl.id && <Check className="w-3.5 h-3.5 text-primary" />}
+                </div>
+                <p className="text-muted-foreground">{tpl.description}</p>
+              </button>
+            ))}
+          </div>
+          {selectedTemplateId && (
+            <div className="pt-2 border-t space-y-2">
+              {templates.find(t => t.id === selectedTemplateId)?.layout.settingsSchema.map(field => (
+                <div key={field.key} className="flex items-center justify-between gap-3">
+                  <label className="text-xs text-muted-foreground shrink-0">{field.label}</label>
+                  {field.type === 'select' ? (
+                    <select value={String(templateSettings[field.key] ?? '')}
+                      onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: e.target.value }))}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+                      {field.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : field.type === 'color' ? (
+                    <input type="color" value={String(templateSettings[field.key] ?? '#FFFFFF')}
+                      onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: e.target.value }))}
+                      className="h-8 w-14 rounded border border-input bg-background" />
+                  ) : field.type === 'number' ? (
+                    <input type="number" min={field.min} max={field.max} step={field.step}
+                      value={Number(templateSettings[field.key] ?? 0)}
+                      onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: Number(e.target.value) }))}
+                      className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs" />
+                  ) : (
+                    <input type="checkbox" checked={!!templateSettings[field.key]}
+                      onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: e.target.checked }))} />
+                  )}
+                </div>
+              ))}
+              <button onClick={saveTemplateSelection} disabled={savingTemplate}
+                className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50">
+                {savingTemplate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '템플릿 저장'}
+              </button>
+            </div>
           )}
         </div>
 

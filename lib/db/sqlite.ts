@@ -2511,6 +2511,83 @@ function runMigrations(db: Database.Database) {
       updated_by TEXT
     )`);
   } catch { /* already exists */ }
+  // 템플릿 5종 시딩(멱등 — slug UNIQUE). 드래그앤드롭 타임라인 에디터 대신
+  // 설정값 폼으로 조정하는 구조라 layout_json에 defaults+settingsSchema를 함께 둔다.
+  try {
+    const ts = new Date().toISOString();
+    const seedTemplate = db.prepare(`INSERT OR IGNORE INTO es_templates
+      (id, slug, name, description, layout_json, enabled, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`);
+    const templates: Array<{ slug: string; name: string; description: string; sortOrder: number; layout: unknown }> = [
+      {
+        slug: 'classic-subtitle', name: '클래식 자막', description: '화면 하단에 흰색 자막 + 검정 외곽선. 가장 기본적인 쇼츠 자막 스타일.',
+        sortOrder: 0,
+        layout: {
+          kind: 'classic-subtitle',
+          defaults: { subtitlePosition: 'bottom', fontSizePt: 44, primaryColorHex: '#FFFFFF', outlineColorHex: '#000000', boxBackground: false, marginVPx: 80 },
+          settingsSchema: [
+            { key: 'subtitlePosition', label: '자막 위치', type: 'select', options: [{ value: 'bottom', label: '하단' }, { value: 'top', label: '상단' }, { value: 'center', label: '중앙' }] },
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 24, max: 72, step: 2 },
+            { key: 'primaryColorHex', label: '글자 색상', type: 'color' },
+          ],
+        },
+      },
+      {
+        slug: 'caption-card', name: '캡션 카드', description: '반투명 카드 배경 위에 자막을 올려 가독성을 높인 스타일.',
+        sortOrder: 1,
+        layout: {
+          kind: 'caption-card',
+          defaults: { subtitlePosition: 'bottom', fontSizePt: 40, primaryColorHex: '#FFFFFF', outlineColorHex: '#000000', boxBackground: true, marginVPx: 100, cardColorHex: '#000000', cardOpacity: 0.55 },
+          settingsSchema: [
+            { key: 'subtitlePosition', label: '자막 위치', type: 'select', options: [{ value: 'bottom', label: '하단' }, { value: 'top', label: '상단' }] },
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 24, max: 64, step: 2 },
+            { key: 'cardColorHex', label: '카드 배경색', type: 'color' },
+            { key: 'cardOpacity', label: '카드 불투명도', type: 'number', min: 0.2, max: 1, step: 0.05 },
+          ],
+        },
+      },
+      {
+        slug: 'split-compare', name: '비교 분할', description: '화면을 상/하로 나눠 두 클립을 동시에 보여주는 비교 스타일.',
+        sortOrder: 2,
+        layout: {
+          kind: 'split-compare',
+          defaults: { subtitlePosition: 'bottom', fontSizePt: 36, primaryColorHex: '#FFFFFF', outlineColorHex: '#000000', boxBackground: false, marginVPx: 60, splitRatio: '50:50' },
+          settingsSchema: [
+            { key: 'splitRatio', label: '분할 비율', type: 'select', options: [{ value: '50:50', label: '50:50' }, { value: '60:40', label: '60:40' }, { value: '40:60', label: '40:60' }] },
+            { key: 'subtitlePosition', label: '자막 위치', type: 'select', options: [{ value: 'bottom', label: '하단' }, { value: 'center', label: '중앙' }] },
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 24, max: 56, step: 2 },
+          ],
+        },
+      },
+      {
+        slug: 'minimal', name: '미니멀', description: '작은 글씨로 화면 하단 중앙에만 짧게 표시하는 절제된 스타일.',
+        sortOrder: 3,
+        layout: {
+          kind: 'minimal',
+          defaults: { subtitlePosition: 'bottom', fontSizePt: 30, primaryColorHex: '#FFFFFF', outlineColorHex: '#000000', boxBackground: false, marginVPx: 50 },
+          settingsSchema: [
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 20, max: 44, step: 2 },
+            { key: 'primaryColorHex', label: '글자 색상', type: 'color' },
+          ],
+        },
+      },
+      {
+        slug: 'quiz-reveal', name: '퀴즈 리빌', description: '뜻을 잠깐 숨겼다가 지정한 시간 뒤 공개하는 퀴즈형 스타일.',
+        sortOrder: 4,
+        layout: {
+          kind: 'quiz-reveal',
+          defaults: { subtitlePosition: 'bottom', fontSizePt: 40, primaryColorHex: '#FFFFFF', outlineColorHex: '#000000', boxBackground: true, marginVPx: 90, cardColorHex: '#000000', cardOpacity: 0.55, revealDelaySec: 2 },
+          settingsSchema: [
+            { key: 'revealDelaySec', label: '공개까지 대기시간(초)', type: 'number', min: 0.5, max: 6, step: 0.5 },
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 24, max: 60, step: 2 },
+          ],
+        },
+      },
+    ];
+    for (const t of templates) {
+      seedTemplate.run(newId(), t.slug, t.name, t.description, JSON.stringify(t.layout), t.sortOrder, ts, ts);
+    }
+  } catch { /* already exists */ }
   // ── English Shorts Studio 끝 ──────────────────────────────────────────────
 
   // Data migrations (idempotent)
