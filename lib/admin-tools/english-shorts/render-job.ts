@@ -1,13 +1,13 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { getProjectById, updateProject, listProjectSources } from './db';
+import { getProjectById, updateProject, listProjectSources, getExpressionById, getTemplateById } from './db';
 import {
   claimNextRenderJobs, updateRenderJobProgress, completeRenderJob, failRenderJob,
   recoverStaleRenderJobs, insertRenderLog, getRenderJobById, markRenderJobCancelled, type RenderJobRow,
 } from './render-db';
-import { renderProjectVideo, extractThumbnail, type RenderClipInput } from './render-pipeline';
-import { buildAssFile, ensureSubtitleFontDeployed, type AssStyleOptions } from './ass-builder';
+import { renderProjectVideo, extractThumbnail, type RenderClipInput, type RenderOptions } from './render-pipeline';
+import { buildAssFile, ensureSubtitleFontDeployed, type AssStyleOptions, type AssCue } from './ass-builder';
 import { buildRenderOutputPath, buildRenderThumbnailPath, uploadEnglishShortsFile } from './storage';
 import { getEnglishShortsSettings } from './settings';
 import { writeEnglishShortsAuditLog } from './audit';
@@ -45,6 +45,16 @@ function templateLayoutToAssOptions(defaults: Record<string, unknown> | undefine
   };
 }
 
+/** 레터박스 훅 하단 바에는 AI가 만든 2~3문장짜리 explanation을 통째로 못 넣는다
+ * (화면에 한 줄만 들어갈 공간) — 첫 문장만 잘라 쓰고, 그래도 너무 길면 글자수로
+ * 자른다. 추가 AI 호출 없이 기존 explanation 필드를 그대로 재사용. */
+function firstSentence(text: string, maxLen = 60): string {
+  const trimmed = text.trim();
+  const idx = trimmed.search(/[.!?。！？]/);
+  const sentence = idx >= 0 ? trimmed.slice(0, idx + 1) : trimmed;
+  return sentence.length > maxLen ? `${sentence.slice(0, maxLen - 1)}…` : sentence;
+}
+
 /** 잡 하나를 실제로 렌더링한다 — 실패하면 예외를 던지고(호출자가 재시도/최종실패
  * 처리), 완료 판정 전 파일 검증은 render-pipeline.ts가 이미 ffprobe로 수행한다. */
 export async function processRenderJob(job: RenderJobRow): Promise<void> {
@@ -71,25 +81,104 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
   setProgress(job.id, 'generating_subtitles', 15);
   let assPath: string | null = null;
   let fontsDir: string | null = null;
-  const captionText = project.caption?.trim();
-  if (captionText) {
-    const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
-    const styleOpts = templateLayoutToAssOptions(
-      (project.templateSettings as Record<string, unknown> | null) ?? undefined
-    );
-    const ass = buildAssFile([{ startSec: 0, endSec: totalDurationSec, text: captionText }], styleOpts);
-    assPath = path.join(os.tmpdir(), `es-render-${job.id}.ass`);
-    await fs.writeFile(assPath, ass, 'utf8');
+  let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'bars'> = {};
+  const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
 
-    const font = await ensureSubtitleFontDeployed();
-    if (font.absolutePath) {
-      fontsDir = path.dirname(font.absolutePath);
+  const template = project.templateId ? getTemplateById(project.templateId) : null;
+  const layoutKind = template?.layout.kind;
+
+  // 레터박스 훅 — 위/아래 고정 텍스트 바 + 가운데 letterbox 영상. 단일 캡션
+  // 오버레이(기존 4개 템플릿 방식)와 완전히 다른 필터 그래프가 필요해 별도 분기.
+  if (layoutKind === 'letterbox-hook') {
+    const expression = getExpressionById(project.expressionId);
+    const templateDefaults = template?.layout.defaults ?? {};
+    const defaults = { ...templateDefaults, ...((project.templateSettings as Record<string, unknown> | null) ?? {}) };
+    const hookText = String(defaults.hookText ?? '영어 잘해 보이는 표현.zip');
+    const koreanText = expression?.koreanMeaning?.trim() || '';
+    const englishText = expression?.expression?.trim() || '';
+    const explanationText = expression?.explanation?.trim() ? firstSentence(expression.explanation) : '';
+    const fontSizePt = Number(defaults.fontSizePt ?? 56);
+
+    if (!koreanText || !englishText) {
+      insertRenderLog(job.id, 'warn', '레터박스 훅 템플릿에 필요한 한국어 뜻/영어 표현 정보가 없어(AI 분석 미실행) 기본 자막 스타일로 대체합니다');
     } else {
-      insertRenderLog(job.id, 'warn', 'WebDAV 저장소 설정에서는 로컬 fontsdir을 확보할 수 없어 이번 렌더는 자막 없이 진행합니다');
-      assPath = null;
+      const W = 1080;
+      const zones = {
+        hook: { top: 0, height: 130 },
+        korean: { top: 130, height: 150 },
+        english: { top: 280, height: 150 },
+        video: { top: 430, height: 1160 },
+        explanation: { top: 1590, height: 330 },
+      };
+      const cues: AssCue[] = [
+        {
+          startSec: 0, endSec: totalDurationSec, text: hookText,
+          styleOverride: { fontSizePt: 26, primaryColorHex: String(defaults.hookColorHex ?? '#FFFFFF') },
+          posOverride: { x: W / 2, y: zones.hook.top + zones.hook.height / 2 },
+        },
+        {
+          startSec: 0, endSec: totalDurationSec, text: koreanText,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.koreanTextColorHex ?? '#111111') },
+          posOverride: { x: W / 2, y: zones.korean.top + zones.korean.height / 2 },
+        },
+        {
+          startSec: 0, endSec: totalDurationSec, text: englishText,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.englishTextColorHex ?? '#111111') },
+          posOverride: { x: W / 2, y: zones.english.top + zones.english.height / 2 },
+        },
+      ];
+      if (explanationText) {
+        cues.push({
+          startSec: 0, endSec: totalDurationSec, text: explanationText,
+          styleOverride: { fontSizePt: 34, primaryColorHex: String(defaults.explanationTextColorHex ?? '#F5D400') },
+          posOverride: { x: W / 2, y: zones.explanation.top + zones.explanation.height / 2 },
+        });
+      }
+      const ass = buildAssFile(cues, {});
+      assPath = path.join(os.tmpdir(), `es-render-${job.id}.ass`);
+      await fs.writeFile(assPath, ass, 'utf8');
+
+      const font = await ensureSubtitleFontDeployed();
+      if (font.absolutePath) {
+        fontsDir = path.dirname(font.absolutePath);
+        letterboxOpts = {
+          videoRect: { topPx: zones.video.top, heightPx: zones.video.height },
+          bars: [
+            { topPx: zones.hook.top, heightPx: zones.hook.height, colorHex: String(defaults.hookBgColorHex ?? '#000000') },
+            { topPx: zones.korean.top, heightPx: zones.korean.height, colorHex: String(defaults.koreanBgColorHex ?? '#F5D400') },
+            { topPx: zones.english.top, heightPx: zones.english.height, colorHex: String(defaults.englishBgColorHex ?? '#F5D400') },
+            { topPx: zones.explanation.top, heightPx: zones.explanation.height, colorHex: String(defaults.explanationBgColorHex ?? '#000000') },
+          ],
+        };
+      } else {
+        insertRenderLog(job.id, 'warn', 'WebDAV 저장소 설정에서는 로컬 fontsdir을 확보할 수 없어 이번 렌더는 자막 없이 진행합니다');
+        assPath = null;
+      }
     }
-  } else {
-    insertRenderLog(job.id, 'info', '프로젝트에 캡션 텍스트가 없어 자막 없이 렌더링합니다');
+  }
+
+  // letterbox-hook이 아니거나(다른 4개 템플릿), letterbox-hook인데 필요한 정보가
+  // 부족해 위 분기를 건너뛴 경우 기존 단일 캡션 오버레이 방식으로 렌더링한다.
+  if (!letterboxOpts.videoRect) {
+    const captionText = project.caption?.trim();
+    if (captionText) {
+      const styleOpts = templateLayoutToAssOptions(
+        (project.templateSettings as Record<string, unknown> | null) ?? undefined
+      );
+      const ass = buildAssFile([{ startSec: 0, endSec: totalDurationSec, text: captionText }], styleOpts);
+      assPath = path.join(os.tmpdir(), `es-render-${job.id}.ass`);
+      await fs.writeFile(assPath, ass, 'utf8');
+
+      const font = await ensureSubtitleFontDeployed();
+      if (font.absolutePath) {
+        fontsDir = path.dirname(font.absolutePath);
+      } else {
+        insertRenderLog(job.id, 'warn', 'WebDAV 저장소 설정에서는 로컬 fontsdir을 확보할 수 없어 이번 렌더는 자막 없이 진행합니다');
+        assPath = null;
+      }
+    } else {
+      insertRenderLog(job.id, 'info', '프로젝트에 캡션 텍스트가 없어 자막 없이 렌더링합니다');
+    }
   }
 
   setProgress(job.id, 'processing_video', 30);
@@ -105,6 +194,7 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
     audioBitrateK: settings.outputAudioBitrateK,
     assSubtitlePath: assPath,
     fontsDir,
+    ...letterboxOpts,
   });
 
   setProgress(job.id, 'finalizing', 85);

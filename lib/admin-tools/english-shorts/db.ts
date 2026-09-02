@@ -465,7 +465,7 @@ export function reorderProjectSources(projectId: string, orderedLinkIds: string[
 export interface TemplateSettingsField {
   key: string;
   label: string;
-  type: 'select' | 'number' | 'color' | 'boolean';
+  type: 'select' | 'number' | 'color' | 'boolean' | 'text';
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;

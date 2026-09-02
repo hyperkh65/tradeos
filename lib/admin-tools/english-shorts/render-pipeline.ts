@@ -21,6 +21,14 @@ export interface RenderOptions {
   assSubtitlePath?: string | null;
   /** ass 필터의 fontsdir — Noto Sans KR Bold가 있는 디렉터리 절대경로. */
   fontsDir?: string | null;
+  /** 레터박스 훅 템플릿처럼 영상을 전체 화면이 아니라 캔버스 안의 특정 세로
+   * 구간에만 배치해야 할 때(위/아래에 고정 텍스트 바를 둘 공간 확보). 없으면
+   * 기존처럼 영상이 전체 캔버스를 채운다(다른 4개 템플릿은 이 값을 안 씀 —
+   * 완전히 하위호환). */
+  videoRect?: { topPx: number; heightPx: number };
+  /** videoRect와 함께 쓰는 고정색 바(레터박스 훅의 위/아래 검정·노란 바).
+   * 자막(ASS) 텍스트보다 먼저 그려져서 그 위에 텍스트가 얹힌다. */
+  bars?: { topPx: number; heightPx: number; colorHex: string }[];
 }
 
 export interface RenderResult {
@@ -58,6 +66,12 @@ export async function renderProjectVideo(
   const videoBitrateK = opts.videoBitrateK ?? 6000;
   const audioBitrateK = opts.audioBitrateK ?? 128;
 
+  // 레터박스 훅 템플릿처럼 영상을 캔버스 일부 구간에만 넣어야 하면 각 클립을
+  // 그 구간 크기로 정규화한다(기존 5개 템플릿은 videoRect가 없어 지금까지와
+  // 동일하게 전체 캔버스 크기로 정규화 — 완전히 하위호환).
+  const targetW = width;
+  const targetH = opts.videoRect ? opts.videoRect.heightPx : height;
+
   const args: string[] = ['-y'];
   const filterParts: string[] = [];
   const concatInputs: string[] = [];
@@ -65,8 +79,8 @@ export async function renderProjectVideo(
   clips.forEach((clip, i) => {
     args.push('-ss', String(clip.trimStartSec), '-to', String(clip.trimEndSec), '-i', clip.sourcePath);
     filterParts.push(
-      `[${i}:v]scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease,` +
-      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${fps},format=yuv420p[v${i}]`
+      `[${i}:v]scale=w=${targetW}:h=${targetH}:force_original_aspect_ratio=decrease,` +
+      `pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${fps},format=yuv420p[v${i}]`
     );
     if (clip.hasAudio) {
       filterParts.push(`[${i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a${i}]`);
@@ -83,11 +97,30 @@ export async function renderProjectVideo(
   filterParts.push(`${concatInputs.join('')}concat=n=${clips.length}:v=1:a=1[vcat][acat]`);
 
   let videoOutLabel = 'vcat';
+  const clipInputCount = clips.length;
+
+  if (opts.videoRect) {
+    // 클립 concat 결과([vcat])는 videoRect 크기라 전체 캔버스 크기의 검정
+    // 배경 위에 y=topPx로 얹는다 — color lavfi 소스를 별도 입력으로 추가.
+    const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
+    args.push('-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:d=${Math.max(0.1, totalDurationSec)}`);
+    const bgInputIndex = clipInputCount;
+    filterParts.push(`[${bgInputIndex}:v]format=yuv420p[bg]`);
+    filterParts.push(`[bg][vcat]overlay=x=0:y=${opts.videoRect.topPx}:shortest=1[composited]`);
+    videoOutLabel = 'composited';
+
+    (opts.bars ?? []).forEach((bar, i) => {
+      const nextLabel = `bars${i}`;
+      filterParts.push(`[${videoOutLabel}]drawbox=x=0:y=${bar.topPx}:w=${width}:h=${bar.heightPx}:color=${bar.colorHex}:t=fill[${nextLabel}]`);
+      videoOutLabel = nextLabel;
+    });
+  }
+
   if (opts.assSubtitlePath) {
     const assArg = opts.fontsDir
       ? `ass=filename='${escapeFilterPath(opts.assSubtitlePath)}':fontsdir='${escapeFilterPath(opts.fontsDir)}'`
       : `ass=filename='${escapeFilterPath(opts.assSubtitlePath)}'`;
-    filterParts.push(`[vcat]${assArg}[vsub]`);
+    filterParts.push(`[${videoOutLabel}]${assArg}[vsub]`);
     videoOutLabel = 'vsub';
   }
 

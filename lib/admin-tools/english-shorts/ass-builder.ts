@@ -3,11 +3,18 @@ import path from 'node:path';
 import { nasExists, resolveLocalPath } from '@/lib/storage/nas';
 import { buildFontStagingPath, uploadEnglishShortsFile } from './storage';
 
-/** ASS 자막 큐(하나의 화면 표시 구간). */
+/** ASS 자막 큐(하나의 화면 표시 구간). styleOverride를 주면 이 큐만 별도
+ * 스타일(글자크기/색상/위치 등)로 렌더링된다 — 레터박스 훅 템플릿처럼 화면
+ * 안에 여러 개의 서로 다른 텍스트 박스를 동시에 띄워야 할 때 사용. */
 export interface AssCue {
   startSec: number;
   endSec: number;
   text: string;
+  styleOverride?: AssStyleOptions;
+  /** 정확한 픽셀 좌표에 고정해야 할 때(레터박스 훅의 여러 텍스트 박스처럼)
+   * 스타일의 Alignment/MarginV 대신 ASS \pos 오버라이드 태그를 직접 심는다.
+   * anchor는 ASS numpad alignment(기본 5=중앙정렬 기준점). */
+  posOverride?: { x: number; y: number; anchor?: number };
 }
 
 export interface AssStyleOptions {
@@ -71,20 +78,38 @@ function positionToAlignment(position: AssStyleOptions['position']): number {
   return 2; // bottom
 }
 
-/** 실제 렌더에 쓸 ASS 파일 전체 내용을 만든다. cues는 시작초 순서를 요구하지 않음(그대로 순서대로 씀). */
-export function buildAssFile(cues: AssCue[], opts: AssStyleOptions = {}): string {
+/** 스타일 옵션 하나를 [V4+ Styles] 한 줄로 변환. */
+function makeStyleLine(name: string, opts: AssStyleOptions): string {
   const fontName = opts.fontName ?? 'Noto Sans KR';
   const fontSize = opts.fontSizePt ?? 44;
   const primary = hexToAssColor(opts.primaryColorHex ?? '#FFFFFF', 1);
   const outline = hexToAssColor(opts.outlineColorHex ?? '#000000', 1);
   const alignment = positionToAlignment(opts.position);
   const marginV = opts.marginVPx ?? 80;
-  const playResX = opts.playResX ?? 1080;
-  const playResY = opts.playResY ?? 1920;
   const back = opts.boxBackground
     ? hexToAssColor(opts.cardColorHex ?? '#000000', opts.cardOpacity ?? 0.5)
     : '&H00000000';
   const borderStyle = opts.boxBackground ? 3 : 1; // 3 = opaque box background
+  return `Style: ${name},${fontName},${fontSize},${primary},&H000000FF,${outline},${back},-1,0,0,0,100,100,0,0,${borderStyle},2,1,${alignment},20,20,${marginV},1`;
+}
+
+/** 실제 렌더에 쓸 ASS 파일 전체 내용을 만든다. cues는 시작초 순서를 요구하지
+ * 않음(그대로 순서대로 씀). 큐마다 styleOverride가 있으면 그 큐 전용 스타일을
+ * 추가로 정의해 쓰고(레터박스 훅처럼 화면에 여러 텍스트 박스를 동시에 띄울 때),
+ * 없는 큐는 전부 공용 Default 스타일(opts)을 쓴다. */
+export function buildAssFile(cues: AssCue[], opts: AssStyleOptions = {}): string {
+  const playResX = opts.playResX ?? 1080;
+  const playResY = opts.playResY ?? 1920;
+
+  const styleLines = [makeStyleLine('Default', opts)];
+  const eventLines = cues.map((c, i) => {
+    const styleName = c.styleOverride ? `Cue${i}` : 'Default';
+    if (c.styleOverride) styleLines.push(makeStyleLine(styleName, { ...opts, ...c.styleOverride }));
+    // \pos/\an은 코드가 생성하는 리터럴 ASS 제어 태그라 escapeAssText를 거치지
+    // 않는다(escapeAssText는 사용자가 입력한 자막 텍스트 전용 — 이 태그는 그 대상이 아님).
+    const posTag = c.posOverride ? `{\\an${c.posOverride.anchor ?? 5}\\pos(${c.posOverride.x},${c.posOverride.y})}` : '';
+    return `Dialogue: 0,${secToAssTime(c.startSec)},${secToAssTime(c.endSec)},${styleName},,0,0,0,,${posTag}${escapeAssText(c.text)}`;
+  });
 
   const header = [
     '[Script Info]',
@@ -97,17 +122,13 @@ export function buildAssFile(cues: AssCue[], opts: AssStyleOptions = {}): string
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,${fontName},${fontSize},${primary},&H000000FF,${outline},${back},-1,0,0,0,100,100,0,0,${borderStyle},2,1,${alignment},20,20,${marginV},1`,
+    ...styleLines,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ].join('\n');
 
-  const events = cues
-    .map(c => `Dialogue: 0,${secToAssTime(c.startSec)},${secToAssTime(c.endSec)},Default,,0,0,0,,${escapeAssText(c.text)}`)
-    .join('\n');
-
-  return `${header}\n${events}\n`;
+  return `${header}\n${eventLines.join('\n')}\n`;
 }
 
 export interface DeployedFont {

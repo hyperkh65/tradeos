@@ -2583,6 +2583,27 @@ function runMigrations(db: Database.Database) {
           ],
         },
       },
+      {
+        slug: 'letterbox-hook', name: '레터박스 훅', description: '영상 위/아래에 상단 태그 + 한국어·영어 노란 박스 + 하단 설명 바를 고정으로 배치하는 밈형 스타일.',
+        sortOrder: 5,
+        layout: {
+          kind: 'letterbox-hook',
+          defaults: {
+            hookText: '영어 잘해 보이는 표현.zip',
+            hookColorHex: '#FFFFFF', hookBgColorHex: '#000000',
+            koreanBgColorHex: '#F5D400', koreanTextColorHex: '#111111',
+            englishBgColorHex: '#F5D400', englishTextColorHex: '#111111',
+            explanationBgColorHex: '#000000', explanationTextColorHex: '#F5D400',
+            fontSizePt: 56,
+          },
+          settingsSchema: [
+            { key: 'hookText', label: '상단 시리즈 태그', type: 'text' },
+            { key: 'koreanBgColorHex', label: '한국어 박스 배경색', type: 'color' },
+            { key: 'englishBgColorHex', label: '영어 박스 배경색', type: 'color' },
+            { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 32, max: 80, step: 2 },
+          ],
+        },
+      },
     ];
     for (const t of templates) {
       seedTemplate.run(newId(), t.slug, t.name, t.description, JSON.stringify(t.layout), t.sortOrder, ts, ts);

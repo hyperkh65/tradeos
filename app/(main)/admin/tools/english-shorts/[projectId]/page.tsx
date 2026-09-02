@@ -22,7 +22,7 @@ interface Project {
   templateId: string | null; templateSettings: Record<string, unknown> | null;
 }
 interface TemplateSettingsField {
-  key: string; label: string; type: 'select' | 'number' | 'color' | 'boolean';
+  key: string; label: string; type: 'select' | 'number' | 'color' | 'boolean' | 'text';
   options?: { value: string; label: string }[]; min?: number; max?: number; step?: number;
 }
 interface Template {
@@ -373,6 +373,10 @@ export default function ProjectEditorPage() {
                       value={Number(templateSettings[field.key] ?? 0)}
                       onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: Number(e.target.value) }))}
                       className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs" />
+                  ) : field.type === 'text' ? (
+                    <input type="text" value={String(templateSettings[field.key] ?? '')}
+                      onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: e.target.value }))}
+                      className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs" />
                   ) : (
                     <input type="checkbox" checked={!!templateSettings[field.key]}
                       onChange={e => setTemplateSettings(s => ({ ...s, [field.key]: e.target.checked }))} />
