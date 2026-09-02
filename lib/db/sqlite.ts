@@ -2584,22 +2584,23 @@ function runMigrations(db: Database.Database) {
         },
       },
       {
-        slug: 'letterbox-hook', name: '레터박스 훅', description: '영상 위/아래에 상단 태그 + 한국어·영어 노란 박스 + 하단 설명 바를 고정으로 배치하는 밈형 스타일.',
+        slug: 'letterbox-hook', name: '레터박스 훅', description: '그라데이션 상단 태그 바 + 반투명 글라스 카드(한국어·영어) + 레터박스 영상 + 옅은 설명 바를 고정으로 배치하는 감각적인 밈형 스타일.',
         sortOrder: 5,
         layout: {
           kind: 'letterbox-hook',
           defaults: {
             hookText: '영어 잘해 보이는 표현.zip',
-            hookColorHex: '#FFFFFF', hookBgColorHex: '#000000',
-            koreanBgColorHex: '#F5D400', koreanTextColorHex: '#111111',
-            englishBgColorHex: '#F5D400', englishTextColorHex: '#111111',
+            hookColorHex: '#FFFFFF', gradientStartHex: '#000000', gradientEndHex: '#2A2A2A',
+            koreanBgColorHex: '#000000', koreanTextColorHex: '#FFFFFF',
+            englishBgColorHex: '#000000', englishTextColorHex: '#FFFFFF',
+            cardBorderColorHex: '#FFFFFF', cardOpacity: 0.55,
             explanationBgColorHex: '#000000', explanationTextColorHex: '#F5D400',
-            fontSizePt: 56,
+            fontSizePt: 52,
           },
           settingsSchema: [
             { key: 'hookText', label: '상단 시리즈 태그', type: 'text' },
-            { key: 'koreanBgColorHex', label: '한국어 박스 배경색', type: 'color' },
-            { key: 'englishBgColorHex', label: '영어 박스 배경색', type: 'color' },
+            { key: 'koreanBgColorHex', label: '한국어 카드 배경색', type: 'color' },
+            { key: 'englishBgColorHex', label: '영어 카드 배경색', type: 'color' },
             { key: 'fontSizePt', label: '글자 크기', type: 'number', min: 32, max: 80, step: 2 },
           ],
         },
@@ -2607,6 +2608,15 @@ function runMigrations(db: Database.Database) {
     ];
     for (const t of templates) {
       seedTemplate.run(newId(), t.slug, t.name, t.description, JSON.stringify(t.layout), t.sortOrder, ts, ts);
+    }
+    // INSERT OR IGNORE는 slug가 이미 있으면 손대지 않는다 — letterbox-hook은
+    // 첫 배포(평면 노란 바) 이후 글라스모피즘 스타일로 구조가 바뀌어서 기존
+    // row를 강제로 갱신해야 한다(템플릿은 관리자가 직접 편집하는 화면이 없어
+    // 사용자 커스터마이징을 덮어쓸 위험이 없음 — 항상 코드가 유일한 소스).
+    const letterboxHook = templates.find(t => t.slug === 'letterbox-hook');
+    if (letterboxHook) {
+      db.prepare('UPDATE es_templates SET name=?, description=?, layout_json=?, updated_at=? WHERE slug=?')
+        .run(letterboxHook.name, letterboxHook.description, JSON.stringify(letterboxHook.layout), ts, 'letterbox-hook');
     }
   } catch { /* already exists */ }
   // ── English Shorts Studio 끝 ──────────────────────────────────────────────

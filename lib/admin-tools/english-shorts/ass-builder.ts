@@ -15,6 +15,8 @@ export interface AssCue {
    * 스타일의 Alignment/MarginV 대신 ASS \pos 오버라이드 태그를 직접 심는다.
    * anchor는 ASS numpad alignment(기본 5=중앙정렬 기준점). */
   posOverride?: { x: number; y: number; anchor?: number };
+  /** 밀리초 단위 페이드인(끝날 때 페이드아웃은 0) — libass \fad 태그. */
+  fadeInMs?: number;
 }
 
 export interface AssStyleOptions {
@@ -105,10 +107,14 @@ export function buildAssFile(cues: AssCue[], opts: AssStyleOptions = {}): string
   const eventLines = cues.map((c, i) => {
     const styleName = c.styleOverride ? `Cue${i}` : 'Default';
     if (c.styleOverride) styleLines.push(makeStyleLine(styleName, { ...opts, ...c.styleOverride }));
-    // \pos/\an은 코드가 생성하는 리터럴 ASS 제어 태그라 escapeAssText를 거치지
-    // 않는다(escapeAssText는 사용자가 입력한 자막 텍스트 전용 — 이 태그는 그 대상이 아님).
-    const posTag = c.posOverride ? `{\\an${c.posOverride.anchor ?? 5}\\pos(${c.posOverride.x},${c.posOverride.y})}` : '';
-    return `Dialogue: 0,${secToAssTime(c.startSec)},${secToAssTime(c.endSec)},${styleName},,0,0,0,,${posTag}${escapeAssText(c.text)}`;
+    // \pos/\an/\fad은 코드가 생성하는 리터럴 ASS 제어 태그라 escapeAssText를
+    // 거치지 않는다(escapeAssText는 사용자가 입력한 자막 텍스트 전용 — 이
+    // 태그들은 그 대상이 아님). 한 큐에 여러 오버레이 태그가 있으면 {} 하나에 합친다.
+    const overrideTags: string[] = [];
+    if (c.posOverride) overrideTags.push(`\\an${c.posOverride.anchor ?? 5}\\pos(${c.posOverride.x},${c.posOverride.y})`);
+    if (c.fadeInMs) overrideTags.push(`\\fad(${c.fadeInMs},0)`);
+    const overrideBlock = overrideTags.length ? `{${overrideTags.join('')}}` : '';
+    return `Dialogue: 0,${secToAssTime(c.startSec)},${secToAssTime(c.endSec)},${styleName},,0,0,0,,${overrideBlock}${escapeAssText(c.text)}`;
   });
 
   const header = [

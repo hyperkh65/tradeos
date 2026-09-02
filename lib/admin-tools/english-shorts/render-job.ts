@@ -81,7 +81,7 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
   setProgress(job.id, 'generating_subtitles', 15);
   let assPath: string | null = null;
   let fontsDir: string | null = null;
-  let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'bars'> = {};
+  let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'bars' | 'gradientBars'> = {};
   const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
 
   const template = project.templateId ? getTemplateById(project.templateId) : null;
@@ -103,35 +103,46 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
       insertRenderLog(job.id, 'warn', '레터박스 훅 템플릿에 필요한 한국어 뜻/영어 표현 정보가 없어(AI 분석 미실행) 기본 자막 스타일로 대체합니다');
     } else {
       const W = 1080;
+      // 그라데이션 상단 태그 바 + 가운데 정렬된 반투명 카드(글라스모피즘) 2개
+      // + 레터박스 영상 + 하단의 더 옅은 카드 — 화면 전체를 꽉 채우는 평면
+      // 색 바 대신 여백을 두어 "디자인된" 느낌을 낸다.
       const zones = {
-        hook: { top: 0, height: 130 },
-        korean: { top: 130, height: 150 },
-        english: { top: 280, height: 150 },
-        video: { top: 430, height: 1160 },
-        explanation: { top: 1590, height: 330 },
+        gradient: { top: 0, height: 140 },
+        korean: { top: 140, height: 190 },
+        english: { top: 330, height: 190 },
+        video: { top: 520, height: 1080 },
+        explanation: { top: 1600, height: 320 },
       };
+      const cardWidth = 920, cardHeight = 120, cardXOffset = (W - cardWidth) / 2;
+      const koreanCardTop = zones.korean.top + (zones.korean.height - cardHeight) / 2;
+      const englishCardTop = zones.english.top + (zones.english.height - cardHeight) / 2;
+      const captionWidth = 800, captionHeight = 90, captionXOffset = (W - captionWidth) / 2;
+      const captionTop = zones.explanation.top + (zones.explanation.height - captionHeight) / 2;
+      const cardBorderColorHex = String(defaults.cardBorderColorHex ?? '#FFFFFF');
+      const fadeInMs = 400;
+
       const cues: AssCue[] = [
         {
-          startSec: 0, endSec: totalDurationSec, text: hookText,
-          styleOverride: { fontSizePt: 26, primaryColorHex: String(defaults.hookColorHex ?? '#FFFFFF') },
-          posOverride: { x: W / 2, y: zones.hook.top + zones.hook.height / 2 },
+          startSec: 0, endSec: totalDurationSec, text: hookText, fadeInMs,
+          styleOverride: { fontSizePt: 24, primaryColorHex: String(defaults.hookColorHex ?? '#FFFFFF') },
+          posOverride: { x: W / 2, y: zones.gradient.top + zones.gradient.height / 2 },
         },
         {
-          startSec: 0, endSec: totalDurationSec, text: koreanText,
-          styleOverride: { fontSizePt, primaryColorHex: String(defaults.koreanTextColorHex ?? '#111111') },
-          posOverride: { x: W / 2, y: zones.korean.top + zones.korean.height / 2 },
+          startSec: 0, endSec: totalDurationSec, text: koreanText, fadeInMs,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.koreanTextColorHex ?? '#FFFFFF') },
+          posOverride: { x: W / 2, y: koreanCardTop + cardHeight / 2 },
         },
         {
-          startSec: 0, endSec: totalDurationSec, text: englishText,
-          styleOverride: { fontSizePt, primaryColorHex: String(defaults.englishTextColorHex ?? '#111111') },
-          posOverride: { x: W / 2, y: zones.english.top + zones.english.height / 2 },
+          startSec: 0, endSec: totalDurationSec, text: englishText, fadeInMs,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.englishTextColorHex ?? '#FFFFFF') },
+          posOverride: { x: W / 2, y: englishCardTop + cardHeight / 2 },
         },
       ];
       if (explanationText) {
         cues.push({
-          startSec: 0, endSec: totalDurationSec, text: explanationText,
-          styleOverride: { fontSizePt: 34, primaryColorHex: String(defaults.explanationTextColorHex ?? '#F5D400') },
-          posOverride: { x: W / 2, y: zones.explanation.top + zones.explanation.height / 2 },
+          startSec: 0, endSec: totalDurationSec, text: explanationText, fadeInMs,
+          styleOverride: { fontSizePt: 32, primaryColorHex: String(defaults.explanationTextColorHex ?? '#F5D400') },
+          posOverride: { x: W / 2, y: captionTop + captionHeight / 2 },
         });
       }
       const ass = buildAssFile(cues, {});
@@ -143,11 +154,24 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
         fontsDir = path.dirname(font.absolutePath);
         letterboxOpts = {
           videoRect: { topPx: zones.video.top, heightPx: zones.video.height },
+          gradientBars: [
+            { topPx: zones.gradient.top, heightPx: zones.gradient.height, colorStartHex: String(defaults.gradientStartHex ?? '#000000'), colorEndHex: String(defaults.gradientEndHex ?? '#2A2A2A') },
+          ],
           bars: [
-            { topPx: zones.hook.top, heightPx: zones.hook.height, colorHex: String(defaults.hookBgColorHex ?? '#000000') },
-            { topPx: zones.korean.top, heightPx: zones.korean.height, colorHex: String(defaults.koreanBgColorHex ?? '#F5D400') },
-            { topPx: zones.english.top, heightPx: zones.english.height, colorHex: String(defaults.englishBgColorHex ?? '#F5D400') },
-            { topPx: zones.explanation.top, heightPx: zones.explanation.height, colorHex: String(defaults.explanationBgColorHex ?? '#000000') },
+            {
+              topPx: koreanCardTop, heightPx: cardHeight, widthPx: cardWidth, xOffsetPx: cardXOffset,
+              colorHex: String(defaults.koreanBgColorHex ?? '#000000'), opacity: Number(defaults.cardOpacity ?? 0.55),
+              borderColorHex: cardBorderColorHex, borderOpacity: 0.35, borderPx: 2,
+            },
+            {
+              topPx: englishCardTop, heightPx: cardHeight, widthPx: cardWidth, xOffsetPx: cardXOffset,
+              colorHex: String(defaults.englishBgColorHex ?? '#000000'), opacity: Number(defaults.cardOpacity ?? 0.55),
+              borderColorHex: cardBorderColorHex, borderOpacity: 0.35, borderPx: 2,
+            },
+            {
+              topPx: captionTop, heightPx: captionHeight, widthPx: captionWidth, xOffsetPx: captionXOffset,
+              colorHex: String(defaults.explanationBgColorHex ?? '#000000'), opacity: 0.45,
+            },
           ],
         };
       } else {
