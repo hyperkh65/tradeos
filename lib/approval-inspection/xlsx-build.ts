@@ -27,7 +27,7 @@ function fmtValueUnit(value?: string, unit?: string): string {
   const v = (value ?? '').trim();
   if (!v) return '-';
   const u = (unit ?? '').trim();
-  return u ? `${v}${u}` : v;
+  return u && /^-?\d+(\.\d+)?$/.test(v) ? `${v}${u}` : v;
 }
 
 const WIRE_ROLE_LABEL: Record<string, string> = { input: '입력선', output: '출력선' };

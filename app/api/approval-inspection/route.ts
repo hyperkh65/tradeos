@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   if (!body.projectName?.trim()) return NextResponse.json({ error: '프로젝트명은 필수입니다.' }, { status: 400 });
   const reportType: ReportType = body.reportType === 'pre_shipment' ? 'pre_shipment' : 'pre_approval';
-  if (reportType === 'pre_shipment' && !body.referenceProjectId) {
+  const noReference = body.referenceMode === 'new';
+  if (reportType === 'pre_shipment' && !body.referenceProjectId && !noReference) {
     return NextResponse.json({ error: '출고선적승인서는 기준 사전승인서를 선택하거나(§2) "신규 작성"을 명시해야 합니다.' }, { status: 400 });
   }
 

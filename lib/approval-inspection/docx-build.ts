@@ -87,7 +87,7 @@ function fmtValueUnit(value?: string, unit?: string): string {
   const v = (value ?? '').trim();
   if (!v) return '-';
   const u = (unit ?? '').trim();
-  return u ? `${v}${u}` : v;
+  return u && /^-?\d+(\.\d+)?$/.test(v) ? `${v}${u}` : v;
 }
 
 /** §6/§7 핵심 표 — 측정항목이 몇 개든 항상 5컬럼 고정이라 폭이 늘어나지 않는다.
