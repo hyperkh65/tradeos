@@ -78,7 +78,68 @@ interface WireSpecRow {
   connectorManufacturer?: string; connectorModel?: string; remark?: string;
 }
 interface PhotoRow { id: string; categoryKey: string; rotationDeg: number; cropRect: { x: number; y: number; w: number; h: number } | null }
-interface ValidationIssueRow { key: string; severity: 'blocking' | 'warning'; productId: string; message: string; acknowledged: boolean }
+interface ValidationIssueRow {
+  key: string; severity: 'blocking' | 'warning'; productId: string; message: string; acknowledged: boolean;
+  messageKey?: string; params?: Record<string, string | number>;
+}
+
+const FIELD_LABEL_I18N: Record<Lang, Record<'baseline' | 'measured', string>> = {
+  ko: { baseline: '기준값', measured: '측정값' },
+  zh: { baseline: '基准值', measured: '测量值' },
+  en: { baseline: 'Baseline', measured: 'Measured' },
+};
+
+/** validate.ts가 넘겨준 messageKey+params로 언어별 문장을 다시 조립한다 — 숫자/단위/항목명
+ * 같은 값 자체는 언어 무관이라 그대로 쓰고 문장 틀만 언어별로 고른다. messageKey가 없는
+ * (구버전 캐시 등) 경우는 서버가 만든 한국어 message를 그대로 보여준다. */
+function translateIssue(issue: ValidationIssueRow, lang: Lang): string {
+  const p = issue.params || {};
+  const f = (k: string | number | undefined) => FIELD_LABEL_I18N[lang][k as 'baseline' | 'measured'] ?? k;
+  switch (issue.messageKey) {
+    case 'pf_range':
+      return lang === 'zh' ? `[${f(p.field)}] 功率因数(PF)超出0~1范围: ${p.value}`
+        : lang === 'en' ? `[${f(p.field)}] Power factor (PF) out of 0-1 range: ${p.value}`
+        : `[${f(p.field)}] 역률(PF)이 0~1 범위를 벗어났습니다: ${p.value}`;
+    case 'power_mismatch':
+      return lang === 'zh' ? `[${f(p.field)}] 额定功率不一致: 输入电压×输入电流×PF=${p.computed}W, 但标注额定功率为${p.rated}W(误差${p.diffPct}%)。`
+        : lang === 'en' ? `[${f(p.field)}] Rated power mismatch: V×I×PF=${p.computed}W, but stated rated power is ${p.rated}W (${p.diffPct}% off).`
+        : `[${f(p.field)}] 정격전력 불일치: 입력전압×입력전류×PF=${p.computed}W인데 기재된 정격전력은 ${p.rated}W입니다(오차 ${p.diffPct}%).`;
+    case 'output_exceeds_rated':
+      return lang === 'zh' ? `[${f(p.field)}] 输出功率(输出电压×输出电流=${p.output}W)超过额定功率(${p.rated}W)。`
+        : lang === 'en' ? `[${f(p.field)}] Output power (V×A=${p.output}W) exceeds rated power (${p.rated}W).`
+        : `[${f(p.field)}] 출력전력(출력전압×출력전류=${p.output}W)이 정격전력(${p.rated}W)을 초과합니다.`;
+    case 'insulation_low':
+      return lang === 'zh' ? `[${f(p.field)}] 绝缘电阻低于一般标准(≥2MΩ): ${p.value}${p.unit}`
+        : lang === 'en' ? `[${f(p.field)}] Insulation resistance below general standard (≥2MΩ): ${p.value}${p.unit}`
+        : `[${f(p.field)}] 절연저항이 일반 기준(≥2MΩ)보다 낮습니다: ${p.value}${p.unit}`;
+    case 'below_min':
+      return lang === 'zh' ? `"${p.item}" 测量值(${p.measured}${p.measuredUnit})小于最小允许值(${p.min}${p.baselineUnit})。`
+        : lang === 'en' ? `"${p.item}" measured value (${p.measured}${p.measuredUnit}) is below the minimum allowed (${p.min}${p.baselineUnit}).`
+        : `"${p.item}" 측정값(${p.measured}${p.measuredUnit})이 최소 허용값(${p.min}${p.baselineUnit})보다 작습니다.`;
+    case 'above_max':
+      return lang === 'zh' ? `"${p.item}" 测量值(${p.measured}${p.measuredUnit})超过最大允许值(${p.max}${p.baselineUnit})。`
+        : lang === 'en' ? `"${p.item}" measured value (${p.measured}${p.measuredUnit}) exceeds the maximum allowed (${p.max}${p.baselineUnit}).`
+        : `"${p.item}" 측정값(${p.measured}${p.measuredUnit})이 최대 허용값(${p.max}${p.baselineUnit})을 초과했습니다.`;
+    case 'tolerance_exceeded':
+      return lang === 'zh' ? `"${p.item}" 测量值(${p.measured})与基准值(${p.baseline})的允许误差(±${p.tolerance})不符。`
+        : lang === 'en' ? `"${p.item}" measured value (${p.measured}) is outside tolerance (±${p.tolerance}) of baseline (${p.baseline}).`
+        : `"${p.item}" 측정값(${p.measured})이 기준값(${p.baseline}) 대비 허용오차(±${p.tolerance})를 벗어났습니다.`;
+    case 'unit_mismatch_ma_a':
+      return lang === 'zh' ? `"${p.item}" 基准值单位(${p.unit1})与测量值单位(${p.unit2})不同，需换算后比较(注意mA↔A混用)。`
+        : lang === 'en' ? `"${p.item}" baseline unit (${p.unit1}) and measured unit (${p.unit2}) differ — convert before comparing (mA↔A).`
+        : `"${p.item}" 기준값 단위(${p.unit1})와 측정값 단위(${p.unit2})가 달라 환산해 비교해야 합니다(mA↔A 혼용 주의).`;
+    case 'unit_mismatch':
+      return lang === 'zh' ? `"${p.item}" 基准值单位(${p.unit1})与测量值单位(${p.unit2})不同。`
+        : lang === 'en' ? `"${p.item}" baseline unit (${p.unit1}) and measured unit (${p.unit2}) differ.`
+        : `"${p.item}" 기준값 단위(${p.unit1})와 측정값 단위(${p.unit2})가 다릅니다.`;
+    case 'no_measurements':
+      return lang === 'zh' ? '这个产品还没有输入任何测量值。' : lang === 'en' ? 'No measurement values entered for this product.' : '이 제품에 입력된 측정값이 하나도 없습니다.';
+    case 'no_photos':
+      return lang === 'zh' ? '这个产品还没有上传任何照片。' : lang === 'en' ? 'No photos uploaded for this product.' : '이 제품에 업로드된 사진이 하나도 없습니다.';
+    default:
+      return issue.message;
+  }
+}
 
 const JUDGEMENT_OPTIONS = ['적합', '부적합', '조건부 승인', '재검사 필요', '해당 없음'];
 const LENGTH_UNITS = ['mm', 'cm', 'm'];
@@ -460,7 +521,7 @@ function PhotosPanel({ token, productId, disabled, t, lang }: { token: string; p
   );
 }
 
-function ReviewStep({ token, t, disabled, onSubmitted, status }: {
+function ReviewStep({ token, lang, t, disabled, onSubmitted, status }: {
   token: string; lang: Lang; t: (k: string) => string; disabled: boolean; onSubmitted: () => void; status: string;
 }) {
   const [issues, setIssues] = useState<ValidationIssueRow[]>([]);
@@ -498,7 +559,7 @@ function ReviewStep({ token, t, disabled, onSubmitted, status }: {
           {issues.map(issue => (
             <div key={issue.key} className={`flex items-start gap-1.5 rounded-md px-3 py-2 text-xs ${issue.severity === 'blocking' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'} ${issue.acknowledged ? 'opacity-50' : ''}`}>
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>[{issue.severity === 'blocking' ? t('blocking') : t('warning')}] {issue.message}</span>
+              <span>[{issue.severity === 'blocking' ? t('blocking') : t('warning')}] {translateIssue(issue, lang)}</span>
             </div>
           ))}
         </div>
