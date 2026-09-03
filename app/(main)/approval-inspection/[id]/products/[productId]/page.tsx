@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeCheck, Plus, Loader2, Trash2, ArrowLeft, AlertTriangle, Check, Upload, RotateCw, Camera } from 'lucide-react';
+import { BadgeCheck, Plus, Loader2, Trash2, ArrowLeft, AlertTriangle, Check, Upload, RotateCw, Camera, Cable } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PHOTO_CATEGORIES } from '@/lib/approval-inspection/types';
 
@@ -27,8 +27,20 @@ interface PhotoRow {
   rotationDeg: number; hasEditedFile: boolean; createdAt: string;
 }
 
+interface WireSpecRow {
+  id: string; wireRole: 'input' | 'output';
+  wireSpec?: string; conductorArea?: string; coreCount?: string; insulationMaterial?: string; color?: string;
+  baselineLengthValue?: string; baselineLengthUnit?: string;
+  measuredLengthValue?: string; measuredLengthUnit?: string;
+  stripLength?: string; endTreatment?: string;
+  connectorManufacturer?: string; connectorModel?: string; pinCount?: string; polarity?: string; remark?: string;
+  sortOrder: number;
+}
+
 const JUDGEMENT_OPTIONS = ['적합', '부적합', '조건부 승인', '재검사 필요', '해당 없음'];
 const GROUP_LABEL: Record<string, string> = { product: '제품 전체', pcb: 'PCB', wiring: '배선/커넥터' };
+const WIRE_ROLE_LABEL: Record<string, string> = { input: '입력선', output: '출력선' };
+const LENGTH_UNITS = ['mm', 'cm', 'm'];
 
 export default function ProductMeasurementsPage() {
   const params = useParams();
@@ -42,10 +54,18 @@ export default function ProductMeasurementsPage() {
   const [dirty, setDirty] = useState(false);
   const [issues, setIssues] = useState<ValidationIssueRow[]>([]);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
+  const [wires, setWires] = useState<WireSpecRow[]>([]);
+  const [wiresDirty, setWiresDirty] = useState(false);
+  const [wiresSaving, setWiresSaving] = useState(false);
 
   const loadPhotos = useCallback(async () => {
     const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/photos`).then(x => x.json());
     setPhotos(r.data ?? []);
+  }, [id, productId]);
+
+  const loadWires = useCallback(async () => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/wire-specs`).then(x => x.json());
+    setWires(r.data ?? []);
   }, [id, productId]);
 
   const load = useCallback(async () => {
@@ -60,9 +80,9 @@ export default function ProductMeasurementsPage() {
       const product = (pRes.data ?? []).find((p: { id: string }) => p.id === productId);
       setProductName(product ? [product.productName, product.modelName].filter(Boolean).join(' / ') : '');
       setIssues((vRes.data ?? []).filter((i: ValidationIssueRow) => i.productId === productId));
-      await loadPhotos();
+      await Promise.all([loadPhotos(), loadWires()]);
     } finally { setLoading(false); }
-  }, [id, productId, loadPhotos]);
+  }, [id, productId, loadPhotos, loadWires]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -119,6 +139,48 @@ export default function ProductMeasurementsPage() {
   };
 
   const blockingUnacked = useMemo(() => issues.filter(i => i.severity === 'blocking' && !i.acknowledged), [issues]);
+
+  const updateWire = (wireId: string, patch: Partial<WireSpecRow>) => {
+    setWires(prev => prev.map(w => (w.id === wireId ? { ...w, ...patch } : w)));
+    setWiresDirty(true);
+  };
+
+  const addWire = async (wireRole: 'input' | 'output') => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/wire-specs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wireRole }),
+    });
+    const j = await r.json();
+    if (!r.ok) { alert(j.error || '추가 실패'); return; }
+    setWires(prev => [...prev, j.data]);
+  };
+
+  const deleteWire = async (wireId: string) => {
+    if (!confirm('이 배선 정보를 삭제할까요?')) return;
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/wire-specs/${wireId}`, { method: 'DELETE' });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || '삭제 실패'); return; }
+    setWires(prev => prev.filter(w => w.id !== wireId));
+  };
+
+  const saveWires = async () => {
+    setWiresSaving(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/wire-specs`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: wires.map(w => ({
+          id: w.id, wireSpec: w.wireSpec ?? null, conductorArea: w.conductorArea ?? null, coreCount: w.coreCount ?? null,
+          insulationMaterial: w.insulationMaterial ?? null, color: w.color ?? null,
+          baselineLengthValue: w.baselineLengthValue ?? null, baselineLengthUnit: w.baselineLengthUnit ?? null,
+          measuredLengthValue: w.measuredLengthValue ?? null, measuredLengthUnit: w.measuredLengthUnit ?? null,
+          stripLength: w.stripLength ?? null, endTreatment: w.endTreatment ?? null,
+          connectorManufacturer: w.connectorManufacturer ?? null, connectorModel: w.connectorModel ?? null,
+          pinCount: w.pinCount ?? null, polarity: w.polarity ?? null, remark: w.remark ?? null,
+        })) }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '저장 실패'); return; }
+      setWiresDirty(false);
+    } finally { setWiresSaving(false); }
+  };
 
   const uploadPhoto = async (categoryKey: string, file: File) => {
     const formData = new FormData();
@@ -241,6 +303,24 @@ export default function ProductMeasurementsPage() {
         </div>
 
         <div className="bg-card border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-sm flex items-center gap-1.5"><Cable className="w-4 h-4" />입력선/출력선 (§10)</h2>
+            <Button size="sm" onClick={saveWires} disabled={wiresSaving || !wiresDirty} className="gap-1.5">
+              {wiresSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}저장
+            </Button>
+          </div>
+          {(['input', 'output'] as const).map(role => (
+            <WireSpecGroup
+              key={role} role={role}
+              rows={wires.filter(w => w.wireRole === role)}
+              onAdd={() => addWire(role)}
+              onUpdate={updateWire}
+              onDelete={deleteWire}
+            />
+          ))}
+        </div>
+
+        <div className="bg-card border rounded-xl p-4 space-y-4">
           <h2 className="font-semibold text-sm flex items-center gap-1.5"><Camera className="w-4 h-4" />사진 (§9)</h2>
           {(['product', 'pcb', 'wiring'] as const).map(group => (
             <div key={group} className="space-y-2">
@@ -332,6 +412,81 @@ function PhotoCell({ id, productId, categoryKey, label, photo, onUpload, onDelet
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function WireSpecGroup({ role, rows, onAdd, onUpdate, onDelete }: {
+  role: 'input' | 'output'; rows: WireSpecRow[];
+  onAdd: () => void;
+  onUpdate: (wireId: string, patch: Partial<WireSpecRow>) => void;
+  onDelete: (wireId: string) => void;
+}) {
+  return (
+    <div className="border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold">{WIRE_ROLE_LABEL[role]}</h3>
+        <Button size="sm" variant="outline" onClick={onAdd} className="gap-1.5 h-7 text-xs"><Plus className="w-3.5 h-3.5" />추가</Button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-2">등록된 {WIRE_ROLE_LABEL[role]} 정보가 없습니다.</p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((w, idx) => (
+            <div key={w.id} className="border rounded-md p-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-muted-foreground">{WIRE_ROLE_LABEL[role]} {idx + 1}</span>
+                <button onClick={() => onDelete(w.id)} className="text-red-500 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <WireField label="규격" value={w.wireSpec} onChange={v => onUpdate(w.id, { wireSpec: v })} />
+                <WireField label="단면적" value={w.conductorArea} onChange={v => onUpdate(w.id, { conductorArea: v })} />
+                <WireField label="심선수" value={w.coreCount} onChange={v => onUpdate(w.id, { coreCount: v })} />
+                <WireField label="피복재질" value={w.insulationMaterial} onChange={v => onUpdate(w.id, { insulationMaterial: v })} />
+                <WireField label="색상" value={w.color} onChange={v => onUpdate(w.id, { color: v })} />
+                <WireField label="탈피 길이" value={w.stripLength} onChange={v => onUpdate(w.id, { stripLength: v })} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-0.5 block">기준 길이</label>
+                  <div className="flex gap-1">
+                    <Input className="h-8 text-xs" value={w.baselineLengthValue ?? ''} onChange={e => onUpdate(w.id, { baselineLengthValue: e.target.value })} />
+                    <select className="h-8 rounded-md border border-input bg-background px-1 text-xs" value={w.baselineLengthUnit ?? 'mm'} onChange={e => onUpdate(w.id, { baselineLengthUnit: e.target.value })}>
+                      {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-0.5 block">측정 길이</label>
+                  <div className="flex gap-1">
+                    <Input className="h-8 text-xs" value={w.measuredLengthValue ?? ''} onChange={e => onUpdate(w.id, { measuredLengthValue: e.target.value })} />
+                    <select className="h-8 rounded-md border border-input bg-background px-1 text-xs" value={w.measuredLengthUnit ?? 'mm'} onChange={e => onUpdate(w.id, { measuredLengthUnit: e.target.value })}>
+                      {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <WireField label="말단처리" value={w.endTreatment} onChange={v => onUpdate(w.id, { endTreatment: v })} />
+                <WireField label="커넥터 제조사" value={w.connectorManufacturer} onChange={v => onUpdate(w.id, { connectorManufacturer: v })} />
+                <WireField label="커넥터 모델" value={w.connectorModel} onChange={v => onUpdate(w.id, { connectorModel: v })} />
+                <WireField label="핀 수" value={w.pinCount} onChange={v => onUpdate(w.id, { pinCount: v })} />
+                <WireField label="극성" value={w.polarity} onChange={v => onUpdate(w.id, { polarity: v })} />
+                <WireField label="비고" value={w.remark} onChange={v => onUpdate(w.id, { remark: v })} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WireField({ label, value, onChange }: { label: string; value?: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="text-[10px] text-muted-foreground mb-0.5 block">{label}</label>
+      <Input className="h-8 text-xs" value={value ?? ''} onChange={e => onChange(e.target.value)} />
     </div>
   );
 }
