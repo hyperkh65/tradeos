@@ -37,6 +37,12 @@ export function buildFontStagingPath(): string {
   return `${ENGLISH_SHORTS_ROOT}/fonts/NotoSansKR-Bold.otf`;
 }
 
+/** 레터박스 훅의 영어 표현 전용 굵은 디스플레이 폰트(Anton, Google Fonts OFL) —
+ * 같은 fonts/ 디렉터리에 같이 두면 libass가 fontsdir 스캔으로 두 폰트를 다 찾는다. */
+export function buildAntonFontStagingPath(): string {
+  return `${ENGLISH_SHORTS_ROOT}/fonts/Anton-Regular.ttf`;
+}
+
 /** 렌더 중간 산출물(ASS 자막, 정규화된 클립 등) 임시 작업 디렉터리 — 성공/실패
  * 후 정리 대상(요청서 52번), 실패 분석에 필요한 최소 로그는 DB(es_render_logs)에
  * 남기고 여기 파일 자체는 지운다. */

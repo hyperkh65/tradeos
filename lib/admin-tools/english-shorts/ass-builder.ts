@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { nasExists, resolveLocalPath } from '@/lib/storage/nas';
-import { buildFontStagingPath, uploadEnglishShortsFile } from './storage';
+import { buildFontStagingPath, buildAntonFontStagingPath, uploadEnglishShortsFile } from './storage';
 
 /** ASS 자막 큐(하나의 화면 표시 구간). styleOverride를 주면 이 큐만 별도
  * 스타일(글자크기/색상/위치 등)로 렌더링된다 — 레터박스 훅 템플릿처럼 화면
@@ -156,5 +156,16 @@ export async function ensureSubtitleFontDeployed(): Promise<DeployedFont> {
     const buffer = await fs.readFile(sourcePath);
     await uploadEnglishShortsFile(stagedPath, buffer, 'font/otf');
   }
+
+  // Anton(영어 표현 전용 굵은 디스플레이 폰트)도 같은 fonts/ 디렉터리에 시딩 —
+  // Noto Sans KR과 같은 fontsdir을 쓰므로 libass가 스캔으로 둘 다 찾는다.
+  const antonStagedPath = buildAntonFontStagingPath();
+  const antonAlreadyThere = await nasExists(antonStagedPath);
+  if (!antonAlreadyThere) {
+    const antonSourcePath = path.join(process.cwd(), 'public', 'fonts', 'subtitles', 'Anton-Regular.ttf');
+    const antonBuffer = await fs.readFile(antonSourcePath);
+    await uploadEnglishShortsFile(antonStagedPath, antonBuffer, 'font/ttf');
+  }
+
   return { relativePath: stagedPath, absolutePath: resolveLocalPath(stagedPath) };
 }

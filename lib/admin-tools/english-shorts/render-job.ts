@@ -108,12 +108,17 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
       insertRenderLog(job.id, 'warn', '레터박스 훅 템플릿에 필요한 한국어 뜻/영어 표현 정보가 없어(AI 분석 미실행) 기본 자막 스타일로 대체합니다');
     } else {
       const W = 1080;
+      // 쇼츠/틱톡 세이프존 실측 기준(YouTube Shorts 984x1500 안전영역, "하단
+      // 250px 안에는 중요 텍스트 금지" — 플랫폼 자체 UI(좋아요/공유/설명)가
+      // 그 영역을 가림) 반영: 맨 아래 250px는 완전히 비워두고, 캡션 카드는
+      // 그 위에서 끝난다.
       const zones = {
-        gradient: { top: 0, height: 150 },
-        korean: { top: 150, height: 210 },
-        english: { top: 360, height: 210 },
-        video: { top: 570, height: 1010 },
-        explanation: { top: 1580, height: 340 },
+        gradient: { top: 0, height: 140 },
+        korean: { top: 140, height: 200 },
+        english: { top: 340, height: 200 },
+        video: { top: 540, height: 1010 },
+        explanation: { top: 1550, height: 120 },
+        bottomSafeMargin: 250,
       };
       const cardWidth = 900, cardHeight = 130, cardXOffset = (W - cardWidth) / 2;
       const koreanCardTop = zones.korean.top + (zones.korean.height - cardHeight) / 2;
@@ -134,8 +139,11 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
           posOverride: { x: W / 2, y: koreanCardTop + cardHeight / 2 },
         },
         {
-          startSec: 0, endSec: totalDurationSec, text: englishText, fadeInMs,
-          styleOverride: { fontSizePt, primaryColorHex: String(defaults.englishTextColorHex ?? '#FFFFFF') },
+          startSec: 0, endSec: totalDurationSec, text: englishText.toUpperCase(), fadeInMs,
+          // 영어 표현만 Anton(굵은 디스플레이 폰트, Google Fonts OFL)로 —
+          // 실제 인기 쇼츠 자막 리서치에서 Anton/Bebas Neue 계열이 표준으로
+          // 언급됨. 한글은 라틴 전용 폰트라 커버 못해 Noto Sans KR을 유지.
+          styleOverride: { fontSizePt: fontSizePt + 6, fontName: 'Anton', primaryColorHex: String(defaults.englishTextColorHex ?? '#FFFFFF') },
           posOverride: { x: W / 2, y: englishCardTop + cardHeight / 2 },
         },
       ];
