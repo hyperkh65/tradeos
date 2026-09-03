@@ -8,6 +8,7 @@ import {
 } from './render-db';
 import { renderProjectVideo, extractThumbnail, type RenderClipInput, type RenderOptions } from './render-pipeline';
 import { buildAssFile, ensureSubtitleFontDeployed, type AssStyleOptions, type AssCue } from './ass-builder';
+import { renderCardPng, renderGradientBarPng, renderRoundedCornerMaskPng } from './card-renderer';
 import { buildRenderOutputPath, buildRenderThumbnailPath, uploadEnglishShortsFile } from './storage';
 import { getEnglishShortsSettings } from './settings';
 import { writeEnglishShortsAuditLog } from './audit';
@@ -81,7 +82,8 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
   setProgress(job.id, 'generating_subtitles', 15);
   let assPath: string | null = null;
   let fontsDir: string | null = null;
-  let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'bars' | 'gradientBars'> = {};
+  let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'imageOverlays'> = {};
+  const tempImagePaths: string[] = [];
   const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
 
   const template = project.templateId ? getTemplateById(project.templateId) : null;
@@ -89,6 +91,9 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
 
   // 레터박스 훅 — 위/아래 고정 텍스트 바 + 가운데 letterbox 영상. 단일 캡션
   // 오버레이(기존 4개 템플릿 방식)와 완전히 다른 필터 그래프가 필요해 별도 분기.
+  // 카드/그라데이션/모서리는 drawbox가 아니라 card-renderer.ts가 sharp로
+  // 미리 그린 PNG(둥근모서리+그림자)를 overlay — drawbox만으로는 직각
+  // 사각형밖에 못 그려 "밋밋해 보인다"는 실제 피드백을 받고 교체함.
   if (layoutKind === 'letterbox-hook') {
     const expression = getExpressionById(project.expressionId);
     const templateDefaults = template?.layout.defaults ?? {};
@@ -97,29 +102,25 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
     const koreanText = expression?.koreanMeaning?.trim() || '';
     const englishText = expression?.expression?.trim() || '';
     const explanationText = expression?.explanation?.trim() ? firstSentence(expression.explanation) : '';
-    const fontSizePt = Number(defaults.fontSizePt ?? 56);
+    const fontSizePt = Number(defaults.fontSizePt ?? 50);
 
     if (!koreanText || !englishText) {
       insertRenderLog(job.id, 'warn', '레터박스 훅 템플릿에 필요한 한국어 뜻/영어 표현 정보가 없어(AI 분석 미실행) 기본 자막 스타일로 대체합니다');
     } else {
       const W = 1080;
-      // 그라데이션 상단 태그 바 + 가운데 정렬된 반투명 카드(글라스모피즘) 2개
-      // + 레터박스 영상 + 하단의 더 옅은 카드 — 화면 전체를 꽉 채우는 평면
-      // 색 바 대신 여백을 두어 "디자인된" 느낌을 낸다.
       const zones = {
-        gradient: { top: 0, height: 140 },
-        korean: { top: 140, height: 190 },
-        english: { top: 330, height: 190 },
-        video: { top: 520, height: 1080 },
-        explanation: { top: 1600, height: 320 },
+        gradient: { top: 0, height: 150 },
+        korean: { top: 150, height: 210 },
+        english: { top: 360, height: 210 },
+        video: { top: 570, height: 1010 },
+        explanation: { top: 1580, height: 340 },
       };
-      const cardWidth = 920, cardHeight = 120, cardXOffset = (W - cardWidth) / 2;
+      const cardWidth = 900, cardHeight = 130, cardXOffset = (W - cardWidth) / 2;
       const koreanCardTop = zones.korean.top + (zones.korean.height - cardHeight) / 2;
       const englishCardTop = zones.english.top + (zones.english.height - cardHeight) / 2;
-      const captionWidth = 800, captionHeight = 90, captionXOffset = (W - captionWidth) / 2;
+      const captionWidth = 760, captionHeight = 100, captionXOffset = (W - captionWidth) / 2;
       const captionTop = zones.explanation.top + (zones.explanation.height - captionHeight) / 2;
-      const cardBorderColorHex = String(defaults.cardBorderColorHex ?? '#FFFFFF');
-      const fadeInMs = 400;
+      const fadeInMs = 450;
 
       const cues: AssCue[] = [
         {
@@ -141,7 +142,7 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
       if (explanationText) {
         cues.push({
           startSec: 0, endSec: totalDurationSec, text: explanationText, fadeInMs,
-          styleOverride: { fontSizePt: 32, primaryColorHex: String(defaults.explanationTextColorHex ?? '#F5D400') },
+          styleOverride: { fontSizePt: 30, primaryColorHex: String(defaults.explanationTextColorHex ?? '#F5D400') },
           posOverride: { x: W / 2, y: captionTop + captionHeight / 2 },
         });
       }
@@ -150,33 +151,62 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
       await fs.writeFile(assPath, ass, 'utf8');
 
       const font = await ensureSubtitleFontDeployed();
-      if (font.absolutePath) {
-        fontsDir = path.dirname(font.absolutePath);
-        letterboxOpts = {
-          videoRect: { topPx: zones.video.top, heightPx: zones.video.height },
-          gradientBars: [
-            { topPx: zones.gradient.top, heightPx: zones.gradient.height, colorStartHex: String(defaults.gradientStartHex ?? '#000000'), colorEndHex: String(defaults.gradientEndHex ?? '#2A2A2A') },
-          ],
-          bars: [
-            {
-              topPx: koreanCardTop, heightPx: cardHeight, widthPx: cardWidth, xOffsetPx: cardXOffset,
-              colorHex: String(defaults.koreanBgColorHex ?? '#000000'), opacity: Number(defaults.cardOpacity ?? 0.55),
-              borderColorHex: cardBorderColorHex, borderOpacity: 0.35, borderPx: 2,
-            },
-            {
-              topPx: englishCardTop, heightPx: cardHeight, widthPx: cardWidth, xOffsetPx: cardXOffset,
-              colorHex: String(defaults.englishBgColorHex ?? '#000000'), opacity: Number(defaults.cardOpacity ?? 0.55),
-              borderColorHex: cardBorderColorHex, borderOpacity: 0.35, borderPx: 2,
-            },
-            {
-              topPx: captionTop, heightPx: captionHeight, widthPx: captionWidth, xOffsetPx: captionXOffset,
-              colorHex: String(defaults.explanationBgColorHex ?? '#000000'), opacity: 0.45,
-            },
-          ],
-        };
-      } else {
+      if (!font.absolutePath) {
         insertRenderLog(job.id, 'warn', 'WebDAV 저장소 설정에서는 로컬 fontsdir을 확보할 수 없어 이번 렌더는 자막 없이 진행합니다');
         assPath = null;
+      } else {
+        fontsDir = path.dirname(font.absolutePath);
+
+        const gradientPng = await renderGradientBarPng({
+          widthPx: W, heightPx: zones.gradient.height,
+          colorStartHex: String(defaults.gradientStartHex ?? '#050505'),
+          colorEndHex: String(defaults.gradientEndHex ?? '#242424'),
+        });
+        const koreanCard = await renderCardPng({
+          widthPx: cardWidth, heightPx: cardHeight,
+          colorHex: String(defaults.koreanBgColorHex ?? '#17171C'), opacity: Number(defaults.cardOpacity ?? 0.92),
+          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.18, borderWidthPx: 1.5,
+          cornerRadiusPx: 28, shadow: true,
+        });
+        const englishCard = await renderCardPng({
+          widthPx: cardWidth, heightPx: cardHeight,
+          colorHex: String(defaults.englishBgColorHex ?? '#17171C'), opacity: Number(defaults.cardOpacity ?? 0.92),
+          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.18, borderWidthPx: 1.5,
+          cornerRadiusPx: 28, shadow: true,
+        });
+        const captionCard = await renderCardPng({
+          widthPx: captionWidth, heightPx: captionHeight,
+          colorHex: String(defaults.explanationBgColorHex ?? '#101014'), opacity: 0.8,
+          cornerRadiusPx: 20, shadow: true,
+        });
+        const cornerMask = await renderRoundedCornerMaskPng(W, zones.video.height, 36, '#000000');
+
+        const gradientPath = path.join(os.tmpdir(), `es-render-${job.id}-gradient.png`);
+        const koreanCardPath = path.join(os.tmpdir(), `es-render-${job.id}-korean.png`);
+        const englishCardPath = path.join(os.tmpdir(), `es-render-${job.id}-english.png`);
+        const captionCardPath = path.join(os.tmpdir(), `es-render-${job.id}-caption.png`);
+        const cornerMaskPath = path.join(os.tmpdir(), `es-render-${job.id}-corners.png`);
+        await Promise.all([
+          fs.writeFile(gradientPath, gradientPng),
+          fs.writeFile(koreanCardPath, koreanCard.buffer),
+          fs.writeFile(englishCardPath, englishCard.buffer),
+          fs.writeFile(captionCardPath, captionCard.buffer),
+          fs.writeFile(cornerMaskPath, cornerMask),
+        ]);
+        tempImagePaths.push(gradientPath, koreanCardPath, englishCardPath, captionCardPath, cornerMaskPath);
+
+        letterboxOpts = {
+          videoRect: { topPx: zones.video.top, heightPx: zones.video.height },
+          imageOverlays: [
+            // 영상 위에 모서리 마스크를 먼저 얹어 둥근모서리처럼 보이게 한 뒤,
+            // 그 위에 그라데이션 바/카드들을 쌓는다.
+            { imagePath: cornerMaskPath, topPx: zones.video.top, xOffsetPx: 0 },
+            { imagePath: gradientPath, topPx: zones.gradient.top, xOffsetPx: 0 },
+            { imagePath: koreanCardPath, topPx: koreanCardTop - koreanCard.pad, xOffsetPx: cardXOffset - koreanCard.pad },
+            { imagePath: englishCardPath, topPx: englishCardTop - englishCard.pad, xOffsetPx: cardXOffset - englishCard.pad },
+            { imagePath: captionCardPath, topPx: captionTop - captionCard.pad, xOffsetPx: captionXOffset - captionCard.pad },
+          ],
+        };
       }
     }
   }
@@ -237,6 +267,7 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
     fs.unlink(outputTmpPath).catch(() => {}),
     fs.unlink(thumbTmpPath).catch(() => {}),
     assPath ? fs.unlink(assPath).catch(() => {}) : Promise.resolve(),
+    ...tempImagePaths.map(p => fs.unlink(p).catch(() => {})),
   ]);
 
   completeRenderJob(job.id, {

@@ -2590,12 +2590,12 @@ function runMigrations(db: Database.Database) {
           kind: 'letterbox-hook',
           defaults: {
             hookText: '영어 잘해 보이는 표현.zip',
-            hookColorHex: '#FFFFFF', gradientStartHex: '#000000', gradientEndHex: '#2A2A2A',
-            koreanBgColorHex: '#000000', koreanTextColorHex: '#FFFFFF',
-            englishBgColorHex: '#000000', englishTextColorHex: '#FFFFFF',
-            cardBorderColorHex: '#FFFFFF', cardOpacity: 0.55,
-            explanationBgColorHex: '#000000', explanationTextColorHex: '#F5D400',
-            fontSizePt: 52,
+            hookColorHex: '#FFFFFF', gradientStartHex: '#050505', gradientEndHex: '#242424',
+            koreanBgColorHex: '#17171C', koreanTextColorHex: '#FFFFFF',
+            englishBgColorHex: '#17171C', englishTextColorHex: '#FFFFFF',
+            cardBorderColorHex: '#FFFFFF', cardOpacity: 0.92,
+            explanationBgColorHex: '#101014', explanationTextColorHex: '#F5D400',
+            fontSizePt: 50,
           },
           settingsSchema: [
             { key: 'hookText', label: '상단 시리즈 태그', type: 'text' },

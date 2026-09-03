@@ -26,18 +26,11 @@ export interface RenderOptions {
    * 기존처럼 영상이 전체 캔버스를 채운다(다른 4개 템플릿은 이 값을 안 씀 —
    * 완전히 하위호환). */
   videoRect?: { topPx: number; heightPx: number };
-  /** videoRect와 함께 쓰는 고정색 바/카드(레터박스 훅). widthPx/xOffsetPx를
-   * 주면 전체폭이 아니라 가운데 카드처럼 그려지고, opacity(<1)+borderColorHex로
-   * 반투명 카드+테두리(글라스모피즘풍) 효과를 낸다. 자막(ASS) 텍스트보다
+  /** videoRect와 함께 쓰는 정적 PNG 오버레이(레터박스 훅의 둥근모서리 카드/
+   * 그라데이션 바/영상 모서리 마스크 — card-renderer.ts가 sharp로 미리
+   * 래스터화해 임시파일로 써둔 것). 순서대로 쌓이며, 자막(ASS) 텍스트보다
    * 먼저 그려져서 그 위에 텍스트가 얹힌다. */
-  bars?: {
-    topPx: number; heightPx: number; colorHex: string;
-    opacity?: number; widthPx?: number; xOffsetPx?: number;
-    borderColorHex?: string; borderOpacity?: number; borderPx?: number;
-  }[];
-  /** 세로 방향 그라데이션 바(예: 상단 검정→진회색). ffmpeg gradients lavfi
-   * 소스를 별도 입력으로 추가해 overlay한다 — speed=0으로 고정해 정적 그라데이션. */
-  gradientBars?: { topPx: number; heightPx: number; colorStartHex: string; colorEndHex: string }[];
+  imageOverlays?: { imagePath: string; topPx: number; xOffsetPx: number }[];
 }
 
 export interface RenderResult {
@@ -118,34 +111,18 @@ export async function renderProjectVideo(
     filterParts.push(`[bg][vcat]overlay=x=0:y=${opts.videoRect.topPx}:shortest=1[composited]`);
     videoOutLabel = 'composited';
 
-    // 그라데이션 바 — 정적(speed=0) 세로 선형 그라데이션을 별도 lavfi 입력으로
-    // 만들어 그 위치에 overlay. 각 그라데이션마다 입력이 하나씩 추가된다.
-    (opts.gradientBars ?? []).forEach((g, i) => {
+    // PNG 오버레이(둥근모서리 카드/그라데이션 바/영상 모서리 마스크 —
+    // card-renderer.ts가 sharp로 미리 그려둔 것). -loop 1로 정지영상을 영상
+    // 길이만큼 반복시키고, format=rgba로 알파 채널을 유지한 채 overlay한다
+    // (알파 없는 yuv420p로 바꾸면 카드의 둥근모서리/투명 배경이 사라짐).
+    (opts.imageOverlays ?? []).forEach((img, i) => {
       const inputIndex = clipInputCount + 1 + i;
-      args.push('-f', 'lavfi', '-i',
-        `gradients=size=${width}x${g.heightPx}:c0=${g.colorStartHex}:c1=${g.colorEndHex}:x0=0:y0=0:x1=0:y1=${g.heightPx}:speed=0:d=${totalDurationSec}`);
-      const gradLabel = `grad${i}`;
-      const outLabel = `gradout${i}`;
-      filterParts.push(`[${inputIndex}:v]format=yuv420p[${gradLabel}]`);
-      filterParts.push(`[${videoOutLabel}][${gradLabel}]overlay=x=0:y=${g.topPx}[${outLabel}]`);
+      args.push('-loop', '1', '-i', img.imagePath);
+      const rgbaLabel = `ovlrgba${i}`;
+      const outLabel = `ovlout${i}`;
+      filterParts.push(`[${inputIndex}:v]format=rgba[${rgbaLabel}]`);
+      filterParts.push(`[${videoOutLabel}][${rgbaLabel}]overlay=x=${img.xOffsetPx}:y=${img.topPx}:shortest=1[${outLabel}]`);
       videoOutLabel = outLabel;
-    });
-
-    // 고정색 바/카드 — widthPx/xOffsetPx로 폭을 캔버스 전체보다 좁게 주면
-    // 가운데 카드처럼 보이고, opacity<1 + borderColorHex로 반투명+테두리
-    // (글라스모피즘풍) 효과를 낸다.
-    (opts.bars ?? []).forEach((bar, i) => {
-      const w = bar.widthPx ?? width;
-      const x = bar.xOffsetPx ?? 0;
-      const opacity = bar.opacity ?? 1;
-      const fillLabel = `barfill${i}`;
-      filterParts.push(`[${videoOutLabel}]drawbox=x=${x}:y=${bar.topPx}:w=${w}:h=${bar.heightPx}:color=${bar.colorHex}@${opacity}:t=fill[${fillLabel}]`);
-      videoOutLabel = fillLabel;
-      if (bar.borderColorHex && bar.borderPx) {
-        const borderLabel = `barborder${i}`;
-        filterParts.push(`[${videoOutLabel}]drawbox=x=${x}:y=${bar.topPx}:w=${w}:h=${bar.heightPx}:color=${bar.borderColorHex}@${bar.borderOpacity ?? 1}:t=${bar.borderPx}[${borderLabel}]`);
-        videoOutLabel = borderLabel;
-      }
     });
   }
 
