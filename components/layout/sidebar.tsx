@@ -9,7 +9,7 @@ import {
   MessageSquare, Mail, Calendar, CheckSquare, Ship, TruckIcon,
   AlertCircle, DollarSign, FolderOpen, Users, Settings, ChevronDown,
   Search, LogOut, Boxes, BarChart3, Warehouse, ShoppingCart,
-  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container, Images, Wrench,
+  Receipt, UserCog, GitMerge, PanelLeftClose, PanelLeft, FileSignature, Calculator, TrendingUp, ListOrdered, Landmark, BookOpen, Wallet, ClipboardCheck, FileCheck2, Palette, Container, Images, Wrench, BadgeCheck,
 } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
@@ -66,6 +66,7 @@ const navGroups = [
       { label: '공급업체 자료요청', href: '/supplier-requests', icon: ClipboardCheck },
       { label: '제품 승인서·사양서', href: '/approval-documents', icon: FileCheck2 },
       { label: '승인서 브랜드/템플릿', href: '/approval-documents/settings', icon: Palette },
+      { label: '제품 승인검사', href: '/approval-inspection', icon: BadgeCheck },
     ],
   },
   {
