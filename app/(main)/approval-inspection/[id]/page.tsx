@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft } from 'lucide-react';
+import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft, Link2, RefreshCw } from 'lucide-react';
 
 interface ProjectDetail {
   id: string; businessId: string; reportType: 'pre_approval' | 'pre_shipment';
@@ -167,6 +167,8 @@ export default function ApprovalInspectionDetailPage() {
           </div>
         </div>
 
+        <LinkPanel id={id} disabled={isClosed} />
+
         <div className="bg-card border rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-sm">제품 블록 ({products.length})</h2>
@@ -227,6 +229,51 @@ function Field({ label, value, onBlurSave, disabled, type = 'text' }: {
         onChange={e => setLocal(e.target.value)}
         onBlur={() => { if (local !== (value != null ? String(value) : '')) onBlurSave(local); }}
       />
+    </div>
+  );
+}
+
+function LinkPanel({ id, disabled }: { id: string; disabled: boolean }) {
+  const [link, setLink] = useState<{ hasActiveLink: boolean; createdAt: string | null; url: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    fetch(`/api/approval-inspection/${id}/link`).then(r => r.json()).then(j => setLink(j.data ?? null));
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+
+  const generate = async () => {
+    if (link?.hasActiveLink && !confirm('기존 링크는 비활성화되고 새 링크가 발급됩니다. 계속할까요?')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: link?.hasActiveLink ? '재발급' : undefined }) });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '발급 실패'); return; }
+      await load();
+      if (j.data?.url) { navigator.clipboard?.writeText(j.data.url).catch(() => {}); alert('링크가 발급되어 클립보드에 복사되었습니다.'); }
+    } finally { setBusy(false); }
+  };
+
+  const copy = () => { if (link?.url) { navigator.clipboard?.writeText(link.url).catch(() => {}); alert('클립보드에 복사되었습니다.'); } };
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-2">
+      <h2 className="font-semibold text-sm flex items-center gap-1.5"><Link2 className="w-4 h-4" />외부 작성 링크</h2>
+      {!link ? (
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      ) : link.hasActiveLink && link.url ? (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs bg-muted rounded px-2 py-1.5 truncate">{link.url}</code>
+          <Button size="sm" variant="outline" onClick={copy} className="gap-1.5 shrink-0"><Copy className="w-3.5 h-3.5" />복사</Button>
+          <Button size="sm" variant="outline" onClick={generate} disabled={busy || disabled} className="gap-1.5 shrink-0">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}재발급
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" onClick={generate} disabled={busy || disabled} className="gap-1.5">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}링크 발급
+        </Button>
+      )}
     </div>
   );
 }

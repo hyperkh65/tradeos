@@ -17,6 +17,9 @@ const PUBLIC_PATHS = [
   '/supplier-form', '/api/supplier-form',
   // 제품 승인서·사양서 외부 작성 화면 — 동일한 토큰 기반 보안 정책(lib/approval-doc/token.ts).
   '/approval-form', '/api/approval-form',
+  // 제품 승인검사(사전승인서/출고선적승인서) 외부 작성 화면 — 동일한 토큰 기반 보안
+  // 정책(lib/approval-inspection/token.ts).
+  '/inspection-form', '/api/inspection-form',
   // 사진첩 외부 공유 링크 — 동일한 토큰 기반 보안 정책(lib/photos/external-shares.ts).
   // 비밀번호가 걸린 공유는 라우트 핸들러가 서명된 unlock 쿠키를 별도로 검증한다.
   '/share/photos', '/api/share/photos',
