@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeCheck, Plus, Loader2, Trash2, ArrowLeft, AlertTriangle, Check, Upload, RotateCw, Camera, Cable } from 'lucide-react';
+import { BadgeCheck, Plus, Loader2, Trash2, ArrowLeft, AlertTriangle, Check, Upload, RotateCw, Camera, Cable, FlaskConical, GitCompare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PHOTO_CATEGORIES } from '@/lib/approval-inspection/types';
 
@@ -37,7 +37,17 @@ interface WireSpecRow {
   sortOrder: number;
 }
 
+interface SampleRow {
+  id: string; sampleNo: string; samplingMethod?: string; inspectionDate?: string; inspectionPlace?: string; inspector?: string;
+  measurements: { id: string; itemKey: string; itemLabel: string; measuredValue?: string; unit?: string; judgement?: string }[];
+}
+interface DiffRow {
+  id: string; compareItem: string; judgement?: string; changeLocation?: string; beforeDesc?: string; afterDesc?: string;
+  reason?: string; needsApproval: boolean; supplierExplanation?: string; internalReviewOpinion?: string;
+}
+
 const JUDGEMENT_OPTIONS = ['적합', '부적합', '조건부 승인', '재검사 필요', '해당 없음'];
+const DIFF_JUDGEMENT_OPTIONS = ['동일', '허용 가능한 차이', '승인되지 않은 변경', '확인 필요', '해당 없음'];
 const GROUP_LABEL: Record<string, string> = { product: '제품 전체', pcb: 'PCB', wiring: '배선/커넥터' };
 const WIRE_ROLE_LABEL: Record<string, string> = { input: '입력선', output: '출력선' };
 const LENGTH_UNITS = ['mm', 'cm', 'm'];
@@ -57,6 +67,11 @@ export default function ProductMeasurementsPage() {
   const [wires, setWires] = useState<WireSpecRow[]>([]);
   const [wiresDirty, setWiresDirty] = useState(false);
   const [wiresSaving, setWiresSaving] = useState(false);
+  const [samples, setSamples] = useState<SampleRow[]>([]);
+  const [sampleStats, setSampleStats] = useState<Record<string, { itemLabel: string; unit: string | null; avg: number | null; min: number | null; max: number | null; count: number }>>({});
+  const [diffs, setDiffs] = useState<DiffRow[]>([]);
+  const [diffsDirty, setDiffsDirty] = useState(false);
+  const [diffsSaving, setDiffsSaving] = useState(false);
 
   const loadPhotos = useCallback(async () => {
     const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/photos`).then(x => x.json());
@@ -66,6 +81,17 @@ export default function ProductMeasurementsPage() {
   const loadWires = useCallback(async () => {
     const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/wire-specs`).then(x => x.json());
     setWires(r.data ?? []);
+  }, [id, productId]);
+
+  const loadSamples = useCallback(async () => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/samples`).then(x => x.json());
+    setSamples(r.data ?? []);
+    setSampleStats(r.stats ?? {});
+  }, [id, productId]);
+
+  const loadDiffs = useCallback(async () => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/diffs`).then(x => x.json());
+    setDiffs(r.data ?? []);
   }, [id, productId]);
 
   const load = useCallback(async () => {
@@ -80,9 +106,9 @@ export default function ProductMeasurementsPage() {
       const product = (pRes.data ?? []).find((p: { id: string }) => p.id === productId);
       setProductName(product ? [product.productName, product.modelName].filter(Boolean).join(' / ') : '');
       setIssues((vRes.data ?? []).filter((i: ValidationIssueRow) => i.productId === productId));
-      await Promise.all([loadPhotos(), loadWires()]);
+      await Promise.all([loadPhotos(), loadWires(), loadSamples(), loadDiffs()]);
     } finally { setLoading(false); }
-  }, [id, productId, loadPhotos, loadWires]);
+  }, [id, productId, loadPhotos, loadWires, loadSamples, loadDiffs]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -205,6 +231,53 @@ export default function ProductMeasurementsPage() {
     });
     if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || '편집 실패'); return; }
     loadPhotos();
+  };
+
+  const addSample = async () => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/samples`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    const j = await r.json();
+    if (!r.ok) { alert(j.error || '추가 실패'); return; }
+    loadSamples();
+  };
+
+  const deleteSample = async (sampleId: string) => {
+    if (!confirm('이 샘플을 삭제할까요?')) return;
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/samples/${sampleId}`, { method: 'DELETE' });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || '삭제 실패'); return; }
+    loadSamples();
+  };
+
+  const saveSampleMeasurements = async (sampleId: string, rowsToSave: SampleRow['measurements']) => {
+    const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/samples/${sampleId}/measurements`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: rowsToSave.map(m => ({ id: m.id, measuredValue: m.measuredValue ?? null, unit: m.unit ?? null, judgement: m.judgement ?? null })) }),
+    });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || '저장 실패'); return; }
+    loadSamples();
+  };
+
+  const updateDiff = (diffId: string, patch: Partial<DiffRow>) => {
+    setDiffs(prev => prev.map(d => (d.id === diffId ? { ...d, ...patch } : d)));
+    setDiffsDirty(true);
+  };
+
+  const saveDiffs = async () => {
+    setDiffsSaving(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/products/${productId}/diffs`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: diffs.map(d => ({
+          id: d.id, compareItem: d.compareItem, judgement: d.judgement ?? null, changeLocation: d.changeLocation ?? null,
+          beforeDesc: d.beforeDesc ?? null, afterDesc: d.afterDesc ?? null, reason: d.reason ?? null,
+          needsApproval: d.needsApproval, supplierExplanation: d.supplierExplanation ?? null, internalReviewOpinion: d.internalReviewOpinion ?? null,
+        })) }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '저장 실패'); return; }
+      setDiffsDirty(false);
+    } finally { setDiffsSaving(false); }
   };
 
   if (loading) {
@@ -340,6 +413,141 @@ export default function ProductMeasurementsPage() {
             </div>
           ))}
         </div>
+
+        <SamplesPanel
+          samples={samples} stats={sampleStats}
+          onAdd={addSample} onDelete={deleteSample} onSaveMeasurements={saveSampleMeasurements}
+        />
+
+        {diffs.length > 0 && (
+          <DiffsPanel diffs={diffs} dirty={diffsDirty} saving={diffsSaving} onUpdate={updateDiff} onSave={saveDiffs} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SamplesPanel({ samples, stats, onAdd, onDelete, onSaveMeasurements }: {
+  samples: SampleRow[];
+  stats: Record<string, { itemLabel: string; unit: string | null; avg: number | null; min: number | null; max: number | null; count: number }>;
+  onAdd: () => void;
+  onDelete: (sampleId: string) => void;
+  onSaveMeasurements: (sampleId: string, rows: SampleRow['measurements']) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, SampleRow['measurements']>>({});
+
+  const startEdit = (s: SampleRow) => { setExpanded(e => (e === s.id ? null : s.id)); setDrafts(d => ({ ...d, [s.id]: s.measurements })); };
+  const updateDraft = (sampleId: string, mId: string, patch: Partial<SampleRow['measurements'][number]>) => {
+    setDrafts(d => ({ ...d, [sampleId]: (d[sampleId] || []).map(m => (m.id === mId ? { ...m, ...patch } : m)) }));
+  };
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-sm flex items-center gap-1.5"><FlaskConical className="w-4 h-4" />샘플 검사 (§12)</h2>
+        <Button size="sm" variant="outline" onClick={onAdd} className="gap-1.5"><Plus className="w-4 h-4" />샘플 추가</Button>
+      </div>
+
+      {Object.keys(stats).length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[500px]">
+            <thead className="text-muted-foreground"><tr><th className="text-left py-1">항목</th><th className="text-left">평균</th><th className="text-left">최소</th><th className="text-left">최대</th><th className="text-left">n</th></tr></thead>
+            <tbody className="divide-y">
+              {Object.entries(stats).map(([key, s]) => (
+                <tr key={key}>
+                  <td className="py-1">{s.itemLabel}</td>
+                  <td>{s.avg != null ? `${s.avg.toFixed(2)}${s.unit || ''}` : '-'}</td>
+                  <td>{s.min != null ? `${s.min}${s.unit || ''}` : '-'}</td>
+                  <td>{s.max != null ? `${s.max}${s.unit || ''}` : '-'}</td>
+                  <td>{s.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {samples.length === 0 ? (
+        <p className="text-xs text-muted-foreground">등록된 샘플이 없습니다.</p>
+      ) : (
+        <div className="space-y-2">
+          {samples.map(s => (
+            <div key={s.id} className="border rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2">
+                <button onClick={() => startEdit(s)} className="text-xs font-medium hover:underline">{s.sampleNo}</button>
+                <button onClick={() => onDelete(s.id)} className="text-red-500 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+              {expanded === s.id && (
+                <div className="border-t p-3 space-y-2">
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y">
+                      {(drafts[s.id] || []).map(m => (
+                        <tr key={m.id}>
+                          <td className="py-1 pr-2">{m.itemLabel}</td>
+                          <td className="pr-1"><input className="w-20 h-7 border rounded px-1" value={m.measuredValue ?? ''} onChange={e => updateDraft(s.id, m.id, { measuredValue: e.target.value })} /></td>
+                          <td className="pr-1"><input className="w-14 h-7 border rounded px-1" placeholder="단위" value={m.unit ?? ''} onChange={e => updateDraft(s.id, m.id, { unit: e.target.value })} /></td>
+                          <td>
+                            <select className="h-7 border rounded px-1" value={m.judgement ?? ''} onChange={e => updateDraft(s.id, m.id, { judgement: e.target.value })}>
+                              <option value="">-</option>
+                              {JUDGEMENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <Button size="sm" onClick={() => onSaveMeasurements(s.id, drafts[s.id] || [])} className="gap-1.5">저장</Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiffsPanel({ diffs, dirty, saving, onUpdate, onSave }: {
+  diffs: DiffRow[]; dirty: boolean; saving: boolean;
+  onUpdate: (diffId: string, patch: Partial<DiffRow>) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-sm flex items-center gap-1.5"><GitCompare className="w-4 h-4" />사전승인 대비 비교 (§11)</h2>
+        <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="gap-1.5">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}저장</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">차이가 있다고 표시(판정이 &quot;동일&quot;/&quot;해당 없음&quot;이 아님)한 항목은 변경위치·사유를 반드시 입력해야 저장됩니다.</p>
+      <div className="space-y-2">
+        {diffs.map(d => {
+          const flagged = !!d.judgement && d.judgement !== '동일' && d.judgement !== '해당 없음';
+          return (
+            <div key={d.id} className={cn('border rounded-lg p-2.5 space-y-2', flagged && 'border-amber-400 bg-amber-50/40')}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">{d.compareItem}</span>
+                <select className="h-7 text-xs border rounded px-1" value={d.judgement ?? ''} onChange={e => onUpdate(d.id, { judgement: e.target.value })}>
+                  <option value="">-</option>
+                  {DIFF_JUDGEMENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {flagged && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="h-7 text-xs border rounded px-1.5" placeholder="변경위치 *" value={d.changeLocation ?? ''} onChange={e => onUpdate(d.id, { changeLocation: e.target.value })} />
+                  <input className="h-7 text-xs border rounded px-1.5" placeholder="사유 *" value={d.reason ?? ''} onChange={e => onUpdate(d.id, { reason: e.target.value })} />
+                  <input className="h-7 text-xs border rounded px-1.5" placeholder="변경 전" value={d.beforeDesc ?? ''} onChange={e => onUpdate(d.id, { beforeDesc: e.target.value })} />
+                  <input className="h-7 text-xs border rounded px-1.5" placeholder="변경 후" value={d.afterDesc ?? ''} onChange={e => onUpdate(d.id, { afterDesc: e.target.value })} />
+                  <input className="h-7 text-xs border rounded px-1.5 col-span-2" placeholder="공급업체 설명" value={d.supplierExplanation ?? ''} onChange={e => onUpdate(d.id, { supplierExplanation: e.target.value })} />
+                  <input className="h-7 text-xs border rounded px-1.5 col-span-2" placeholder="내부 검토의견" value={d.internalReviewOpinion ?? ''} onChange={e => onUpdate(d.id, { internalReviewOpinion: e.target.value })} />
+                  <label className="text-[11px] flex items-center gap-1 col-span-2">
+                    <input type="checkbox" checked={d.needsApproval} onChange={e => onUpdate(d.id, { needsApproval: e.target.checked })} />승인 필요
+                  </label>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

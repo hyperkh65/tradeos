@@ -1,5 +1,6 @@
 import { getDb, newId, now } from '@/lib/db/sqlite';
 import { UPLOAD_BASE } from './storage';
+import { DIFF_COMPARE_ITEMS } from './types';
 import fs from 'fs';
 import path from 'path';
 
@@ -80,6 +81,13 @@ export function snapshotProjectData(sourceProjectId: string, targetProjectId: st
           ph.crop_rect_json, ph.rotation_deg, newEditedPath, ph.sort_order, ts,
         );
       }
+
+      // §11 사전승인 대비 외관/부품 비교 대상 — 출고선적승인서에만 의미가 있으므로
+      // 스냅샷 시점에 표준 비교항목으로 초기 행을 만들어준다(값은 검사자가 채움).
+      const insertDiff = db.prepare(`INSERT INTO approval_inspection_diffs
+        (id, project_id, product_id, compare_item, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      DIFF_COMPARE_ITEMS.forEach((item, idx) => insertDiff.run(newId(), targetProjectId, newProductId, item, idx, ts, ts));
     }
   })();
 
