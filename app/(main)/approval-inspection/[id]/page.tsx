@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft, Link2, RefreshCw, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft, Link2, RefreshCw, Upload, Download, FileSpreadsheet, Gavel, AlertOctagon } from 'lucide-react';
 
 interface ProjectDetail {
   id: string; businessId: string; reportType: 'pre_approval' | 'pre_shipment';
@@ -17,7 +17,13 @@ interface ProjectDetail {
   internalContact?: string; supplierContact?: string; memo?: string;
   referenceProjectId?: string; defaultLanguage: string; status: string;
   createdByName?: string; createdAt: string;
+  finalDecision?: string; decidedByName?: string; decidedAt?: string;
 }
+
+const FINAL_DECISION_OPTIONS: Record<string, string[]> = {
+  pre_approval: ['승인', '조건부 승인', '수정 후 재제출', '부적합'],
+  pre_shipment: ['출고 승인', '선적 승인', '조건부 출고 승인', '출고 보류', '부적합'],
+};
 
 interface ProductRow {
   id: string; projectId: string; sortOrder: number;
@@ -210,6 +216,8 @@ export default function ApprovalInspectionDetailPage() {
           )}
         </div>
 
+        <RevisionRequestsPanel id={id} products={products} disabled={isClosed} />
+        <DecisionPanel id={id} reportType={project.reportType} finalDecision={project.finalDecision} decidedByName={project.decidedByName} decidedAt={project.decidedAt} disabled={isClosed} onDecided={load} />
         <ImportExportPanel id={id} disabled={isClosed} onImported={load} />
         <GenerateDocPanel id={id} hasProducts={products.length > 0} />
       </div>
@@ -281,6 +289,7 @@ function GenerateDocPanel({ id, hasProducts }: { id: string; hasProducts: boolea
             <a href={`/api/approval-inspection/${id}/download/docx`} className="text-primary hover:underline">DOCX 다운로드</a>
             <a href={`/api/approval-inspection/${id}/download/xlsx`} className="text-primary hover:underline">XLSX 다운로드</a>
             {result.hasPdf && <a href={`/api/approval-inspection/${id}/download/pdf`} className="text-primary hover:underline">PDF 다운로드</a>}
+            <a href={`/api/approval-inspection/${id}/download/zip`} className="text-primary hover:underline">전체 패키지(ZIP) 다운로드</a>
           </div>
         </div>
       )}
@@ -348,6 +357,120 @@ function LinkPanel({ id, disabled }: { id: string; disabled: boolean }) {
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}링크 발급
         </Button>
       )}
+    </div>
+  );
+}
+
+function DecisionPanel({ id, reportType, finalDecision, decidedByName, decidedAt, disabled, onDecided }: {
+  id: string; reportType: string; finalDecision?: string; decidedByName?: string; decidedAt?: string; disabled: boolean; onDecided: () => void;
+}) {
+  const [selected, setSelected] = useState(finalDecision ?? '');
+  const [saving, setSaving] = useState(false);
+  const options = FINAL_DECISION_OPTIONS[reportType] || [];
+
+  useEffect(() => { setSelected(finalDecision ?? ''); }, [finalDecision]);
+
+  const decide = async () => {
+    if (!selected) { alert('판정을 선택하세요.'); return; }
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/decide`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ finalDecision: selected }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '결재 실패'); return; }
+      onDecided();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-2">
+      <h2 className="font-semibold text-sm flex items-center gap-1.5"><Gavel className="w-4 h-4" />결재 (§15)</h2>
+      {finalDecision && (
+        <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1.5">
+          최종 판정: <span className="font-semibold">{finalDecision}</span>
+          {decidedByName && ` — ${decidedByName}${decidedAt ? ` (${decidedAt.slice(0, 10)})` : ''}`}
+        </p>
+      )}
+      {!disabled && (
+        <div className="flex items-center gap-2">
+          <select value={selected} onChange={e => setSelected(e.target.value)} className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm">
+            <option value="">판정 선택...</option>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <Button size="sm" onClick={decide} disabled={saving} className="gap-1.5">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}결재</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface RevisionRequestRow {
+  id: string; productId?: string; targetField?: string; requestContent: string; requestedByName?: string;
+  requestedAt: string; supplierResponse?: string; status: string;
+}
+
+function RevisionRequestsPanel({ id, products, disabled }: { id: string; products: ProductRow[]; disabled: boolean }) {
+  const [requests, setRequests] = useState<RevisionRequestRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [content, setContent] = useState('');
+  const [targetProductId, setTargetProductId] = useState('');
+
+  const load = useCallback(() => {
+    fetch(`/api/approval-inspection/${id}/revision-requests`).then(r => r.json()).then(j => { setRequests(j.data ?? []); setLoaded(true); });
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+
+  const create = async () => {
+    if (!content.trim()) { alert('요청 내용을 입력하세요.'); return; }
+    setCreating(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/revision-requests`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestContent: content.trim(), productId: targetProductId || undefined }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '요청 실패'); return; }
+      setContent(''); setTargetProductId('');
+      load();
+    } finally { setCreating(false); }
+  };
+
+  const resolve = async (requestId: string) => {
+    const r = await fetch(`/api/approval-inspection/${id}/revision-requests/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'resolved' }),
+    });
+    if (r.ok) load();
+  };
+
+  const openCount = requests.filter(r => r.status === 'open').length;
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-3">
+      <h2 className="font-semibold text-sm flex items-center gap-1.5"><AlertOctagon className="w-4 h-4" />수정요청 (§16){openCount > 0 && <span className="text-amber-600">({openCount}건 대기)</span>}</h2>
+      {!disabled && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={targetProductId} onChange={e => setTargetProductId(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-xs">
+            <option value="">(제품 미지정)</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.productName || p.modelName || p.id}</option>)}
+          </select>
+          <Input className="flex-1 min-w-[200px]" placeholder="수정요청 내용" value={content} onChange={e => setContent(e.target.value)} />
+          <Button size="sm" onClick={create} disabled={creating} className="gap-1.5">{creating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}요청</Button>
+        </div>
+      )}
+      {loaded && requests.length === 0 && <p className="text-xs text-muted-foreground">등록된 수정요청이 없습니다.</p>}
+      <div className="space-y-1.5">
+        {requests.map(r => (
+          <div key={r.id} className={`rounded-md px-3 py-2 text-xs ${r.status === 'open' ? 'bg-amber-50 text-amber-800' : 'bg-muted/40 text-muted-foreground'}`}>
+            <div className="flex items-center justify-between">
+              <span>{r.requestContent}</span>
+              {r.status === 'open' && !disabled && <button onClick={() => resolve(r.id)} className="underline shrink-0 ml-2">완료 처리</button>}
+            </div>
+            <p className="mt-0.5">{r.requestedByName} · {r.requestedAt?.slice(0, 10)} · {r.status === 'open' ? '대기중' : r.status === 'resolved' ? '완료' : '취소됨'}</p>
+            {r.supplierResponse && <p className="mt-1 text-foreground">공급업체 응답: {r.supplierResponse}</p>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

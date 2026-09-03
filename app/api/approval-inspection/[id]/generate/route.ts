@@ -105,6 +105,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     manufacturerName: (project.manufacturer_name as string) || undefined, poNumber: (project.po_number as string) || undefined,
     piNumber: (project.pi_number as string) || undefined, productionLotNo: (project.production_lot_no as string) || undefined,
     dueDate: (project.due_date as string) || undefined, issueDate: now().slice(0, 10),
+    finalDecision: (project.final_decision as string) || undefined, decidedByName: (project.decided_by_name as string) || undefined,
+    decidedAt: (project.decided_at as string) || undefined,
   };
 
   const docProducts = await buildProductsForDoc(id, reportType);

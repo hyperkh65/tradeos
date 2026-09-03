@@ -2026,6 +2026,13 @@ function runMigrations(db: Database.Database) {
       created_at TEXT NOT NULL
     )`);
   } catch { /* already exists */ }
+
+  // §15 결재란 — 최종 판정/결재자·일시를 실제 데이터로 저장해 문서 생성 시 빈 서명란이
+  // 아니라 실제 선택된 판정을 반영할 수 있게 한다.
+  try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN final_decision TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_by TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_by_name TEXT`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_at TEXT`); } catch { /* already exists */ }
   // ── 제품 승인검사 보고서 끝 ─────────────────────────────────────────────────
 
   // ── 포워더운임(해상운임 견적) 관리 시작 ──────────────────────────────────────

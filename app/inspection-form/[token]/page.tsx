@@ -108,6 +108,8 @@ export default function InspectionFormPage() {
           {isClosed && <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1 mt-2">{t('closed')}</p>}
         </div>
 
+        <RevisionRequestsBanner token={token} disabled={isClosed} />
+
         <div className="flex items-center gap-1 text-xs">
           {[1, 2, 3].map(s => (
             <button key={s} onClick={() => setStep(s)} className={`flex-1 text-center py-2 rounded-md border ${step === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground'}`}>
@@ -493,6 +495,59 @@ function ReviewStep({ token, t, disabled, onSubmitted, status }: {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface RevisionRequestRow {
+  id: string; requestContent: string; requestedByName?: string; requestedAt: string; supplierResponse?: string; status: string;
+}
+
+/** §16 — 내부 담당자의 수정요청을 외부 화면에 경고색으로 노출한다. 공급업체는
+ * 응답만 남길 수 있고 요청 자체나 상태는 바꿀 수 없다. */
+function RevisionRequestsBanner({ token, disabled }: { token: string; disabled: boolean }) {
+  const [requests, setRequests] = useState<RevisionRequestRow[]>([]);
+  const [responseDraft, setResponseDraft] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch(`/api/inspection-form/${token}/revision-requests`).then(r => r.json()).then(j => setRequests(j.data ?? []));
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  const respond = async (requestId: string) => {
+    const text = responseDraft[requestId]?.trim();
+    if (!text) return;
+    setSubmitting(requestId);
+    try {
+      const r = await fetch(`/api/inspection-form/${token}/revision-requests/${requestId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplierResponse: text }),
+      });
+      if (r.ok) { setResponseDraft(d => ({ ...d, [requestId]: '' })); load(); }
+    } finally { setSubmitting(null); }
+  };
+
+  const open = requests.filter(r => r.status === 'open');
+  if (open.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      {open.map(r => (
+        <div key={r.id} className="bg-amber-50 border border-amber-300 rounded-md px-3 py-2 text-xs text-amber-900 space-y-1.5">
+          <p className="font-medium">⚠ {r.requestContent}</p>
+          {!disabled && (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 h-8 rounded border border-amber-300 bg-white px-2 text-xs"
+                placeholder="응답 입력..."
+                value={responseDraft[r.id] ?? ''}
+                onChange={e => setResponseDraft(d => ({ ...d, [r.id]: e.target.value }))}
+              />
+              <button onClick={() => respond(r.id)} disabled={submitting === r.id} className="text-amber-900 underline shrink-0">응답</button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

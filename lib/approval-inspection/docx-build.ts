@@ -25,6 +25,9 @@ export interface InspectionDocMeta {
   productionLotNo?: string;
   dueDate?: string;
   issueDate: string;
+  finalDecision?: string;
+  decidedByName?: string;
+  decidedAt?: string;
 }
 
 export interface DocMeasurementRow {
@@ -260,11 +263,25 @@ function buildSummaryTable(products: DocProduct[]): (Paragraph | Table)[] {
 }
 
 /** §15 결재란 — 승인서 종류에 따라 판정값 목록이 다르다(호출부가 FINAL_DECISION_OPTIONS로
- * 넘겨준 문자열을 그대로 나열만 하고, 이 파일은 어떤 값이 유효한지 모른다). */
-function buildApprovalBlock(decisionOptions: string[]): (Paragraph | Table)[] {
+ * 넘겨준 문자열을 그대로 나열만 하고, 이 파일은 어떤 값이 유효한지 모른다). 실제로 결재가
+ * 기록된 경우(meta.finalDecision) 그 값을 굵게 강조해 보여주고, 아니면 선택지만 나열한다. */
+function buildApprovalBlock(decisionOptions: string[], meta: InspectionDocMeta): (Paragraph | Table)[] {
+  const decisionLine = meta.finalDecision
+    ? new Paragraph({
+        spacing: { after: 100 },
+        children: [
+          new TextRun('최종 판정: '),
+          new TextRun({ text: meta.finalDecision, bold: true }),
+        ],
+      })
+    : new Paragraph({ text: `최종 판정: ${decisionOptions.join(' / ')} (해당 항목에 표시)`, spacing: { after: 100 } });
+  const decidedLine = meta.finalDecision && meta.decidedByName
+    ? new Paragraph({ text: `결재자: ${meta.decidedByName}${meta.decidedAt ? ` (${meta.decidedAt.slice(0, 10)})` : ''}`, spacing: { after: 200 } })
+    : null;
   return [
     sectionHeading('결재'),
-    new Paragraph({ text: `최종 판정: ${decisionOptions.join(' / ')} (해당 항목에 표시)`, spacing: { after: 200 } }),
+    decisionLine,
+    ...(decidedLine ? [decidedLine] : []),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: TABLE_BORDERS,
@@ -299,7 +316,7 @@ export async function buildInspectionDocx(opts: BuildInspectionDocxOptions, deci
     ...buildCover(meta),
     ...buildSummaryTable(products),
     ...products.flatMap((p, i) => buildProductCard(p, i)),
-    ...buildApprovalBlock(decisionOptions),
+    ...buildApprovalBlock(decisionOptions, meta),
   ];
 
   const doc = new Document({
