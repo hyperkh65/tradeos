@@ -109,7 +109,7 @@ export default function SupplierRequestsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <AppHeader title="공급업체 자료요청" icon={<ClipboardCheck className="w-5 h-5" />} />
+      <AppHeader title="고효율서류요청서" icon={<ClipboardCheck className="w-5 h-5" />} />
       <div className="flex-1 overflow-auto p-4 lg:p-6 space-y-4">
         <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5"><Plus className="w-4 h-4" />자료요청 프로젝트 생성</Button>

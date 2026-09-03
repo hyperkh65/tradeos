@@ -63,7 +63,7 @@ const navGroups = [
     items: [
       { label: 'SCM', href: '/scm', icon: GitMerge },
       { label: '오더 추적', href: '/scm/orders', icon: ListOrdered },
-      { label: '공급업체 자료요청', href: '/supplier-requests', icon: ClipboardCheck },
+      { label: '고효율서류요청서', href: '/supplier-requests', icon: ClipboardCheck },
       { label: '제품 승인서·사양서', href: '/approval-documents', icon: FileCheck2 },
       { label: '승인서 브랜드/템플릿', href: '/approval-documents/settings', icon: Palette },
       { label: '제품 승인검사', href: '/approval-inspection', icon: BadgeCheck },
