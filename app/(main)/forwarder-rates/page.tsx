@@ -780,11 +780,19 @@ function FileUploadImportModal({ forwarders, onClose, onSaved }: { forwarders: C
       fd.append('file', file);
       fd.append('forwarderName', forwarderName.trim());
       const res = await fetch('/api/forwarder-rates/parse-upload', { method: 'POST', body: fd });
-      const j = await res.json();
-      if (!res.ok) { alert(j.error || '파싱 실패'); return; }
-      setRows(j.data);
+      let j: { data?: ParsedFileRow[]; warnings?: string[]; error?: string };
+      try {
+        j = await res.json();
+      } catch {
+        alert(`서버 응답을 읽지 못했습니다(status ${res.status}). 파일이 너무 크거나 서버 오류일 수 있습니다.`);
+        return;
+      }
+      if (!res.ok) { alert(j.error || `파싱 실패(status ${res.status})`); return; }
+      setRows(j.data ?? []);
       setWarnings(j.warnings || []);
-      if (!j.data.length) alert('파일에서 운임 데이터를 찾지 못했습니다.');
+      if (!j.data?.length) alert('파일에서 운임 데이터를 찾지 못했습니다.');
+    } catch (e) {
+      alert(`파일 읽기 요청이 실패했습니다: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setParsing(false); }
   };
 
