@@ -1710,6 +1710,324 @@ function runMigrations(db: Database.Database) {
   } catch { /* already exists */ }
   // ── 제품 승인서·제품 사양서 작성 및 관리 시스템 끝 ────────────────────────────
 
+  // ── 제품 승인검사 보고서(사전승인서/출고선적승인서 공통) 시작 ─────────────────
+  // approval_doc_*(챕터/목차형 LED 기술문서)와는 완전히 별개 모듈 — 이쪽은 제품
+  // 반복 블록 + 측정값 기준/실측 비교 + 사진 배치가 핵심이라 데이터 모델이 근본적으로
+  // 다르다. 두 승인서 "종류"(사전승인서/출고선적승인서)는 report_type 컬럼 하나로
+  // 구분하고 테이블은 공유한다(중복 테이블 생성 금지 요구사항).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_projects (
+      id TEXT PRIMARY KEY,
+      business_id TEXT UNIQUE NOT NULL,
+      report_type TEXT NOT NULL DEFAULT 'pre_approval',
+      title_override TEXT,
+      project_name TEXT NOT NULL,
+      internal_ref_no TEXT,
+      customer_name TEXT,
+      supplier_name TEXT,
+      manufacturer_name TEXT,
+      product_category TEXT,
+      product_name TEXT,
+      base_model_name TEXT,
+      po_number TEXT,
+      pi_number TEXT,
+      production_lot_no TEXT,
+      production_qty INTEGER,
+      inspection_qty INTEGER,
+      ship_date TEXT,
+      shipping_date TEXT,
+      request_date TEXT,
+      due_date TEXT,
+      internal_contact TEXT,
+      supplier_contact TEXT,
+      memo TEXT,
+      reference_project_id TEXT,
+      default_language TEXT NOT NULL DEFAULT 'zh',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted INTEGER NOT NULL DEFAULT 0
+    )`);
+  } catch { /* already exists */ }
+
+  // lib/approval-doc/token.ts와 완전히 동일한 보안 패턴(토큰 원문은 저장 안 함).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_links (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      token_encrypted TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_by_name TEXT,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoked_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  // 제품 반복 블록(§5/§6) — 전기적 측정항목 자체는 여기 컬럼으로 두지 않고
+  // approval_inspection_measurements에 행으로 저장한다(참고 엑셀이 항목마다
+  // 새 컬럼을 만들어 A4 폭을 넘긴 것과 같은 실수를 반복하지 않기 위한 설계).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_products (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      product_category TEXT,
+      product_name TEXT,
+      model_name TEXT,
+      manufacturer TEXT,
+      production_lot TEXT,
+      dimensions TEXT,
+      weight_g TEXT,
+      cert_number TEXT,
+      remark TEXT,
+      overall_judgement TEXT,
+      internal_opinion TEXT,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 전기적 측정항목(§7) — 항목을 행으로 나열해 측정항목이 몇 개든 표 폭이 늘지
+  // 않게 한다. 사전승인서에서는 baseline_value가 "승인 기준값"이 되고,
+  // 출고선적승인서에서는 baseline_value가 스냅샷 복사된 사전승인 값, measured_value가
+  // 실제 출고품 측정값이다.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_measurements (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      item_key TEXT NOT NULL,
+      item_label TEXT NOT NULL,
+      baseline_value TEXT,
+      baseline_unit TEXT,
+      measured_value TEXT,
+      measured_unit TEXT,
+      min_value TEXT,
+      max_value TEXT,
+      tolerance TEXT,
+      equipment TEXT,
+      measured_date TEXT,
+      measured_by TEXT,
+      judgement TEXT,
+      remark TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 입력선/출력선(§10) — wire_role로 입력/출력 구분. 길이는 값/단위 분리 저장.
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_wire_specs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      wire_role TEXT NOT NULL,
+      wire_spec TEXT,
+      conductor_area TEXT,
+      core_count TEXT,
+      insulation_material TEXT,
+      color TEXT,
+      baseline_length_value TEXT,
+      baseline_length_unit TEXT NOT NULL DEFAULT 'mm',
+      measured_length_value TEXT,
+      measured_length_unit TEXT NOT NULL DEFAULT 'mm',
+      strip_length TEXT,
+      end_treatment TEXT,
+      connector_manufacturer TEXT,
+      connector_model TEXT,
+      pin_count TEXT,
+      polarity TEXT,
+      remark TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 사진(§9) — 원본은 절대 덮어쓰지 않고(lib/approval-doc/image-edit.ts 결과는
+  // edited_file_path에만 저장), sample_id로 특정 샘플의 사진임을 연결할 수 있다(§12).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_photos (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      sample_id TEXT,
+      category_key TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT,
+      description TEXT,
+      crop_rect_json TEXT,
+      rotation_deg INTEGER NOT NULL DEFAULT 0,
+      edited_file_path TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      is_current INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      uploaded_by TEXT,
+      uploaded_by_name TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 검사수량/샘플(§12) — 샘플 헤더 하나에 여러 측정항목 값을 붙여 평균/최소/최대를
+  // 조회 시 계산한다(저장하지 않음 — 샘플이 추가/삭제돼도 항상 최신값 반영).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_samples (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      sample_no TEXT NOT NULL,
+      sampling_method TEXT,
+      inspection_date TEXT,
+      inspection_place TEXT,
+      inspector TEXT,
+      remark TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_sample_measurements (
+      id TEXT PRIMARY KEY,
+      sample_id TEXT NOT NULL,
+      item_key TEXT NOT NULL,
+      item_label TEXT NOT NULL,
+      measured_value TEXT,
+      unit TEXT,
+      judgement TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 사전승인 대비 출고품 외관/부품 비교(§11) — 차이가 있으면 변경 위치/사유/승인
+  // 필요여부/공급업체 설명/내부검토의견을 필수로 받는다(화면에서 강제, 여기는 저장소).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_diffs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      compare_item TEXT NOT NULL,
+      judgement TEXT,
+      change_location TEXT,
+      before_desc TEXT,
+      after_desc TEXT,
+      reason TEXT,
+      needs_approval INTEGER NOT NULL DEFAULT 0,
+      supplier_explanation TEXT,
+      internal_review_opinion TEXT,
+      related_photo_ids_json TEXT NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  // 내부 담당자의 항목/사진별 수정요청(§16).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_revision_requests (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      product_id TEXT,
+      target_field TEXT,
+      target_photo_id TEXT,
+      request_content TEXT NOT NULL,
+      requested_by TEXT,
+      requested_by_name TEXT,
+      requested_at TEXT NOT NULL,
+      supplier_response TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      completed_at TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_submission_versions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      version_no INTEGER NOT NULL,
+      submitted_at TEXT NOT NULL,
+      submitted_by_name TEXT,
+      status_at_submission TEXT,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_closure_snapshots (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      closed_by_user_id TEXT NOT NULL,
+      closed_by_user_name TEXT,
+      closed_at TEXT NOT NULL,
+      submission_version_at_closure INTEGER,
+      data_snapshot_json TEXT NOT NULL,
+      attachments_snapshot_json TEXT NOT NULL,
+      reason_memo TEXT,
+      reopened_at TEXT,
+      reopened_by_user_id TEXT,
+      reopened_by_user_name TEXT,
+      reopen_reason TEXT
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_generated_documents (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      submission_version INTEGER,
+      file_type TEXT NOT NULL,
+      stored_path TEXT,
+      generated_by TEXT,
+      generated_by_name TEXT,
+      generated_at TEXT NOT NULL,
+      is_final INTEGER NOT NULL DEFAULT 0
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_validation_acknowledgements (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      issue_key TEXT NOT NULL,
+      acknowledged_by TEXT,
+      acknowledged_by_name TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS approval_inspection_audit_logs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_type TEXT NOT NULL,
+      actor_user_id TEXT,
+      actor_user_name TEXT,
+      actor_token_hash TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      submission_version INTEGER,
+      created_at TEXT NOT NULL
+    )`);
+  } catch { /* already exists */ }
+  // ── 제품 승인검사 보고서 끝 ─────────────────────────────────────────────────
+
   // ── 포워더운임(해상운임 견적) 관리 시작 ──────────────────────────────────────
   // 포워딩 업체마다 견적서 형식이 완전히 달라 자동파싱 대신 수동입력+붙여넣기로
   // 기록하되, 매달 새로 받는 견적은 기존 행을 덮어쓰지 않고 새 행으로 계속
