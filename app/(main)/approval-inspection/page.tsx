@@ -41,6 +41,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
     referenceProjectId: '', referenceMode: 'existing' as 'existing' | 'new',
     defaultLanguage: 'zh',
   });
+  const [productNamesBulk, setProductNamesBulk] = useState('');
   const [saving, setSaving] = useState(false);
   const [refCandidates, setRefCandidates] = useState<ProjectRow[]>([]);
 
@@ -94,6 +95,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           productionQty: form.productionQty ? Number(form.productionQty) : null,
           inspectionQty: form.inspectionQty ? Number(form.inspectionQty) : null,
           referenceProjectId: form.reportType === 'pre_shipment' && form.referenceMode === 'existing' ? form.referenceProjectId : null,
+          productNames: productNamesBulk.split('\n').map(s => s.trim()).filter(Boolean),
         }),
       });
       const j = await r.json();
@@ -144,6 +146,16 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <div><label className="text-xs text-muted-foreground mb-1 block">제품명</label><Input list="cim-products" value={form.productName} onChange={e => setForm(f => ({ ...f, productName: e.target.value }))} /></div>
           </div>
           <div><label className="text-xs text-muted-foreground mb-1 block">기본 모델명</label><Input value={form.baseModelName} onChange={e => setForm(f => ({ ...f, baseModelName: e.target.value }))} /></div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">오더받은 제품명 목록 (한 줄에 하나씩, 여러 제품 한 번에 등록)</label>
+            <textarea
+              className="w-full min-h-[80px] text-sm rounded-md border border-input bg-background px-3 py-2"
+              placeholder={'예:\nSlim 240mm CVT\nDownlight CVT'}
+              value={productNamesBulk}
+              onChange={e => setProductNamesBulk(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">여기 입력한 제품명 개수만큼 제품 블록이 미리 만들어져, 외부 작성 화면에서 공급업체가 바로 상세 정보를 채울 수 있습니다.</p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-muted-foreground mb-1 block">PO 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input list="cim-pos" value={form.poNumber} onChange={e => setForm(f => ({ ...f, poNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
             <div><label className="text-xs text-muted-foreground mb-1 block">PI 번호</label><Input list="cim-pis" value={form.piNumber} onChange={e => setForm(f => ({ ...f, piNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>

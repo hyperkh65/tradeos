@@ -9,7 +9,7 @@ function toClient(row: Record<string, unknown>) {
     id: row.id, projectId: row.project_id, sortOrder: row.sort_order,
     productCategory: row.product_category, productName: row.product_name, modelName: row.model_name,
     manufacturer: row.manufacturer, productionLot: row.production_lot,
-    dimensions: row.dimensions, weightG: row.weight_g, certNumber: row.cert_number, remark: row.remark,
+    dimensions: row.dimensions, weightG: row.weight_g, certNumber: row.cert_number, specText: row.spec_text, remark: row.remark,
     overallJudgement: row.overall_judgement, internalOpinion: row.internal_opinion,
   };
 }
@@ -47,11 +47,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   db.transaction(() => {
     db.prepare(`INSERT INTO approval_inspection_products
       (id, project_id, sort_order, product_category, product_name, model_name, manufacturer, production_lot,
-       dimensions, weight_g, cert_number, remark, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+       dimensions, weight_g, cert_number, spec_text, remark, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       productId, id, sortOrder, body.productCategory ?? null, body.productName ?? null, body.modelName ?? null,
       body.manufacturer ?? null, body.productionLot ?? null, body.dimensions ?? null, body.weightG ?? null,
-      body.certNumber ?? null, body.remark ?? null, ts, ts,
+      body.certNumber ?? null, body.specText ?? null, body.remark ?? null, ts, ts,
     );
     const insertMeasurement = db.prepare(`INSERT INTO approval_inspection_measurements
       (id, project_id, product_id, item_key, item_label, baseline_unit, measured_unit, sort_order, created_at, updated_at)

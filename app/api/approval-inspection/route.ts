@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { writeInspectionAuditLog } from '@/lib/approval-inspection/audit';
 import { snapshotProjectData } from '@/lib/approval-inspection/snapshot';
+import { STANDARD_MEASUREMENT_ITEMS } from '@/lib/approval-inspection/types';
 import type { ReportType } from '@/lib/approval-inspection/types';
 
 function toClient(row: Record<string, unknown>) {
@@ -13,7 +14,7 @@ function toClient(row: Record<string, unknown>) {
     supplierName: row.supplier_name, manufacturerName: row.manufacturer_name,
     productCategory: row.product_category, productName: row.product_name, baseModelName: row.base_model_name,
     poNumber: row.po_number, piNumber: row.pi_number, productionLotNo: row.production_lot_no,
-    productionQty: row.production_qty, inspectionQty: row.inspection_qty,
+    productionQty: row.production_qty, inspectionQty: row.inspection_qty, defectQty: row.defect_qty,
     shipDate: row.ship_date, shippingDate: row.shipping_date, requestDate: row.request_date, dueDate: row.due_date,
     internalContact: row.internal_contact, supplierContact: row.supplier_contact, memo: row.memo,
     referenceProjectId: row.reference_project_id, defaultLanguage: row.default_language,
@@ -59,15 +60,15 @@ export async function POST(req: NextRequest) {
   db.prepare(`INSERT INTO approval_inspection_projects
     (id, business_id, report_type, title_override, project_name, internal_ref_no, customer_name, supplier_name,
      manufacturer_name, product_category, product_name, base_model_name, po_number, pi_number, production_lot_no,
-     production_qty, inspection_qty, ship_date, shipping_date, request_date, due_date,
+     production_qty, inspection_qty, defect_qty, ship_date, shipping_date, request_date, due_date,
      internal_contact, supplier_contact, memo, reference_project_id, default_language, status,
      created_by, created_by_name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`).run(
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`).run(
     id, businessId, reportType, body.titleOverride ?? null, body.projectName,
     body.internalRefNo ?? null, body.customerName ?? null, body.supplierName ?? null, body.manufacturerName ?? null,
     body.productCategory ?? null, body.productName ?? null, body.baseModelName ?? null,
     body.poNumber ?? null, body.piNumber ?? null, body.productionLotNo ?? null,
-    body.productionQty ?? null, body.inspectionQty ?? null,
+    body.productionQty ?? null, body.inspectionQty ?? null, body.defectQty ?? null,
     body.shipDate ?? null, body.shippingDate ?? null, body.requestDate ?? null, body.dueDate ?? null,
     body.internalContact ?? null, body.supplierContact ?? null, body.memo ?? null,
     body.referenceProjectId ?? null, body.defaultLanguage || 'zh',
@@ -82,6 +83,26 @@ export async function POST(req: NextRequest) {
       projectId: id, action: 'snapshot_create', actorType: 'internal', actorUserId: user.id, actorUserName: user.name,
       after: { sourceProjectId: referenceProject.id, productCount }, req,
     });
+  } else if (Array.isArray(body.productNames)) {
+    // 오더받은 제품명을 여러 개 한 번에 입력해 제품 블록을 미리 만들어둔다 —
+    // 외부 화면에 "(제품명 없음)"으로 뜨는 대신 실제 주문 제품명이 처음부터 보이게 하기 위함.
+    const names: string[] = body.productNames.map((n: unknown) => String(n).trim()).filter(Boolean);
+    if (names.length > 0) {
+      const insertProduct = db.prepare(`INSERT INTO approval_inspection_products
+        (id, project_id, sort_order, product_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`);
+      const insertMeasurement = db.prepare(`INSERT INTO approval_inspection_measurements
+        (id, project_id, product_id, item_key, item_label, baseline_unit, measured_unit, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      db.transaction(() => {
+        names.forEach((name, idx) => {
+          const productId = newId();
+          insertProduct.run(productId, id, idx, name, ts, ts);
+          STANDARD_MEASUREMENT_ITEMS.forEach((item, i) => {
+            insertMeasurement.run(newId(), id, productId, item.key, item.label, item.unit, item.unit, i, ts, ts);
+          });
+        });
+      })();
+    }
   }
 
   const row = db.prepare('SELECT * FROM approval_inspection_projects WHERE id=?').get(id) as Record<string, unknown>;

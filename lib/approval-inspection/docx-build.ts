@@ -23,6 +23,9 @@ export interface InspectionDocMeta {
   poNumber?: string;
   piNumber?: string;
   productionLotNo?: string;
+  productionQty?: number;
+  inspectionQty?: number;
+  defectQty?: number;
   dueDate?: string;
   issueDate: string;
   finalDecision?: string;
@@ -50,8 +53,8 @@ export interface DocDiffRow {
   beforeDesc?: string; afterDesc?: string; reason?: string; needsApproval: boolean;
 }
 export interface DocProduct {
-  productName?: string; modelName?: string; manufacturer?: string; productionLot?: string;
-  certNumber?: string; dimensions?: string; weightG?: string;
+  productName?: string; modelName?: string; productionLot?: string;
+  specText?: string; dimensions?: string; weightG?: string;
   overallJudgement?: string;
   measurements: DocMeasurementRow[];
   wireSpecs: DocWireSpecRow[];
@@ -214,10 +217,9 @@ function buildProductCard(product: DocProduct, index: number): (Paragraph | Tabl
     heading: HeadingLevel.HEADING_1, spacing: { before: 0, after: 160 },
   }));
   const infoLines = [
-    `제조업체: ${product.manufacturer || '-'}`,
     `생산 LOT: ${product.productionLot || '-'}`,
-    `인증번호: ${product.certNumber || '-'}`,
     `치수/중량: ${product.dimensions || '-'} / ${product.weightG ? `${product.weightG}g` : '-'}`,
+    ...(product.specText ? [`스펙: ${product.specText}`] : []),
   ];
   for (const line of infoLines) out.push(new Paragraph({ text: line, spacing: { after: 40 }, run: { size: 18 } }));
 
@@ -306,6 +308,10 @@ function buildCover(meta: InspectionDocMeta): Paragraph[] {
     ...(meta.poNumber ? [new Paragraph({ text: `PO 번호: ${meta.poNumber}` })] : []),
     ...(meta.piNumber ? [new Paragraph({ text: `PI 번호: ${meta.piNumber}` })] : []),
     ...(meta.productionLotNo ? [new Paragraph({ text: `생산 LOT 번호: ${meta.productionLotNo}` })] : []),
+    ...(meta.productionQty != null ? [new Paragraph({ text: `생산수량: ${meta.productionQty}` })] : []),
+    ...(meta.inspectionQty != null ? [new Paragraph({ text: `검사수량: ${meta.inspectionQty}` })] : []),
+    ...(meta.defectQty != null ? [new Paragraph({ text: `불량수량: ${meta.defectQty}` })] : []),
+    ...(meta.inspectionQty ? [new Paragraph({ text: `불량율: ${((meta.defectQty ?? 0) / meta.inspectionQty * 100).toFixed(2)}%` })] : []),
     new Paragraph({ children: [new PageBreak()] }),
   ];
 }

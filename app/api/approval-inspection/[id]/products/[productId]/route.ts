@@ -8,7 +8,7 @@ function toClient(row: Record<string, unknown>) {
     id: row.id, projectId: row.project_id, sortOrder: row.sort_order,
     productCategory: row.product_category, productName: row.product_name, modelName: row.model_name,
     manufacturer: row.manufacturer, productionLot: row.production_lot,
-    dimensions: row.dimensions, weightG: row.weight_g, certNumber: row.cert_number, remark: row.remark,
+    dimensions: row.dimensions, weightG: row.weight_g, certNumber: row.cert_number, specText: row.spec_text, remark: row.remark,
     overallJudgement: row.overall_judgement, internalOpinion: row.internal_opinion,
   };
 }
@@ -16,7 +16,7 @@ function toClient(row: Record<string, unknown>) {
 const EDITABLE_FIELDS: Record<string, string> = {
   productCategory: 'product_category', productName: 'product_name', modelName: 'model_name',
   manufacturer: 'manufacturer', productionLot: 'production_lot',
-  dimensions: 'dimensions', weightG: 'weight_g', certNumber: 'cert_number', remark: 'remark',
+  dimensions: 'dimensions', weightG: 'weight_g', certNumber: 'cert_number', specText: 'spec_text', remark: 'remark',
   overallJudgement: 'overall_judgement', internalOpinion: 'internal_opinion',
 };
 

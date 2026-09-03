@@ -13,7 +13,7 @@ function toClient(row: Record<string, unknown>) {
     supplierName: row.supplier_name, manufacturerName: row.manufacturer_name,
     productCategory: row.product_category, productName: row.product_name, baseModelName: row.base_model_name,
     poNumber: row.po_number, piNumber: row.pi_number, productionLotNo: row.production_lot_no,
-    productionQty: row.production_qty, inspectionQty: row.inspection_qty,
+    productionQty: row.production_qty, inspectionQty: row.inspection_qty, defectQty: row.defect_qty,
     shipDate: row.ship_date, shippingDate: row.shipping_date, requestDate: row.request_date, dueDate: row.due_date,
     supplierContact: row.supplier_contact, memo: row.memo,
     defaultLanguage: row.default_language, status: row.status,
@@ -31,9 +31,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
 /** 외부 작성자가 수정할 수 있는 필드 — 내부 전용 필드(internalContact, referenceProjectId
  * 등)는 제외한다. */
 const EDITABLE_FIELDS: Record<string, string> = {
-  supplierContact: 'supplier_contact', memo: 'memo',
+  supplierContact: 'supplier_contact', memo: 'memo', supplierName: 'supplier_name',
+  poNumber: 'po_number', piNumber: 'pi_number',
   productionLotNo: 'production_lot_no', productionQty: 'production_qty', inspectionQty: 'inspection_qty',
-  shippingDate: 'shipping_date',
+  defectQty: 'defect_qty', shippingDate: 'shipping_date',
 };
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {

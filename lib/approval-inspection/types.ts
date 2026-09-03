@@ -44,6 +44,7 @@ export interface InspectionProject {
   productionLotNo: string | null;
   productionQty: number | null;
   inspectionQty: number | null;
+  defectQty: number | null;
   shipDate: string | null;
   shippingDate: string | null;
   requestDate: string | null;
@@ -75,6 +76,7 @@ export interface InspectionProduct {
   dimensions: string | null;
   weightG: string | null;
   certNumber: string | null;
+  specText: string | null;
   remark: string | null;
   overallJudgement: string | null;
   internalOpinion: string | null;
@@ -106,20 +108,20 @@ export interface InspectionMeasurement {
 /** §6 표준 측정항목 키 — GLM/기존 코드가 아니라 참고 엑셀(Driver Pre-approval Report.xlsx)
  * 헤더(Watt/IN mA/PF/OUT V/OUT A/OUT Vmax/Insulation resistance)를 그대로 매핑한
  * 기본 세트. 프로젝트마다 이 목록으로 초기 행을 만들어주되, 사용자가 자유롭게 추가/삭제 가능. */
-export const STANDARD_MEASUREMENT_ITEMS: { key: string; label: string; unit: string }[] = [
-  { key: 'rated_input_voltage', label: '정격입력전압', unit: 'V' },
-  { key: 'rated_frequency', label: '정격주파수', unit: 'Hz' },
-  { key: 'rated_power', label: '정격전력', unit: 'W' },
-  { key: 'input_current', label: '입력전류', unit: 'mA' },
-  { key: 'power_factor', label: '역률', unit: '' },
-  { key: 'output_voltage', label: '출력전압', unit: 'V' },
-  { key: 'output_current', label: '출력전류', unit: 'A' },
-  { key: 'output_voltage_max', label: '최대 출력전압', unit: 'V' },
-  { key: 'insulation_resistance', label: '절연저항', unit: 'MΩ' },
-  { key: 'insulation_withstand', label: '절연내력', unit: '' },
-  { key: 'output_ripple', label: '출력 리플', unit: 'mV' },
-  { key: 'efficiency', label: '효율', unit: '%' },
-  { key: 'tc_temperature', label: 'Tc 온도', unit: '℃' },
+export const STANDARD_MEASUREMENT_ITEMS: { key: string; label: string; labelI18n: Record<Lang, string>; unit: string }[] = [
+  { key: 'rated_input_voltage', label: '정격입력전압', labelI18n: { ko: '정격입력전압', zh: '额定输入电压', en: 'Rated Input Voltage' }, unit: 'V' },
+  { key: 'rated_frequency', label: '정격주파수', labelI18n: { ko: '정격주파수', zh: '额定频率', en: 'Rated Frequency' }, unit: 'Hz' },
+  { key: 'rated_power', label: '정격전력', labelI18n: { ko: '정격전력', zh: '额定功率', en: 'Rated Power' }, unit: 'W' },
+  { key: 'input_current', label: '입력전류', labelI18n: { ko: '입력전류', zh: '输入电流', en: 'Input Current' }, unit: 'mA' },
+  { key: 'power_factor', label: '역률', labelI18n: { ko: '역률', zh: '功率因数', en: 'Power Factor' }, unit: '' },
+  { key: 'output_voltage', label: '출력전압', labelI18n: { ko: '출력전압', zh: '输出电压', en: 'Output Voltage' }, unit: 'V' },
+  { key: 'output_current', label: '출력전류', labelI18n: { ko: '출력전류', zh: '输出电流', en: 'Output Current' }, unit: 'A' },
+  { key: 'output_voltage_max', label: '최대 출력전압', labelI18n: { ko: '최대 출력전압', zh: '最大输出电压', en: 'Max Output Voltage' }, unit: 'V' },
+  { key: 'insulation_resistance', label: '절연저항', labelI18n: { ko: '절연저항', zh: '绝缘电阻', en: 'Insulation Resistance' }, unit: 'MΩ' },
+  { key: 'insulation_withstand', label: '절연내력', labelI18n: { ko: '절연내력', zh: '绝缘耐压', en: 'Insulation Withstand' }, unit: '' },
+  { key: 'output_ripple', label: '출력 리플', labelI18n: { ko: '출력 리플', zh: '输出纹波', en: 'Output Ripple' }, unit: 'mV' },
+  { key: 'efficiency', label: '효율', labelI18n: { ko: '효율', zh: '效率', en: 'Efficiency' }, unit: '%' },
+  { key: 'tc_temperature', label: 'Tc 온도', labelI18n: { ko: 'Tc 온도', zh: 'Tc 温度', en: 'Tc Temperature' }, unit: '℃' },
 ];
 
 export type WireRole = 'input' | 'output';

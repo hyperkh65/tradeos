@@ -56,8 +56,8 @@ export async function buildInspectionXlsx(opts: BuildInspectionXlsxOptions): Pro
 
     ws.addRow([]);
     styledBodyRow(ws, ['제품명', p.productName || '-', '모델명', p.modelName || '-']);
-    styledBodyRow(ws, ['제조업체', p.manufacturer || '-', '생산 LOT', p.productionLot || '-']);
-    styledBodyRow(ws, ['인증번호', p.certNumber || '-', '치수/중량', `${p.dimensions || '-'} / ${p.weightG ? `${p.weightG}g` : '-'}`]);
+    styledBodyRow(ws, ['생산 LOT', p.productionLot || '-', '치수/중량', `${p.dimensions || '-'} / ${p.weightG ? `${p.weightG}g` : '-'}`]);
+    styledBodyRow(ws, ['스펙', p.specText || '-', '', '']);
     ws.addRow([]);
 
     styledHeaderRow(ws, ['항목', '기준값', '측정값', '허용범위', '판정']);

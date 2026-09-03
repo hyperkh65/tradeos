@@ -12,7 +12,7 @@ interface ProjectDetail {
   projectName: string; internalRefNo?: string; customerName?: string; supplierName?: string;
   manufacturerName?: string; productCategory?: string; productName?: string; baseModelName?: string;
   poNumber?: string; piNumber?: string; productionLotNo?: string;
-  productionQty?: number; inspectionQty?: number;
+  productionQty?: number; inspectionQty?: number; defectQty?: number;
   shipDate?: string; shippingDate?: string; requestDate?: string; dueDate?: string;
   internalContact?: string; supplierContact?: string; memo?: string;
   referenceProjectId?: string; defaultLanguage: string; status: string;
@@ -29,7 +29,7 @@ interface ProductRow {
   id: string; projectId: string; sortOrder: number;
   productCategory?: string; productName?: string; modelName?: string;
   manufacturer?: string; productionLot?: string;
-  dimensions?: string; weightG?: number; certNumber?: string; remark?: string;
+  dimensions?: string; weightG?: number; certNumber?: string; specText?: string; remark?: string;
   overallJudgement?: string; internalOpinion?: string;
 }
 
@@ -204,6 +204,15 @@ export default function ApprovalInspectionDetailPage() {
             <Field label="PI 번호" value={project.piNumber} onBlurSave={v => patchProject({ piNumber: v })} disabled={isClosed} listId="pd-pis" onFocus={() => loadPOsForSupplier(project.supplierName || '')} />
             <Field label="생산 LOT 번호" value={project.productionLotNo} onBlurSave={v => patchProject({ productionLotNo: v })} disabled={isClosed} />
             <Field label="제출기한" type="date" value={project.dueDate} onBlurSave={v => patchProject({ dueDate: v })} disabled={isClosed} />
+            <Field label="생산수량" type="number" value={project.productionQty} onBlurSave={v => patchProject({ productionQty: v ? Number(v) : undefined })} disabled={isClosed} />
+            <Field label="검사수량" type="number" value={project.inspectionQty} onBlurSave={v => patchProject({ inspectionQty: v ? Number(v) : undefined })} disabled={isClosed} />
+            <Field label="불량수량" type="number" value={project.defectQty} onBlurSave={v => patchProject({ defectQty: v ? Number(v) : undefined })} disabled={isClosed} />
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">불량율</label>
+              <div className="h-10 rounded-lg border border-input bg-muted/30 px-3 flex items-center text-sm text-muted-foreground">
+                {project.inspectionQty ? `${((project.defectQty ?? 0) / project.inspectionQty * 100).toFixed(2)}%` : '-'}
+              </div>
+            </div>
           </div>
           <datalist id="pd-customers">{customers.map(c => <option key={c} value={c} />)}</datalist>
           <datalist id="pd-suppliers">{suppliers.map(s => <option key={s} value={s} />)}</datalist>
@@ -242,10 +251,17 @@ export default function ApprovalInspectionDetailPage() {
                     <Field label="제품명" value={p.productName} onBlurSave={v => patchProduct(p.id, { productName: v })} disabled={isClosed} listId="pd-products" />
                     <Field label="모델명" value={p.modelName} onBlurSave={v => patchProduct(p.id, { modelName: v })} disabled={isClosed} />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Field label="제조업체" value={p.manufacturer} onBlurSave={v => patchProduct(p.id, { manufacturer: v })} disabled={isClosed} listId="pd-manufacturers" />
+                  <div className="grid grid-cols-2 gap-2">
                     <Field label="생산 LOT" value={p.productionLot} onBlurSave={v => patchProduct(p.id, { productionLot: v })} disabled={isClosed} />
-                    <Field label="인증번호" value={p.certNumber} onBlurSave={v => patchProduct(p.id, { certNumber: v })} disabled={isClosed} />
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">스펙</label>
+                      <textarea
+                        className="w-full min-h-[38px] text-sm rounded-lg border border-input bg-transparent px-3 py-1.5 disabled:opacity-50"
+                        disabled={isClosed}
+                        defaultValue={p.specText ?? ''}
+                        onBlur={e => { if (e.target.value !== (p.specText ?? '')) patchProduct(p.id, { specText: e.target.value }); }}
+                      />
+                    </div>
                   </div>
                   <Link href={`/approval-inspection/${id}/products/${p.id}`} className="text-xs text-primary hover:underline inline-block pt-1">
                     측정값/배선/사진 입력 →

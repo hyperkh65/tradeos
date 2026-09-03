@@ -2033,6 +2033,11 @@ function runMigrations(db: Database.Database) {
   try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_by TEXT`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_by_name TEXT`); } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN decided_at TEXT`); } catch { /* already exists */ }
+
+  // 불량수량 — 생산수량/검사수량 옆에 같이 입력받아 불량율을 조회 시 계산한다(저장 안 함).
+  try { db.exec(`ALTER TABLE approval_inspection_projects ADD COLUMN defect_qty INTEGER`); } catch { /* already exists */ }
+  // 제조업체/인증번호 대신 자유기입 스펙 — 공급업체가 전기적 스펙 외 추가 사양을 자유 텍스트로 남긴다.
+  try { db.exec(`ALTER TABLE approval_inspection_products ADD COLUMN spec_text TEXT`); } catch { /* already exists */ }
   // ── 제품 승인검사 보고서 끝 ─────────────────────────────────────────────────
 
   // ── 포워더운임(해상운임 견적) 관리 시작 ──────────────────────────────────────
