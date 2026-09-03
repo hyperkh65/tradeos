@@ -3,6 +3,7 @@ import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';;
 import { fetchNotionProducts, createNotionProduct } from '@/lib/notion/mapper';
 import { DEMO_PRODUCTS } from '@/lib/demo-data';
 import { syncIndexOnWrite } from '@/lib/ai/sync';
+import { shouldSync, markSynced } from '@/lib/notion/sync-throttle';
 
 export function dbToProduct(row: Record<string, unknown>) {
   const images: string[] = (() => {
@@ -34,7 +35,11 @@ export async function GET() {
   try {
     const db = getDb();
 
-    const notionData = await fetchNotionProducts();
+    let notionData: Awaited<ReturnType<typeof fetchNotionProducts>> = [];
+    if (shouldSync('products')) {
+      markSynced('products');
+      notionData = await fetchNotionProducts();
+    }
     if (notionData.length > 0) {
       // INSERT OR IGNORE: never overwrite local edits with Notion data
       const insert = db.prepare(UPSERT_SQL.replace('INSERT OR REPLACE', 'INSERT OR IGNORE'));

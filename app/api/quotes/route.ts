@@ -5,6 +5,7 @@ import { fetchNotionQuotes, createNotionQuote } from '@/lib/notion/mapper';
 import type { Quote } from '@/types';
 import { createCalendarEvent } from '@/lib/calendar-events';
 import { syncIndexOnWrite } from '@/lib/ai/sync';
+import { shouldSync, markSynced } from '@/lib/notion/sync-throttle';
 
 export function dbToQuote(row: Record<string, unknown>): Quote & Record<string, unknown> {
   const items = JSON.parse((row.items_json as string) || '[]').map((it: any) => ({
@@ -51,7 +52,11 @@ export async function GET() {
   const rows = db.prepare('SELECT * FROM quotes ORDER BY created_at DESC').all() as Record<string, unknown>[];
 
   try {
-    const notionQuotes = await fetchNotionQuotes();
+    let notionQuotes: Awaited<ReturnType<typeof fetchNotionQuotes>> = [];
+    if (shouldSync('quotes')) {
+      markSynced('quotes');
+      notionQuotes = await fetchNotionQuotes();
+    }
     if (notionQuotes.length > 0) {
       // INSERT OR IGNORE: never overwrite existing local data
       const insert = db.prepare(UPSERT.replace('INSERT OR REPLACE', 'INSERT OR IGNORE'));

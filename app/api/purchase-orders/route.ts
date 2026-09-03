@@ -5,6 +5,7 @@ import { fetchNotionPurchaseOrders, createNotionPurchaseOrder } from '@/lib/noti
 import type { PurchaseOrder } from '@/types';
 import { createCalendarEvent } from '@/lib/calendar-events';
 import { syncIndexOnWrite } from '@/lib/ai/sync';
+import { shouldSync, markSynced } from '@/lib/notion/sync-throttle';
 
 function dbToPO(row: Record<string, unknown>): PurchaseOrder & { imagesJson?: string; depositRatio?: string; revisionsJson?: string } {
   return {
@@ -80,7 +81,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: row ? [dbToPO(row)] : [] });
   }
 
-  if (!skipNotion) {
+  if (!skipNotion && shouldSync('purchase_orders')) {
+    markSynced('purchase_orders');
     const ts = now();
     try {
       const notionPOs = await fetchNotionPurchaseOrders();
