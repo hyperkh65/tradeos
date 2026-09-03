@@ -7,12 +7,9 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { UPLOAD_BASE } from '@/lib/approval-inspection/storage';
 
 export const maxDuration = 120;
-
-export const UPLOAD_BASE = process.env.NODE_ENV === 'production'
-  ? '/volume1/web/tradeos/data/uploads/approval-inspection'
-  : path.join(process.cwd(), 'data/uploads/approval-inspection');
 
 const MAGIC: Record<string, Buffer> = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47]),

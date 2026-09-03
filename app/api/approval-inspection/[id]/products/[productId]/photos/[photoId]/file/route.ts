@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
-import { UPLOAD_BASE } from '../../route';
+import { UPLOAD_BASE } from '@/lib/approval-inspection/storage';
 import fs from 'fs';
 import path from 'path';
 

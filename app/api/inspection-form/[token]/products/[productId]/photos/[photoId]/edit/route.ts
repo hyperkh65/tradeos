@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db/sqlite';
 import { guardInspectionFormRequest, hashToken } from '@/lib/approval-inspection/token';
 import { writeInspectionAuditLog } from '@/lib/approval-inspection/audit';
 import { applyImageEdits } from '@/lib/approval-doc/image-edit';
-import { UPLOAD_BASE } from '../../route';
+import { UPLOAD_BASE } from '@/lib/approval-inspection/storage';
 import fs from 'fs';
 import path from 'path';
 

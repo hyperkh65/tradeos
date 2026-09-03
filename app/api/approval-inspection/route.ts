@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { getSessionUser } from '@/lib/auth/session';
 import { writeInspectionAuditLog } from '@/lib/approval-inspection/audit';
+import { snapshotProjectData } from '@/lib/approval-inspection/snapshot';
 import type { ReportType } from '@/lib/approval-inspection/types';
 
 function toClient(row: Record<string, unknown>) {
@@ -42,6 +43,14 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
+
+  let referenceProject: { id: string; report_type: string } | undefined;
+  if (reportType === 'pre_shipment' && body.referenceProjectId) {
+    referenceProject = db.prepare('SELECT id, report_type FROM approval_inspection_projects WHERE id=? AND deleted=0').get(body.referenceProjectId) as { id: string; report_type: string } | undefined;
+    if (!referenceProject) return NextResponse.json({ error: '기준 사전승인서를 찾을 수 없습니다.' }, { status: 404 });
+    if (referenceProject.report_type !== 'pre_approval') return NextResponse.json({ error: '기준 프로젝트는 사전승인서여야 합니다.' }, { status: 400 });
+  }
+
   const id = newId();
   const businessId = nextBizId('AIR');
   const ts = now();
@@ -65,6 +74,14 @@ export async function POST(req: NextRequest) {
   );
 
   writeInspectionAuditLog({ projectId: id, action: 'project_create', actorType: 'internal', actorUserId: user.id, actorUserName: user.name, after: body, req });
+
+  if (referenceProject) {
+    const { productCount } = snapshotProjectData(referenceProject.id, id);
+    writeInspectionAuditLog({
+      projectId: id, action: 'snapshot_create', actorType: 'internal', actorUserId: user.id, actorUserName: user.name,
+      after: { sourceProjectId: referenceProject.id, productCount }, req,
+    });
+  }
 
   const row = db.prepare('SELECT * FROM approval_inspection_projects WHERE id=?').get(id) as Record<string, unknown>;
   return NextResponse.json({ data: toClient(row) }, { status: 201 });
