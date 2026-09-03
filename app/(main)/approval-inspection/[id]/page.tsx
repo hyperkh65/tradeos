@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft, Link2, RefreshCw, Upload, Download, FileSpreadsheet, Gavel, AlertOctagon } from 'lucide-react';
+import { BadgeCheck, Plus, Loader2, Copy, Trash2, ChevronUp, ChevronDown, ArrowLeft, Link2, RefreshCw, Upload, Download, FileSpreadsheet, Gavel, AlertOctagon, Lock, Unlock, History, ScrollText } from 'lucide-react';
 
 interface ProjectDetail {
   id: string; businessId: string; reportType: 'pre_approval' | 'pre_shipment';
@@ -153,6 +153,8 @@ export default function ApprovalInspectionDetailPage() {
           <ArrowLeft className="w-4 h-4" />목록으로
         </Link>
 
+        <StatusPanel id={id} status={project.status} onChanged={load} />
+
         <div className="bg-card border rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-sm">프로젝트 정보</h2>
@@ -220,6 +222,7 @@ export default function ApprovalInspectionDetailPage() {
         <DecisionPanel id={id} reportType={project.reportType} finalDecision={project.finalDecision} decidedByName={project.decidedByName} decidedAt={project.decidedAt} disabled={isClosed} onDecided={load} />
         <ImportExportPanel id={id} disabled={isClosed} onImported={load} />
         <GenerateDocPanel id={id} hasProducts={products.length > 0} />
+        <HistoryPanel id={id} />
       </div>
     </div>
   );
@@ -471,6 +474,125 @@ function RevisionRequestsPanel({ id, products, disabled }: { id: string; product
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: '작성중', submitted: '제출됨', revision_requested: '수정요청', revising: '수정중',
+  resubmitted: '재제출됨', internal_review: '내부 검토중', approved: '승인됨',
+  conditional_approval: '조건부 승인', shipment_hold: '출고 보류', closed: '마감됨',
+};
+const MANUAL_STATUS_OPTIONS = ['internal_review', 'approved', 'conditional_approval', 'shipment_hold', 'revising'];
+
+function StatusPanel({ id, status, onChanged }: { id: string; status: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [manualStatus, setManualStatus] = useState('');
+  const isClosed = status === 'closed';
+
+  const changeStatus = async () => {
+    if (!manualStatus) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/status`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: manualStatus }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '상태 변경 실패'); return; }
+      setManualStatus('');
+      onChanged();
+    } finally { setBusy(false); }
+  };
+
+  const closeOrReopen = async (action: 'close' | 'reopen') => {
+    const reason = prompt(action === 'close' ? '마감 사유(선택)' : '마감해제 사유(선택)') || undefined;
+    if (action === 'close' && !confirm('마감하면 모든 입력이 잠깁니다. 계속할까요?')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/close`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, reason }),
+      });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '처리 실패'); return; }
+      onChanged();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-card border rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">상태</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isClosed ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{STATUS_LABEL[status] || status}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {!isClosed && (
+          <>
+            <select value={manualStatus} onChange={e => setManualStatus(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+              <option value="">내부 검토 상태 변경...</option>
+              {MANUAL_STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+            </select>
+            <Button size="sm" variant="outline" onClick={changeStatus} disabled={busy || !manualStatus} className="h-8 text-xs">적용</Button>
+            <Button size="sm" variant="outline" onClick={() => closeOrReopen('close')} disabled={busy} className="h-8 text-xs gap-1"><Lock className="w-3.5 h-3.5" />마감</Button>
+          </>
+        )}
+        {isClosed && (
+          <Button size="sm" variant="outline" onClick={() => closeOrReopen('reopen')} disabled={busy} className="h-8 text-xs gap-1"><Unlock className="w-3.5 h-3.5" />마감해제</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface SubmissionVersionRow { id: string; versionNo: number; submittedAt: string; submittedByName?: string; statusAtSubmission?: string }
+interface AuditLogRow { id: string; action: string; actorType: string; actorUserName?: string; createdAt: string }
+
+function HistoryPanel({ id }: { id: string }) {
+  const [versions, setVersions] = useState<SubmissionVersionRow[]>([]);
+  const [logs, setLogs] = useState<AuditLogRow[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  const load = useCallback(() => {
+    Promise.all([
+      fetch(`/api/approval-inspection/${id}/submission-versions`).then(r => r.json()),
+      fetch(`/api/approval-inspection/${id}/audit`).then(r => r.json()),
+    ]).then(([v, a]) => { setVersions(v.data ?? []); setLogs(a.data ?? []); });
+  }, [id]);
+  useEffect(() => { if (expanded) load(); }, [expanded, load]);
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-3">
+      <button onClick={() => setExpanded(e => !e)} className="w-full flex items-center justify-between">
+        <h2 className="font-semibold text-sm flex items-center gap-1.5"><History className="w-4 h-4" />제출이력 / 감사로그</h2>
+        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+      </button>
+      {expanded && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-xs font-semibold text-muted-foreground mb-1.5">제출 버전</h3>
+            {versions.length === 0 ? <p className="text-xs text-muted-foreground">제출 이력이 없습니다.</p> : (
+              <div className="space-y-1">
+                {versions.map(v => (
+                  <div key={v.id} className="text-xs flex items-center justify-between bg-muted/30 rounded px-2 py-1">
+                    <span>v{v.versionNo} — {v.submittedByName || '-'}</span>
+                    <span className="text-muted-foreground">{v.submittedAt?.slice(0, 16).replace('T', ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1"><ScrollText className="w-3.5 h-3.5" />감사로그 (최근 200건)</h3>
+            <div className="max-h-64 overflow-y-auto space-y-1">
+              {logs.map(l => (
+                <div key={l.id} className="text-xs flex items-center justify-between">
+                  <span>{l.action} <span className="text-muted-foreground">({l.actorType === 'internal' ? l.actorUserName || '내부' : '외부'})</span></span>
+                  <span className="text-muted-foreground shrink-0 ml-2">{l.createdAt?.slice(0, 16).replace('T', ' ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
