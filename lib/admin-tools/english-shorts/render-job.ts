@@ -165,13 +165,13 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
         const koreanCard = await renderCardPng({
           widthPx: cardWidth, heightPx: cardHeight,
           colorHex: String(defaults.koreanBgColorHex ?? '#17171C'), opacity: Number(defaults.cardOpacity ?? 0.92),
-          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.18, borderWidthPx: 1.5,
+          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.55, borderWidthPx: 2,
           cornerRadiusPx: 28, shadow: true,
         });
         const englishCard = await renderCardPng({
           widthPx: cardWidth, heightPx: cardHeight,
           colorHex: String(defaults.englishBgColorHex ?? '#17171C'), opacity: Number(defaults.cardOpacity ?? 0.92),
-          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.18, borderWidthPx: 1.5,
+          borderColorHex: String(defaults.cardBorderColorHex ?? '#FFFFFF'), borderOpacity: 0.55, borderWidthPx: 2,
           cornerRadiusPx: 28, shadow: true,
         });
         const captionCard = await renderCardPng({
