@@ -131,6 +131,25 @@ function checkRangeAndUnitConsistency(productId: string, rows: MeasurementRow[])
   return issues;
 }
 
+/** 값들 사이의 정합성만 보는 다른 체크들은 "아무것도 안 채운 제품"엔 비교할 값 자체가
+ * 없어서 이슈가 하나도 안 나온다 — 그래서 완전히 빈 채로 제출해도 "문제 없음"으로 보이는
+ * 문제가 있었다(실사용 중 발견). 측정값/사진이 하나도 없으면 그 자체를 경고로 낸다. */
+function checkCompleteness(productId: string, rows: MeasurementRow[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const hasAnyMeasured = rows.some(r => toNumber(r.measured_value) != null);
+  if (!hasAnyMeasured) {
+    issues.push({ key: `${productId}:completeness:no_measurements`, severity: 'warning', productId,
+      message: '이 제품에 입력된 측정값이 하나도 없습니다.' });
+  }
+  const db = getDb();
+  const photoCount = (db.prepare('SELECT COUNT(*) as c FROM approval_inspection_photos WHERE product_id=? AND is_current=1').get(productId) as { c: number }).c;
+  if (photoCount === 0) {
+    issues.push({ key: `${productId}:completeness:no_photos`, severity: 'warning', productId,
+      message: '이 제품에 업로드된 사진이 하나도 없습니다.' });
+  }
+  return issues;
+}
+
 export function validateProductMeasurements(productId: string): ValidationIssue[] {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM approval_inspection_measurements WHERE product_id=? ORDER BY sort_order').all(productId) as unknown as MeasurementRow[];
@@ -138,6 +157,7 @@ export function validateProductMeasurements(productId: string): ValidationIssue[
     ...checkElectricalConsistency(productId, rows, 'baseline'),
     ...checkElectricalConsistency(productId, rows, 'measured'),
     ...checkRangeAndUnitConsistency(productId, rows),
+    ...checkCompleteness(productId, rows),
   ];
 }
 
