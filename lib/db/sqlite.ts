@@ -2607,6 +2607,26 @@ function runMigrations(db: Database.Database) {
           ],
         },
       },
+      {
+        slug: 'talking-head-card', name: '토크헤드 카드', description: '레터박스 없이 전체화면 영상 위에 상단 흰 카드(2줄 후킹 문구)와 영상 위 작은 인라인 캡션 + 해시태그를 얹는, 인물 중심 쇼츠에 어울리는 스타일.',
+        sortOrder: 6,
+        layout: {
+          kind: 'talking-head-card',
+          defaults: {
+            hookLine1: '외국인과 대화할 때',
+            cardBgColorHex: '#FFFFFF', cardTextColorHex: '#111111',
+            captionBgColorHex: '#000000', captionOpacity: 0.5, captionTextColorHex: '#FFD400',
+            hashtagColorHex: '#DDDDDD',
+            fontSizePt: 46,
+          },
+          settingsSchema: [
+            { key: 'hookLine1', label: '상단 카드 첫 줄', type: 'text' },
+            { key: 'cardTextColorHex', label: '카드 글자색', type: 'color' },
+            { key: 'captionTextColorHex', label: '인라인 캡션 글자색', type: 'color' },
+            { key: 'fontSizePt', label: '카드 글자 크기', type: 'number', min: 32, max: 64, step: 2 },
+          ],
+        },
+      },
     ];
     for (const t of templates) {
       seedTemplate.run(newId(), t.slug, t.name, t.description, JSON.stringify(t.layout), t.sortOrder, ts, ts);

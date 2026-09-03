@@ -100,6 +100,7 @@ export async function renderProjectVideo(
 
   let videoOutLabel = 'vcat';
   const clipInputCount = clips.length;
+  let extraInputCount = 0;
 
   if (opts.videoRect) {
     // 클립 concat 결과([vcat])는 videoRect 크기라 전체 캔버스 크기의 검정
@@ -107,24 +108,26 @@ export async function renderProjectVideo(
     const totalDurationSec = Math.max(0.1, clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0));
     args.push('-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:d=${totalDurationSec}`);
     const bgInputIndex = clipInputCount;
+    extraInputCount += 1;
     filterParts.push(`[${bgInputIndex}:v]format=yuv420p[bg]`);
     filterParts.push(`[bg][vcat]overlay=x=0:y=${opts.videoRect.topPx}:shortest=1[composited]`);
     videoOutLabel = 'composited';
-
-    // PNG 오버레이(둥근모서리 카드/그라데이션 바/영상 모서리 마스크 —
-    // card-renderer.ts가 sharp로 미리 그려둔 것). -loop 1로 정지영상을 영상
-    // 길이만큼 반복시키고, format=rgba로 알파 채널을 유지한 채 overlay한다
-    // (알파 없는 yuv420p로 바꾸면 카드의 둥근모서리/투명 배경이 사라짐).
-    (opts.imageOverlays ?? []).forEach((img, i) => {
-      const inputIndex = clipInputCount + 1 + i;
-      args.push('-loop', '1', '-i', img.imagePath);
-      const rgbaLabel = `ovlrgba${i}`;
-      const outLabel = `ovlout${i}`;
-      filterParts.push(`[${inputIndex}:v]format=rgba[${rgbaLabel}]`);
-      filterParts.push(`[${videoOutLabel}][${rgbaLabel}]overlay=x=${img.xOffsetPx}:y=${img.topPx}:shortest=1[${outLabel}]`);
-      videoOutLabel = outLabel;
-    });
   }
+
+  // PNG 오버레이(둥근모서리 카드/그라데이션 바/영상 모서리 마스크 — card-renderer.ts가
+  // sharp로 미리 그려둔 것). videoRect 없이(전체화면 영상 위에 카드만 얹는 템플릿)도
+  // 쓸 수 있게 videoRect 블록 밖으로 뺐다. -loop 1로 정지영상을 영상 길이만큼
+  // 반복시키고, format=rgba로 알파 채널을 유지한 채 overlay한다(알파 없는
+  // yuv420p로 바꾸면 카드의 둥근모서리/투명 배경이 사라짐).
+  (opts.imageOverlays ?? []).forEach((img, i) => {
+    const inputIndex = clipInputCount + extraInputCount + i;
+    args.push('-loop', '1', '-i', img.imagePath);
+    const rgbaLabel = `ovlrgba${i}`;
+    const outLabel = `ovlout${i}`;
+    filterParts.push(`[${inputIndex}:v]format=rgba[${rgbaLabel}]`);
+    filterParts.push(`[${videoOutLabel}][${rgbaLabel}]overlay=x=${img.xOffsetPx}:y=${img.topPx}:shortest=1[${outLabel}]`);
+    videoOutLabel = outLabel;
+  });
 
   if (opts.assSubtitlePath) {
     const assArg = opts.fontsDir

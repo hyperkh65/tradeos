@@ -83,6 +83,7 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
   let assPath: string | null = null;
   let fontsDir: string | null = null;
   let letterboxOpts: Pick<RenderOptions, 'videoRect' | 'imageOverlays'> = {};
+  let customLayoutApplied = false;
   const tempImagePaths: string[] = [];
   const totalDurationSec = clips.reduce((sum, c) => sum + Math.max(0, c.trimEndSec - c.trimStartSec), 0);
 
@@ -215,13 +216,101 @@ export async function processRenderJob(job: RenderJobRow): Promise<void> {
             { imagePath: captionCardPath, topPx: captionTop - captionCard.pad, xOffsetPx: captionXOffset - captionCard.pad },
           ],
         };
+        customLayoutApplied = true;
+      }
+    }
+  } else if (layoutKind === 'talking-head-card') {
+    // 토크헤드 카드 — 레터박스 없이 전체화면 영상 위에 상단 흰 카드(2줄
+    // 후킹문구) + 영상 위 작은 인라인 캡션(ASS box background로 충분해
+    // 별도 PNG 불필요) + 하단 해시태그. videoRect를 안 써서 영상이 캔버스
+    // 전체를 채운다(letterbox-hook과 가장 다른 점).
+    const expression = getExpressionById(project.expressionId);
+    const templateDefaults = template?.layout.defaults ?? {};
+    const defaults = { ...templateDefaults, ...((project.templateSettings as Record<string, unknown> | null) ?? {}) };
+    const hookLine1 = String(defaults.hookLine1 ?? '외국인과 대화할 때');
+    const koreanText = expression?.koreanMeaning?.trim() || '';
+    const englishText = expression?.expression?.trim() || '';
+    const hashtag = expression?.hashtags?.[0] ? `#${expression.hashtags[0].replace(/^#/, '')}` : '';
+    const fontSizePt = Number(defaults.fontSizePt ?? 46);
+
+    if (!koreanText) {
+      insertRenderLog(job.id, 'warn', '토크헤드 카드 템플릿에 필요한 한국어 뜻 정보가 없어(AI 분석 미실행) 기본 자막 스타일로 대체합니다');
+    } else {
+      const W = 1080;
+      const card = { x: 80, y: 70, width: 920, height: 220, radius: 28 };
+      const fadeInMs = 450;
+
+      const cues: AssCue[] = [
+        {
+          startSec: 0, endSec: totalDurationSec, text: hookLine1, fadeInMs,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.cardTextColorHex ?? '#111111') },
+          posOverride: { x: W / 2, y: card.y + 75 },
+        },
+        {
+          startSec: 0, endSec: totalDurationSec, text: koreanText, fadeInMs,
+          styleOverride: { fontSizePt, primaryColorHex: String(defaults.cardTextColorHex ?? '#111111') },
+          posOverride: { x: W / 2, y: card.y + 155 },
+        },
+      ];
+      if (englishText) {
+        // 영상 위 인라인 캡션 — 이건 별도 PNG 카드가 아니라 ASS의
+        // boxBackground(BorderStyle=3)로 충분히 표현 가능한 단순 반투명 바라
+        // 기존 buildAssFile 옵션을 그대로 재사용(레터박스 훅과 달리 여긴
+        // 카드가 아니라 진짜 "자막 위 캡션" 느낌이라 이 방식이 더 자연스럽다).
+        cues.push({
+          startSec: 0, endSec: totalDurationSec, text: englishText, fadeInMs,
+          styleOverride: {
+            fontSizePt: 34, primaryColorHex: String(defaults.captionTextColorHex ?? '#FFD400'),
+            boxBackground: true, cardColorHex: String(defaults.captionBgColorHex ?? '#000000'),
+            cardOpacity: Number(defaults.captionOpacity ?? 0.5),
+          },
+          posOverride: { x: W / 2, y: 1300 },
+        });
+      }
+      if (hashtag) {
+        // 안전영역 규칙(하단 250px 텍스트 금지) 준수 — y=1650이면 바닥까지
+        // 270px 남아 기준을 만족한다.
+        cues.push({
+          startSec: 0, endSec: totalDurationSec, text: hashtag, fadeInMs,
+          styleOverride: { fontSizePt: 26, primaryColorHex: String(defaults.hashtagColorHex ?? '#DDDDDD') },
+          posOverride: { x: W / 2, y: 1650 },
+        });
+      }
+
+      const ass = buildAssFile(cues, {});
+      assPath = path.join(os.tmpdir(), `es-render-${job.id}.ass`);
+      await fs.writeFile(assPath, ass, 'utf8');
+
+      const font = await ensureSubtitleFontDeployed();
+      if (!font.absolutePath) {
+        insertRenderLog(job.id, 'warn', 'WebDAV 저장소 설정에서는 로컬 fontsdir을 확보할 수 없어 이번 렌더는 자막 없이 진행합니다');
+        assPath = null;
+      } else {
+        fontsDir = path.dirname(font.absolutePath);
+
+        const topCard = await renderCardPng({
+          widthPx: card.width, heightPx: card.height,
+          colorHex: String(defaults.cardBgColorHex ?? '#FFFFFF'), opacity: 1,
+          cornerRadiusPx: card.radius, shadow: true,
+        });
+        const topCardPath = path.join(os.tmpdir(), `es-render-${job.id}-topcard.png`);
+        await fs.writeFile(topCardPath, topCard.buffer);
+        tempImagePaths.push(topCardPath);
+
+        letterboxOpts = {
+          imageOverlays: [
+            { imagePath: topCardPath, topPx: card.y - topCard.pad, xOffsetPx: card.x - topCard.pad },
+          ],
+        };
+        customLayoutApplied = true;
       }
     }
   }
 
-  // letterbox-hook이 아니거나(다른 4개 템플릿), letterbox-hook인데 필요한 정보가
-  // 부족해 위 분기를 건너뛴 경우 기존 단일 캡션 오버레이 방식으로 렌더링한다.
-  if (!letterboxOpts.videoRect) {
+  // 위 두 커스텀 레이아웃 어느 쪽도 적용되지 않은 경우(다른 4개 템플릿,
+  // 또는 필요한 정보가 부족해 분기를 건너뛴 경우) 기존 단일 캡션 오버레이
+  // 방식으로 렌더링한다.
+  if (!customLayoutApplied) {
     const captionText = project.caption?.trim();
     if (captionText) {
       const styleOpts = templateLayoutToAssOptions(
