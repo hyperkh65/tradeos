@@ -44,6 +44,34 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [saving, setSaving] = useState(false);
   const [refCandidates, setRefCandidates] = useState<ProjectRow[]>([]);
 
+  // 고객사/공급업체/제조업체/제품명/PO/PI 자동완성 목록
+  const [customers, setCustomers] = useState<string[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [manufacturerNames, setManufacturerNames] = useState<string[]>([]);
+  const [productNames, setProductNames] = useState<string[]>([]);
+  const [posBySupplier, setPosBySupplier] = useState<Record<string, { businessId: string; piNumber?: string }[]>>({});
+
+  useEffect(() => {
+    fetch('/api/companies?type=고객사').then(r => r.json()).then(j => {
+      if (Array.isArray(j.data)) setCustomers(j.data.map((c: { name: string }) => c.name));
+    }).catch(() => {});
+    fetch('/api/companies?type=공급업체').then(r => r.json()).then(j => {
+      if (Array.isArray(j.data)) setSuppliers(j.data.map((c: { name: string }) => c.name));
+    }).catch(() => {});
+    fetch('/api/approval-inspection/suggestions').then(r => r.json()).then(j => {
+      setManufacturerNames(j.data?.manufacturerNames || []);
+      setProductNames(j.data?.productNames || []);
+    }).catch(() => {});
+  }, []);
+
+  const loadPOsForSupplier = async (supplierName: string) => {
+    if (!supplierName || posBySupplier[supplierName]) return;
+    try {
+      const j = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}`).then(r => r.json());
+      if (Array.isArray(j.data)) setPosBySupplier(prev => ({ ...prev, [supplierName]: j.data }));
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     if (form.reportType !== 'pre_shipment') return;
     fetch('/api/approval-inspection?reportType=pre_approval').then(r => r.json()).then(j => {
@@ -107,19 +135,25 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <div><label className="text-xs text-muted-foreground mb-1 block">프로젝트명 *</label><Input value={form.projectName} onChange={e => setForm(f => ({ ...f, projectName: e.target.value }))} placeholder="예: PY-50W-36V-NF 사전승인" /></div>
           <div><label className="text-xs text-muted-foreground mb-1 block">내부 관리번호</label><Input value={form.internalRefNo} onChange={e => setForm(f => ({ ...f, internalRefNo: e.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><label className="text-xs text-muted-foreground mb-1 block">고객사</label><Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">공급업체</label><Input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">고객사</label><Input list="cim-customers" value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">공급업체</label><Input list="cim-suppliers" value={form.supplierName} onChange={e => { setForm(f => ({ ...f, supplierName: e.target.value })); loadPOsForSupplier(e.target.value); }} onBlur={e => loadPOsForSupplier(e.target.value)} /></div>
           </div>
-          <div><label className="text-xs text-muted-foreground mb-1 block">제조업체</label><Input value={form.manufacturerName} onChange={e => setForm(f => ({ ...f, manufacturerName: e.target.value }))} /></div>
+          <div><label className="text-xs text-muted-foreground mb-1 block">제조업체</label><Input list="cim-manufacturers" value={form.manufacturerName} onChange={e => setForm(f => ({ ...f, manufacturerName: e.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-muted-foreground mb-1 block">제품 구분</label><Input value={form.productCategory} onChange={e => setForm(f => ({ ...f, productCategory: e.target.value }))} placeholder="예: 컨버터" /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">제품명</label><Input value={form.productName} onChange={e => setForm(f => ({ ...f, productName: e.target.value }))} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">제품명</label><Input list="cim-products" value={form.productName} onChange={e => setForm(f => ({ ...f, productName: e.target.value }))} /></div>
           </div>
           <div><label className="text-xs text-muted-foreground mb-1 block">기본 모델명</label><Input value={form.baseModelName} onChange={e => setForm(f => ({ ...f, baseModelName: e.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-2">
-            <div><label className="text-xs text-muted-foreground mb-1 block">PO 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input value={form.poNumber} onChange={e => setForm(f => ({ ...f, poNumber: e.target.value }))} /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">PI 번호</label><Input value={form.piNumber} onChange={e => setForm(f => ({ ...f, piNumber: e.target.value }))} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">PO 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input list="cim-pos" value={form.poNumber} onChange={e => setForm(f => ({ ...f, poNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">PI 번호</label><Input list="cim-pis" value={form.piNumber} onChange={e => setForm(f => ({ ...f, piNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
           </div>
+          <datalist id="cim-customers">{customers.map(c => <option key={c} value={c} />)}</datalist>
+          <datalist id="cim-suppliers">{suppliers.map(s => <option key={s} value={s} />)}</datalist>
+          <datalist id="cim-manufacturers">{manufacturerNames.map(m => <option key={m} value={m} />)}</datalist>
+          <datalist id="cim-products">{productNames.map(p => <option key={p} value={p} />)}</datalist>
+          <datalist id="cim-pos">{(posBySupplier[form.supplierName] || []).map(p => <option key={p.businessId} value={p.businessId} />)}</datalist>
+          <datalist id="cim-pis">{(posBySupplier[form.supplierName] || []).filter(p => p.piNumber).map(p => <option key={p.businessId} value={p.piNumber} />)}</datalist>
           <div><label className="text-xs text-muted-foreground mb-1 block">생산 LOT 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input value={form.productionLotNo} onChange={e => setForm(f => ({ ...f, productionLotNo: e.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-muted-foreground mb-1 block">생산수량{form.reportType === 'pre_shipment' && ' *'}</label><Input type="number" value={form.productionQty} onChange={e => setForm(f => ({ ...f, productionQty: e.target.value }))} /></div>

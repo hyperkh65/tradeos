@@ -46,6 +46,34 @@ export default function ApprovalInspectionDetailPage() {
   const [addingProduct, setAddingProduct] = useState(false);
   const [busyProductId, setBusyProductId] = useState<string | null>(null);
 
+  // 고객사/공급업체/제조업체/제품명/PO/PI 자동완성 목록
+  const [customers, setCustomers] = useState<string[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [manufacturerNames, setManufacturerNames] = useState<string[]>([]);
+  const [productNames, setProductNames] = useState<string[]>([]);
+  const [posBySupplier, setPosBySupplier] = useState<Record<string, { businessId: string; piNumber?: string }[]>>({});
+
+  useEffect(() => {
+    fetch('/api/companies?type=고객사').then(r => r.json()).then(j => {
+      if (Array.isArray(j.data)) setCustomers(j.data.map((c: { name: string }) => c.name));
+    }).catch(() => {});
+    fetch('/api/companies?type=공급업체').then(r => r.json()).then(j => {
+      if (Array.isArray(j.data)) setSuppliers(j.data.map((c: { name: string }) => c.name));
+    }).catch(() => {});
+    fetch('/api/approval-inspection/suggestions').then(r => r.json()).then(j => {
+      setManufacturerNames(j.data?.manufacturerNames || []);
+      setProductNames(j.data?.productNames || []);
+    }).catch(() => {});
+  }, []);
+
+  const loadPOsForSupplier = useCallback(async (supplierName: string) => {
+    if (!supplierName || posBySupplier[supplierName]) return;
+    try {
+      const j = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}`).then(r => r.json());
+      if (Array.isArray(j.data)) setPosBySupplier(prev => ({ ...prev, [supplierName]: j.data }));
+    } catch { /* ignore */ }
+  }, [posBySupplier]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -59,6 +87,10 @@ export default function ApprovalInspectionDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (project?.supplierName) loadPOsForSupplier(project.supplierName);
+  }, [project?.supplierName, loadPOsForSupplier]);
 
   const isClosed = project?.status === 'closed';
 
@@ -164,15 +196,21 @@ export default function ApprovalInspectionDetailPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="프로젝트명" value={project.projectName} onBlurSave={v => patchProject({ projectName: v })} disabled={isClosed} />
             <Field label="내부 관리번호" value={project.internalRefNo} onBlurSave={v => patchProject({ internalRefNo: v })} disabled={isClosed} />
-            <Field label="고객사" value={project.customerName} onBlurSave={v => patchProject({ customerName: v })} disabled={isClosed} />
-            <Field label="공급업체" value={project.supplierName} onBlurSave={v => patchProject({ supplierName: v })} disabled={isClosed} />
-            <Field label="제조업체" value={project.manufacturerName} onBlurSave={v => patchProject({ manufacturerName: v })} disabled={isClosed} />
+            <Field label="고객사" value={project.customerName} onBlurSave={v => patchProject({ customerName: v })} disabled={isClosed} listId="pd-customers" />
+            <Field label="공급업체" value={project.supplierName} onBlurSave={v => { patchProject({ supplierName: v }); loadPOsForSupplier(v); }} disabled={isClosed} listId="pd-suppliers" />
+            <Field label="제조업체" value={project.manufacturerName} onBlurSave={v => patchProject({ manufacturerName: v })} disabled={isClosed} listId="pd-manufacturers" />
             <Field label="기본 모델명" value={project.baseModelName} onBlurSave={v => patchProject({ baseModelName: v })} disabled={isClosed} />
-            <Field label="PO 번호" value={project.poNumber} onBlurSave={v => patchProject({ poNumber: v })} disabled={isClosed} />
-            <Field label="PI 번호" value={project.piNumber} onBlurSave={v => patchProject({ piNumber: v })} disabled={isClosed} />
+            <Field label="PO 번호" value={project.poNumber} onBlurSave={v => patchProject({ poNumber: v })} disabled={isClosed} listId="pd-pos" onFocus={() => loadPOsForSupplier(project.supplierName || '')} />
+            <Field label="PI 번호" value={project.piNumber} onBlurSave={v => patchProject({ piNumber: v })} disabled={isClosed} listId="pd-pis" onFocus={() => loadPOsForSupplier(project.supplierName || '')} />
             <Field label="생산 LOT 번호" value={project.productionLotNo} onBlurSave={v => patchProject({ productionLotNo: v })} disabled={isClosed} />
             <Field label="제출기한" type="date" value={project.dueDate} onBlurSave={v => patchProject({ dueDate: v })} disabled={isClosed} />
           </div>
+          <datalist id="pd-customers">{customers.map(c => <option key={c} value={c} />)}</datalist>
+          <datalist id="pd-suppliers">{suppliers.map(s => <option key={s} value={s} />)}</datalist>
+          <datalist id="pd-manufacturers">{manufacturerNames.map(m => <option key={m} value={m} />)}</datalist>
+          <datalist id="pd-products">{productNames.map(p => <option key={p} value={p} />)}</datalist>
+          <datalist id="pd-pos">{(posBySupplier[project.supplierName || ''] || []).map(p => <option key={p.businessId} value={p.businessId} />)}</datalist>
+          <datalist id="pd-pis">{(posBySupplier[project.supplierName || ''] || []).filter(p => p.piNumber).map(p => <option key={p.businessId} value={p.piNumber} />)}</datalist>
         </div>
 
         <LinkPanel id={id} disabled={isClosed} />
@@ -201,11 +239,11 @@ export default function ApprovalInspectionDetailPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <Field label="제품 구분" value={p.productCategory} onBlurSave={v => patchProduct(p.id, { productCategory: v })} disabled={isClosed} />
-                    <Field label="제품명" value={p.productName} onBlurSave={v => patchProduct(p.id, { productName: v })} disabled={isClosed} />
+                    <Field label="제품명" value={p.productName} onBlurSave={v => patchProduct(p.id, { productName: v })} disabled={isClosed} listId="pd-products" />
                     <Field label="모델명" value={p.modelName} onBlurSave={v => patchProduct(p.id, { modelName: v })} disabled={isClosed} />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <Field label="제조업체" value={p.manufacturer} onBlurSave={v => patchProduct(p.id, { manufacturer: v })} disabled={isClosed} />
+                    <Field label="제조업체" value={p.manufacturer} onBlurSave={v => patchProduct(p.id, { manufacturer: v })} disabled={isClosed} listId="pd-manufacturers" />
                     <Field label="생산 LOT" value={p.productionLot} onBlurSave={v => patchProduct(p.id, { productionLot: v })} disabled={isClosed} />
                     <Field label="인증번호" value={p.certNumber} onBlurSave={v => patchProduct(p.id, { certNumber: v })} disabled={isClosed} />
                   </div>
@@ -300,8 +338,8 @@ function GenerateDocPanel({ id, hasProducts }: { id: string; hasProducts: boolea
   );
 }
 
-function Field({ label, value, onBlurSave, disabled, type = 'text' }: {
-  label: string; value?: string | number; onBlurSave: (v: string) => void; disabled?: boolean; type?: string;
+function Field({ label, value, onBlurSave, disabled, type = 'text', listId, onFocus }: {
+  label: string; value?: string | number; onBlurSave: (v: string) => void; disabled?: boolean; type?: string; listId?: string; onFocus?: () => void;
 }) {
   const [local, setLocal] = useState(value != null ? String(value) : '');
   useEffect(() => { setLocal(value != null ? String(value) : ''); }, [value]);
@@ -310,9 +348,11 @@ function Field({ label, value, onBlurSave, disabled, type = 'text' }: {
       <label className="text-xs text-muted-foreground mb-1 block">{label}</label>
       <Input
         type={type}
+        list={listId}
         value={local}
         disabled={disabled}
         onChange={e => setLocal(e.target.value)}
+        onFocus={onFocus}
         onBlur={() => { if (local !== (value != null ? String(value) : '')) onBlurSave(local); }}
       />
     </div>
