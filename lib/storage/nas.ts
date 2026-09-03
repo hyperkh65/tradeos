@@ -211,7 +211,7 @@ export async function nasHealthCheck(): Promise<boolean> {
 
 /** Build canonical NAS path for an entity type */
 export function buildNasPath(
-  type: 'po' | 'inspection' | 'shipment' | 'import' | 'claim' | 'company' | 'product' | 'general' | 'approval-doc',
+  type: 'po' | 'inspection' | 'shipment' | 'import' | 'claim' | 'company' | 'product' | 'general' | 'approval-doc' | 'approval-inspection',
   businessId: string,
   fileName: string
 ): string {
@@ -226,6 +226,7 @@ export function buildNasPath(
     product: `제품/${businessId}`,
     general: `사내공유`,
     'approval-doc': `제품승인서/${year}/${businessId}`,
+    'approval-inspection': `제품승인검사/${year}/${businessId}`,
   };
   return `${folderMap[type] ?? 'etc'}/${fileName}`;
 }

@@ -209,7 +209,47 @@ export default function ApprovalInspectionDetailPage() {
             </div>
           )}
         </div>
+
+        <GenerateDocPanel id={id} hasProducts={products.length > 0} />
       </div>
+    </div>
+  );
+}
+
+function GenerateDocPanel({ id, hasProducts }: { id: string; hasProducts: boolean }) {
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<{ hasPdf: boolean; warning: string | null } | null>(null);
+
+  const generate = async () => {
+    setGenerating(true);
+    setResult(null);
+    try {
+      const r = await fetch(`/api/approval-inspection/${id}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const j = await r.json();
+      if (!r.ok) { alert(j.error || '생성 실패'); return; }
+      setResult({ hasPdf: j.data.hasPdf, warning: j.data.warning });
+    } finally { setGenerating(false); }
+  };
+
+  return (
+    <div className="bg-card border rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-sm">문서 생성</h2>
+        <Button size="sm" onClick={generate} disabled={generating || !hasProducts} className="gap-1.5">
+          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}DOCX/XLSX/PDF 생성
+        </Button>
+      </div>
+      {!hasProducts && <p className="text-xs text-muted-foreground">제품 블록을 먼저 추가하세요.</p>}
+      {result && (
+        <div className="space-y-2">
+          {result.warning && <p className="text-xs text-amber-600">{result.warning}</p>}
+          <div className="flex gap-3 text-xs">
+            <a href={`/api/approval-inspection/${id}/download/docx`} className="text-primary hover:underline">DOCX 다운로드</a>
+            <a href={`/api/approval-inspection/${id}/download/xlsx`} className="text-primary hover:underline">XLSX 다운로드</a>
+            {result.hasPdf && <a href={`/api/approval-inspection/${id}/download/pdf`} className="text-primary hover:underline">PDF 다운로드</a>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
