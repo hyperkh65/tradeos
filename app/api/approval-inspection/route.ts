@@ -83,22 +83,27 @@ export async function POST(req: NextRequest) {
       projectId: id, action: 'snapshot_create', actorType: 'internal', actorUserId: user.id, actorUserName: user.name,
       after: { sourceProjectId: referenceProject.id, productCount }, req,
     });
-  } else if (Array.isArray(body.productNames)) {
-    // 오더받은 제품명을 여러 개 한 번에 입력해 제품 블록을 미리 만들어둔다 —
-    // 외부 화면에 "(제품명 없음)"으로 뜨는 대신 실제 주문 제품명이 처음부터 보이게 하기 위함.
-    const names: string[] = body.productNames.map((n: unknown) => String(n).trim()).filter(Boolean);
-    if (names.length > 0) {
+  } else if (Array.isArray(body.productItems) || Array.isArray(body.productNames)) {
+    // 오더받은 제품명(+발주 품목을 연결한 경우 스펙까지)을 여러 개 한 번에 입력해 제품 블록을
+    // 미리 만들어둔다 — 외부 화면에 "(제품명 없음)"으로 뜨는 대신 실제 주문 제품명이 처음부터
+    // 보이게 하기 위함. productItems가 있으면 발주 품목 연결(§ PO 연결) 경로, 없으면 수동 입력.
+    const items: { productName: string; specText?: string }[] = Array.isArray(body.productItems)
+      ? body.productItems.map((it: { productName?: unknown; specText?: unknown }) => ({
+          productName: String(it.productName ?? '').trim(), specText: it.specText ? String(it.specText).trim() : undefined,
+        })).filter((it: { productName: string }) => it.productName)
+      : body.productNames.map((n: unknown) => ({ productName: String(n).trim() })).filter((it: { productName: string }) => it.productName);
+    if (items.length > 0) {
       const insertProduct = db.prepare(`INSERT INTO approval_inspection_products
-        (id, project_id, sort_order, product_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`);
+        (id, project_id, sort_order, product_name, spec_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`);
       const insertMeasurement = db.prepare(`INSERT INTO approval_inspection_measurements
         (id, project_id, product_id, item_key, item_label, baseline_unit, measured_unit, sort_order, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       db.transaction(() => {
-        names.forEach((name, idx) => {
+        items.forEach((item, idx) => {
           const productId = newId();
-          insertProduct.run(productId, id, idx, name, ts, ts);
-          STANDARD_MEASUREMENT_ITEMS.forEach((item, i) => {
-            insertMeasurement.run(newId(), id, productId, item.key, item.label, item.unit, item.unit, i, ts, ts);
+          insertProduct.run(productId, id, idx, item.productName, item.specText ?? null, ts, ts);
+          STANDARD_MEASUREMENT_ITEMS.forEach((si, i) => {
+            insertMeasurement.run(newId(), id, productId, si.key, si.label, si.unit, si.unit, i, ts, ts);
           });
         });
       })();

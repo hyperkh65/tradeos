@@ -29,6 +29,9 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 
 const REPORT_TYPE_LABEL: Record<string, string> = { pre_approval: '사전승인서', pre_shipment: '출고선적승인서' };
 
+interface POItemRow { productName: string; specification?: string; qty?: number }
+interface PORow { id: string; businessId: string; piNumber?: string; items: POItemRow[] }
+
 function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [form, setForm] = useState({
     reportType: 'pre_approval' as 'pre_approval' | 'pre_shipment',
@@ -50,7 +53,8 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [manufacturerNames, setManufacturerNames] = useState<string[]>([]);
   const [productNames, setProductNames] = useState<string[]>([]);
-  const [posBySupplier, setPosBySupplier] = useState<Record<string, { businessId: string; piNumber?: string }[]>>({});
+  const [posBySupplier, setPosBySupplier] = useState<Record<string, PORow[]>>({});
+  const [poLinkedItems, setPoLinkedItems] = useState<{ productName: string; specText: string }[] | null>(null);
 
   useEffect(() => {
     fetch('/api/companies?type=고객사').then(r => r.json()).then(j => {
@@ -71,6 +75,21 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       const j = await fetch(`/api/purchase-orders?supplierName=${encodeURIComponent(supplierName)}`).then(r => r.json());
       if (Array.isArray(j.data)) setPosBySupplier(prev => ({ ...prev, [supplierName]: j.data }));
     } catch { /* ignore */ }
+  };
+
+  // PO 번호가 실제 발주서와 일치하면(선택 또는 정확히 일치하는 값 입력) 그 발주서의 품목을
+  // 제품으로 자동 등록할지 물어본다 — 확인하면 제품명+스펙이 품목 그대로 채워진다.
+  const handlePoNumberChange = (value: string) => {
+    setForm(f => ({ ...f, poNumber: value }));
+    const matched = (posBySupplier[form.supplierName] || []).find(p => p.businessId === value);
+    if (!matched || !matched.items?.length) return;
+    if (matched.piNumber) setForm(f => ({ ...f, piNumber: matched.piNumber || f.piNumber }));
+    if (confirm(`이 발주서(${matched.businessId})에 연결된 품목 ${matched.items.length}개를 제품으로 자동 등록할까요?`)) {
+      setPoLinkedItems(matched.items.map(it => ({
+        productName: it.productName,
+        specText: [it.specification, it.qty ? `수량 ${it.qty}` : ''].filter(Boolean).join(' / '),
+      })));
+    }
   };
 
   useEffect(() => {
@@ -95,7 +114,9 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           productionQty: form.productionQty ? Number(form.productionQty) : null,
           inspectionQty: form.inspectionQty ? Number(form.inspectionQty) : null,
           referenceProjectId: form.reportType === 'pre_shipment' && form.referenceMode === 'existing' ? form.referenceProjectId : null,
-          productNames: productNamesBulk.split('\n').map(s => s.trim()).filter(Boolean),
+          ...(poLinkedItems
+            ? { productItems: poLinkedItems }
+            : { productNames: productNamesBulk.split('\n').map(s => s.trim()).filter(Boolean) }),
         }),
       });
       const j = await r.json();
@@ -146,18 +167,35 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <div><label className="text-xs text-muted-foreground mb-1 block">제품명</label><Input list="cim-products" value={form.productName} onChange={e => setForm(f => ({ ...f, productName: e.target.value }))} /></div>
           </div>
           <div><label className="text-xs text-muted-foreground mb-1 block">기본 모델명</label><Input value={form.baseModelName} onChange={e => setForm(f => ({ ...f, baseModelName: e.target.value }))} /></div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">오더받은 제품명 목록 (한 줄에 하나씩, 여러 제품 한 번에 등록)</label>
-            <textarea
-              className="w-full min-h-[80px] text-sm rounded-md border border-input bg-background px-3 py-2"
-              placeholder={'예:\nSlim 240mm CVT\nDownlight CVT'}
-              value={productNamesBulk}
-              onChange={e => setProductNamesBulk(e.target.value)}
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">여기 입력한 제품명 개수만큼 제품 블록이 미리 만들어져, 외부 작성 화면에서 공급업체가 바로 상세 정보를 채울 수 있습니다.</p>
-          </div>
+          {poLinkedItems ? (
+            <div className="rounded-md border border-input p-3 space-y-2 bg-muted/30">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-muted-foreground block">발주 품목에서 자동 등록될 제품 ({poLinkedItems.length}개)</label>
+                <button type="button" onClick={() => setPoLinkedItems(null)} className="text-[11px] text-primary hover:underline shrink-0">직접 입력으로 전환</button>
+              </div>
+              <ul className="text-xs space-y-1 max-h-32 overflow-y-auto">
+                {poLinkedItems.map((it, i) => (
+                  <li key={i} className="border rounded px-2 py-1 bg-background">
+                    <span className="font-medium">{it.productName}</span>
+                    {it.specText && <span className="text-muted-foreground"> — {it.specText}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">오더받은 제품명 목록 (한 줄에 하나씩, 여러 제품 한 번에 등록)</label>
+              <textarea
+                className="w-full min-h-[80px] text-sm rounded-md border border-input bg-background px-3 py-2"
+                placeholder={'예:\nSlim 240mm CVT\nDownlight CVT'}
+                value={productNamesBulk}
+                onChange={e => setProductNamesBulk(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">여기 입력한 제품명 개수만큼 제품 블록이 미리 만들어져, 외부 작성 화면에서 공급업체가 바로 상세 정보를 채울 수 있습니다.</p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
-            <div><label className="text-xs text-muted-foreground mb-1 block">PO 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input list="cim-pos" value={form.poNumber} onChange={e => setForm(f => ({ ...f, poNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">PO 번호{form.reportType === 'pre_shipment' && ' *'}</label><Input list="cim-pos" value={form.poNumber} onChange={e => handlePoNumberChange(e.target.value)} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
             <div><label className="text-xs text-muted-foreground mb-1 block">PI 번호</label><Input list="cim-pis" value={form.piNumber} onChange={e => setForm(f => ({ ...f, piNumber: e.target.value }))} onFocus={() => loadPOsForSupplier(form.supplierName)} /></div>
           </div>
           <datalist id="cim-customers">{customers.map(c => <option key={c} value={c} />)}</datalist>
