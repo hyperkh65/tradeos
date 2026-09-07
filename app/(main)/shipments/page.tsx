@@ -1007,6 +1007,8 @@ function ShipmentsPageInner() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<'etd' | 'eta'>('eta');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [modal, setModal] = useState<{ open: boolean; item?: Shipment | null }>({ open: false });
 
   const load = async () => {
@@ -1038,6 +1040,15 @@ function ShipmentsPageInner() {
     s.cargoItems?.some(i => i.productName.toLowerCase().includes(search.toLowerCase()) || (i.supplierName ?? '').toLowerCase().includes(search.toLowerCase()))
   );
 
+  // 날짜 없는 항목은 정렬 방향과 무관하게 항상 맨 아래로
+  const sorted = [...filtered].sort((a, b) => {
+    const av = a[sortField], bv = b[sortField];
+    if (!av && !bv) return 0;
+    if (!av) return 1;
+    if (!bv) return -1;
+    return sortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv);
+  });
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <AppHeader title="선적" />
@@ -1047,6 +1058,22 @@ function ShipmentsPageInner() {
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
             <Input placeholder="선적번호, B/L, 선박명, 제품명 검색..." className="pl-8 h-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <select
+            value={sortField}
+            onChange={e => setSortField(e.target.value as 'etd' | 'eta')}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring shrink-0"
+          >
+            <option value="etd">ETD 기준</option>
+            <option value="eta">ETA 기준</option>
+          </select>
+          <select
+            value={sortDir}
+            onChange={e => setSortDir(e.target.value as 'asc' | 'desc')}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring shrink-0"
+          >
+            <option value="desc">내림차순</option>
+            <option value="asc">오름차순</option>
+          </select>
           <Button size="sm" className="h-9 gap-1 ml-auto shrink-0" onClick={() => setModal({ open: true, item: null })}>
             <Plus className="w-4 h-4" /><span className="hidden sm:inline">선적 등록</span>
           </Button>
@@ -1067,7 +1094,7 @@ function ShipmentsPageInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map(s => (
+                  {sorted.map(s => (
                     <tr key={s.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-3 font-mono text-xs font-medium">{s.businessId}</td>
                       <td className="px-3 py-3"><span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', TYPE_STYLE[s.type])}>{s.type}</span></td>
@@ -1100,7 +1127,7 @@ function ShipmentsPageInner() {
                   ))}
                 </tbody>
               </table>
-              {filtered.length === 0 && (
+              {sorted.length === 0 && (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   <Ship className="w-8 h-8 mx-auto mb-2 opacity-30" />선적 내역이 없습니다.
                 </div>
@@ -1109,7 +1136,7 @@ function ShipmentsPageInner() {
 
             {/* Mobile cards */}
             <div className="md:hidden space-y-2">
-              {filtered.map(s => (
+              {sorted.map(s => (
                 <div key={s.id} className="bg-card border border-border rounded-xl p-4">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
@@ -1138,7 +1165,7 @@ function ShipmentsPageInner() {
                   </div>
                 </div>
               ))}
-              {filtered.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">선적 내역이 없습니다.</div>}
+              {sorted.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">선적 내역이 없습니다.</div>}
             </div>
           </>
         )}
