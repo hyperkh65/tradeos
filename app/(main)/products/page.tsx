@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import {
   Package, Plus, Search, X, Loader2, Pencil, Trash2, ImageIcon, Upload,
   ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Minus, Zap, Sun, Thermometer,
-  ArrowRight, Box, Layers, RefreshCw, Lock,
+  ArrowRight, Box, Layers, RefreshCw, Lock, Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
@@ -910,6 +910,39 @@ function ProductsPageInner() {
     if (drawer?.id === id) setDrawer(null);
   };
 
+  // "_1", "_2"... 접미사로 다음 복사본 이름을 뽑는다. 이미 "_N"이 붙은 이름을
+  // 복사해도 원래 이름을 기준으로 다시 번호를 매겨서 "_1_1" 같은 게 안 생기게 함.
+  const nextCopySuffix = (name: string, existing: string[]): string => {
+    const base = name.match(/^(.*)_(\d+)$/)?.[1] ?? name;
+    const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^${escaped}_(\\d+)$`);
+    const max = existing.reduce((m, n) => {
+      const num = parseInt(n.match(re)?.[1] || '0', 10);
+      return num > m ? num : m;
+    }, 0);
+    return `${base}_${max + 1}`;
+  };
+
+  const nextProductCode = (): string => {
+    const nums = products.map(p => parseInt(p.code?.match(/^P-(\d+)$/)?.[1] || '0', 10)).filter(n => n > 0);
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+    return `P-${String(next).padStart(4, '0')}`;
+  };
+
+  const handleCopy = async (p: Product) => {
+    const names = products.map(x => x.nameKo);
+    const enNames = products.map(x => x.nameEn).filter((n): n is string => !!n);
+    const body = {
+      ...p,
+      id: undefined, businessId: undefined,
+      code: nextProductCode(),
+      nameKo: nextCopySuffix(p.nameKo, names),
+      nameEn: p.nameEn ? nextCopySuffix(p.nameEn, enNames) : p.nameEn,
+    };
+    await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    load();
+  };
+
   const openModal = (item?: Product | null) => {
     const preId = Math.random().toString(36).slice(2) + Date.now().toString(36);
     setModal({ open: true, item, preId });
@@ -1020,6 +1053,9 @@ function ProductsPageInner() {
                         </td>
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-0.5">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="복사" onClick={() => handleCopy(p)}>
+                              <Copy className="w-3.5 h-3.5" />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => guardEdit(p, () => openModal(p))}>
                               {isPrevMonth(p.createdAt) && <Lock className="w-3 h-3 text-orange-400 mr-0.5" />}<Pencil className="w-3.5 h-3.5" />
                             </Button>
@@ -1063,6 +1099,7 @@ function ProductsPageInner() {
                         <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full">{imgs.length}장</div>
                       )}
                       <div className="absolute bottom-1.5 right-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
+                        <button type="button" onClick={() => handleCopy(p)} className="bg-white/90 rounded-full p-1 shadow"><Copy className="w-3 h-3 text-gray-700" /></button>
                         <button type="button" onClick={() => guardEdit(p, () => openModal(p))} className="bg-white/90 rounded-full p-1 shadow"><Pencil className="w-3 h-3 text-gray-700" /></button>
                         <button type="button" onClick={() => guardEdit(p, () => handleDelete(p.id))} className="bg-white/90 rounded-full p-1 shadow"><Trash2 className="w-3 h-3 text-red-500" /></button>
                       </div>
