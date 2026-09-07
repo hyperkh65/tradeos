@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const rows = db.prepare('SELECT * FROM shipments WHERE local_deleted=0 OR local_deleted IS NULL ORDER BY created_at DESC').all() as Record<string, unknown>[];
+  const rows = db.prepare('SELECT * FROM shipments WHERE local_deleted=0 OR local_deleted IS NULL ORDER BY etd DESC NULLS LAST, created_at DESC').all() as Record<string, unknown>[];
   const res = NextResponse.json({ data: rows.map(dbToShipment) });
   // 목록은 30초 stale-while-revalidate 캐시
   res.headers.set('Cache-Control', 'private, max-age=0, stale-while-revalidate=30');
