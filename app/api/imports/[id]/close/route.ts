@@ -4,7 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { dbToImport } from '../../route';
 import { syncImportExpenses } from '@/lib/import-helpers';
 import { createNotionImportSettlement } from '@/lib/notion/mapper';
-import type { SettlementHistoryEntry } from '@/types';
+import type { SettlementHistoryEntry, SettlementItem } from '@/types';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -56,6 +56,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (action === 'close') {
       const updated = db.prepare('SELECT * FROM imports WHERE id=?').get(id) as Record<string, unknown>;
       const customCosts = (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })();
+      // 방금 UPDATE한 settlement_json을 그대로 사용 — 조정금액을 비용에 반영하기 위함
+      const settlementItems: SettlementItem[] =
+        (() => { try { return JSON.parse((updated.settlement_json as string) || '[]'); } catch { return []; } })();
       syncImportExpenses(db, id, row.business_id as string, {
         freightKrw: updated.freight_krw as number | undefined,
         freightHandling: (() => { try { return JSON.parse((updated.freight_handling_json as string) || '[]'); } catch { return []; } })(),
@@ -68,6 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         demurrage: updated.demurrage as number | undefined,
         inlandFreight: updated.inland_freight as number | undefined,
         customCosts,
+        settlementItems,
         createdBy: user.id,
       });
     }

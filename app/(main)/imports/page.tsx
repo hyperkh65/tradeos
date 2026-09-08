@@ -389,37 +389,37 @@ function ImportModal({
       ? `${totalItemCv.toLocaleString()} ${form.invoiceCurrency || 'USD'}`
       : `${parseFloat(form.invoiceValue || '0').toLocaleString()} ${form.invoiceCurrency || 'USD'}`;
     if (invoiceKrwRounded > 0) {
-      base.push({ category: `물품 대금 (${foreignAmt} ${fxLabel})`, calculated: invoiceKrwRounded, costType: 'inventory' });
+      base.push({ category: `물품 대금 (${foreignAmt} ${fxLabel})`, key: 'invoice', calculated: invoiceKrwRounded, costType: 'inventory' });
     }
-    if (dutyFinal > 0) base.push({ category: '관세', calculated: dutyFinal, costType: 'inventory' });
-    if (vatFinal > 0) base.push({ category: '수입부가세', calculated: vatFinal, costType: 'vat' });
+    if (dutyFinal > 0) base.push({ category: '관세', key: 'duty', calculated: dutyFinal, costType: 'inventory' });
+    if (vatFinal > 0) base.push({ category: '수입부가세', key: 'vat', calculated: vatFinal, costType: 'vat' });
     // 국내비용 — VAT를 부모 항목의 vat 필드에 포함 (주황색 컬럼 표시)
     const brokerVat    = Math.floor(brokerFeeVal * (form.brokerFeeVatRate ?? 10) / 100);
     const warehouseVat = Math.floor(warehouseFeeVal * (form.warehouseFeeVatRate ?? 10) / 100);
     const demurrageVat = Math.floor(demurrageVal * (form.demurrageVatRate ?? 0) / 100);
     const detentionVat = Math.floor(detentionFeeVal * (form.detentionFeeVatRate ?? 0) / 100);
     const inlandVat    = Math.floor(inlandFreightVal * (form.inlandFreightVatRate ?? 10) / 100);
-    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', calculated: brokerFeeVal, vat: brokerVat || undefined, costType: 'inventory' });
-    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', calculated: inspectionFeeVal, costType: 'expense' });
-    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', calculated: warehouseFeeVal, vat: warehouseVat || undefined, costType: 'expense' });
-    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', calculated: demurrageVal, vat: demurrageVat || undefined, costType: 'expense' });
-    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', calculated: detentionFeeVal, vat: detentionVat || undefined, costType: 'expense' });
-    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, calculated: inlandFreightVal, vat: inlandVat || undefined, costType: 'inventory' });
+    if (brokerFeeVal > 0) base.push({ category: '통관비(관세사)', key: 'brokerFee', calculated: brokerFeeVal, vat: brokerVat || undefined, costType: 'inventory' });
+    if (inspectionFeeVal > 0) base.push({ category: '세관검사비', key: 'inspectionFee', calculated: inspectionFeeVal, costType: 'expense' });
+    if (warehouseFeeVal > 0) base.push({ category: 'Terminal Storage', key: 'warehouseFee', calculated: warehouseFeeVal, vat: warehouseVat || undefined, costType: 'expense' });
+    if (demurrageVal > 0) base.push({ category: 'Demurrage/DEM', key: 'demurrage', calculated: demurrageVal, vat: demurrageVat || undefined, costType: 'expense' });
+    if (detentionFeeVal > 0) base.push({ category: 'Detention/DET', key: 'detentionFee', calculated: detentionFeeVal, vat: detentionVat || undefined, costType: 'expense' });
+    if (inlandFreightVal > 0) base.push({ category: `내륙운송비${inlandFreightRegion ? `(${inlandFreightRegion})` : ''}`, key: 'inlandFreight', calculated: inlandFreightVal, vat: inlandVat || undefined, costType: 'inventory' });
     customCosts.filter(c => c.name && parseFloat(c.amount || '0') > 0).forEach(c => {
       const vatRate = c.vatRate ?? 10;
       const vatAmt = vatRate > 0 ? Math.floor(parseFloat(c.amount) * vatRate / 100) : 0;
-      base.push({ category: c.name, calculated: parseFloat(c.amount), vat: vatAmt || undefined, costType: 'inventory' });
+      base.push({ category: c.name, key: `custom:${c.name}`, calculated: parseFloat(c.amount), vat: vatAmt || undefined, costType: 'inventory' });
     });
     // 해상운임 (포워더)
     const frtKrw = form.freightKrw ? parseFloat(form.freightKrw) : freightKrwCalc;
-    if (frtKrw > 0) base.push({ category: '해상운임(포워더)', calculated: frtKrw, costType: 'inventory' });
+    if (frtKrw > 0) base.push({ category: '해상운임(포워더)', key: 'freight', calculated: frtKrw, costType: 'inventory' });
     // 포워더 부대비용 (H/C, THC 등) — 공급가+부가세 분리
     type FH = { name: string; currency: string; amtCur: number; exRate: number; amtKrw: number; vat: number };
-    (form.freightHandling || []).forEach((h: FH) => {
+    (form.freightHandling || []).forEach((h: FH, idx: number) => {
       const supply = h.amtKrw || 0;
       const vat = h.vat || 0;
       if (supply > 0 || vat > 0) {
-        base.push({ category: h.name || '포워더 부대비용', calculated: supply, vat: vat || undefined, costType: 'inventory' });
+        base.push({ category: h.name || '포워더 부대비용', key: `fh:${idx}`, calculated: supply, vat: vat || undefined, costType: 'inventory' });
       }
     });
     if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal, costType: 'refund' });
@@ -635,7 +635,11 @@ function ImportModal({
               className={cn('py-3 px-3 text-sm border-b-2 -mb-px transition-colors', tab === t.key ? 'border-primary text-primary font-medium' : 'border-transparent text-muted-foreground hover:text-foreground')}
               onClick={() => {
                 setTab(t.key);
-                if (t.key === 'settlement') syncSettlementItems();
+                // 정산서 탭에 처음 들어갈 때만 계산금액으로 초기화 — 이미 조정해둔 값이
+                // 있는데 탭을 왔다갔다 할 때마다 syncSettlementItems()가 조정금액을
+                // 전부 지워버려서(함수 자체 주석에도 명시) 저장/마감 시 조정이 반영 안
+                // 되던 문제였음. 다시 계산하고 싶으면 탭 안의 "최신 금액 반영" 버튼 사용.
+                if (t.key === 'settlement' && settlementItems.length === 0) syncSettlementItems();
               }}>{t.label}</button>
           ))}
         </div>

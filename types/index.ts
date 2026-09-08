@@ -303,6 +303,7 @@ export interface ImportCustomCost {
 
 export interface SettlementItem {
   category: string;
+  key?: string;             // 마감 시 원본 비용 필드와 매칭하기 위한 고정 키 (category는 동적 문자열이라 매칭에 부적합)
   calculated: number;       // 공급가 계산금액
   adjusted?: number;        // 공급가 조정금액
   vat?: number;             // 부가세 계산금액

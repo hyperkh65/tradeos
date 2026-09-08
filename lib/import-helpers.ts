@@ -1,5 +1,6 @@
 import { getDb, newId, now, nextBizId } from '@/lib/db/sqlite';
 import { syncIndexOnWrite, syncIndexOnDelete } from '@/lib/ai/sync';
+import type { SettlementItem } from '@/types';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -26,6 +27,26 @@ interface ImportExpenseFields {
   shipmentBusinessId?: string;
   importBusinessId?: string;
   incurredDate?: string;
+  settlementItems?: SettlementItem[]; // 마감 시 정산서 조정금액을 비용에 반영하기 위함
+}
+
+// SettlementItem.key → entries[]의 cat 매핑. fh:N(포워더 부대비용 개별 항목)은
+// entries[]에서 "해상운임" 한 줄로 합쳐지므로 여러 key가 같은 cat을 가리킬 수 있음.
+function settlementKeyToCat(key: string): string | null {
+  if (key === 'invoice') return null; // 물품대금은 expenses 대상 아님(기존 동작 유지)
+  if (key === 'freight' || key.startsWith('fh:')) return '해상운임';
+  if (key.startsWith('custom:')) return key.slice('custom:'.length);
+  const map: Record<string, string> = {
+    duty: '관세',
+    vat: '수입부가세',
+    brokerFee: '통관비',
+    inspectionFee: '세관검사비',
+    warehouseFee: 'Terminal Storage(장치료)',
+    demurrage: 'Demurrage/DEM(체화료)',
+    detentionFee: 'Detention/DET(지체료)',
+    inlandFreight: '내륙운송비',
+  };
+  return map[key] ?? null;
 }
 
 const COST_TYPE_MAP: Record<string, string> = {
@@ -91,6 +112,22 @@ export function syncImportExpenses(
       return { cat: c.name, amt: c.amount + vatAmt };
     }),
   ];
+
+  // 정산서에서 조정한 금액이 있으면 그 차액(delta)을 비용에도 반영 — 마감해도
+  // 조정 전 계산금액이 그대로 비용/재고원가로 넘어가던 문제 수정.
+  for (const si of fields.settlementItems || []) {
+    if (!si.key) continue;
+    if (si.adjusted === undefined && si.adjustedVat === undefined) continue; // 조정 안 한 항목은 그대로
+    const cat = settlementKeyToCat(si.key);
+    if (!cat) continue;
+    const calculatedTotal = si.calculated + (si.vat ?? 0);
+    const adjustedTotal = (si.adjusted ?? si.calculated) + (si.adjustedVat ?? si.vat ?? 0);
+    const delta = adjustedTotal - calculatedTotal;
+    if (delta === 0) continue;
+    const entry = entries.find(e => e.cat === cat);
+    if (entry) entry.amt = (entry.amt || 0) + delta;
+    else entries.push({ cat, amt: delta });
+  }
 
   const ts = now();
   const incurredDate = fields.incurredDate || ts.slice(0, 10);

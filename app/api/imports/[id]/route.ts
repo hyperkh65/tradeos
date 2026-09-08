@@ -111,6 +111,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         detentionFeeVatRate: body.detentionFeeVatRate !== undefined ? body.detentionFeeVatRate : ((updated.detention_fee_vat_rate as number) ?? 0),
         inlandFreightVatRate: body.inlandFreightVatRate !== undefined ? body.inlandFreightVatRate : ((updated.inland_freight_vat_rate as number) ?? 10),
         customCosts: body.customCosts ?? (() => { try { return JSON.parse((updated.custom_costs_json as string) || '[]'); } catch { return []; } })(),
+        settlementItems: body.settlementItems ?? (() => { try { return JSON.parse((updated.settlement_json as string) || '[]'); } catch { return []; } })(),
         createdBy: user?.id || 'unknown',
       });
     } catch (syncErr) {
