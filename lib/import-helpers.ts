@@ -132,14 +132,16 @@ export function syncImportExpenses(
   const ts = now();
   const incurredDate = fields.incurredDate || ts.slice(0, 10);
 
+  // is_auto_allocated=1인 것만 대상 — 사용자가 비용원장에서 직접 이 통관건에
+  // 연결해 수동으로 올린 항목은 재동기화/삭제 시에도 그대로 둬야 함
   const oldExpenseIds = (db.prepare(
-    "SELECT id FROM expenses WHERE related_type='import' AND related_id=?"
+    "SELECT id FROM expenses WHERE related_type='import' AND related_id=? AND is_auto_allocated=1"
   ).all(importId) as { id: string }[]).map(r => r.id);
   const newExpenseIds: string[] = [];
 
   const sync = db.transaction(() => {
-    // 기존 expenses/cost_records 삭제 후 재삽입 (atomic)
-    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(importId);
+    // 기존 expenses/cost_records 중 자동생성분만 삭제 후 재삽입 (atomic)
+    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=? AND is_auto_allocated=1").run(importId);
     db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(importId);
 
     for (const { cat, amt } of entries) {
@@ -148,8 +150,8 @@ export function syncImportExpenses(
       const expId = newId();
       const expBizId = nextBizId('EXP');
       db.prepare(`INSERT OR REPLACE INTO expenses
-        (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        (id,business_id,category,description,amount,currency,amount_krw,related_type,related_id,related_name,status,created_by,created_at,is_auto_allocated)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
         .run(expId, expBizId, cat, `${importBusinessId} ${cat}`, amt, 'KRW', amt, 'import', importId, importBusinessId, 'pending', fields.createdBy || 'unknown', ts);
       newExpenseIds.push(expId);
 

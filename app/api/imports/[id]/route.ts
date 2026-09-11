@@ -132,11 +132,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const db = getDb();
     db.prepare('UPDATE imports SET local_deleted=1, updated_at=? WHERE id=?').run(now(), id);
-    // 연동 비용도 함께 삭제
+    // 마감 시 자동 생성된 비용만 함께 삭제 — 비용원장에서 사용자가 직접
+    // 이 통관건에 연결해 수동으로 올린 항목은 그대로 둠
     const relatedExpenseIds = (db.prepare(
-      "SELECT id FROM expenses WHERE related_type='import' AND related_id=?"
+      "SELECT id FROM expenses WHERE related_type='import' AND related_id=? AND is_auto_allocated=1"
     ).all(id) as { id: string }[]).map(r => r.id);
-    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=?").run(id);
+    db.prepare("DELETE FROM expenses WHERE related_type='import' AND related_id=? AND is_auto_allocated=1").run(id);
+    db.prepare("DELETE FROM cost_records WHERE import_id=? AND is_auto_allocated=1").run(id);
     syncIndexOnDelete('import', id);
     for (const eid of relatedExpenseIds) syncIndexOnDelete('expense', eid);
     return NextResponse.json({ success: true });

@@ -636,6 +636,9 @@ function runMigrations(db: Database.Database) {
     `ALTER TABLE channels ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE channels ADD COLUMN deleted_at TEXT`,
     `ALTER TABLE channels ADD COLUMN deleted_by TEXT`,
+    // 수입통관 마감 시 자동 생성된 비용원장 항목 표시 — 통관 삭제/재동기화 시
+    // 이 항목만 지우고 수동으로 추가한 비용은 건드리지 않기 위함
+    `ALTER TABLE expenses ADD COLUMN is_auto_allocated INTEGER DEFAULT 0`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
