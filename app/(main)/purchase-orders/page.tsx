@@ -108,9 +108,19 @@ function POProductInput({
   const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
   const [histStyle, setHistStyle] = useState<React.CSSProperties>({});
 
+  // 코드에 매칭 개수 상한(12개)만 있고 정렬 기준이 없어서, 매칭이 12개를 넘는
+  // 흔한 검색어(예: 규격 치수)일 때 찾는 상품이 상한 밖으로 밀려 안 보이는
+  // 문제가 실사용 중 확인됨 — 코드 완전일치/시작 > 이름 시작 > 그 외 포함
+  // 순으로 정렬하고 상한도 넉넉히 올림
+  const rank = (p: any) => {
+    if (p.code === value) return 0;
+    if (p.code?.startsWith(value)) return 1;
+    if (p.nameKo?.startsWith(value)) return 2;
+    return 3;
+  };
   const matches = value.length >= 1 ? products.filter(p =>
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
-  ).slice(0, 12) : [];
+  ).sort((a, b) => rank(a) - rank(b)).slice(0, 30) : [];
 
   const hints: PriceHint[] = matches.map(p => {
     const recentPOs = pos

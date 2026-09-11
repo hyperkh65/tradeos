@@ -118,8 +118,20 @@ function SaleProductSearch({ value, products, allSales, onSelect }: {
   const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 280 });
   const anchorRef = useRef<HTMLDivElement>(null);
   const lower = value.toLowerCase();
+  // purchase-orders/quotes 화면과 동일한 문제 — 매칭 개수 상한만 있고 정렬
+  // 기준이 없어서 흔한 검색어일 때 찾는 상품이 상한 밖으로 밀려 안 보이는
+  // 문제. 코드 완전일치/시작 > 이름 시작 > 그 외 포함 순 정렬 + 상한 상향
+  const rank = (p: any) => {
+    const code = (p.code || '').toLowerCase();
+    const nameKo = (p.nameKo || '').toLowerCase();
+    if (code === lower) return 0;
+    if (code.startsWith(lower)) return 1;
+    if (nameKo.startsWith(lower)) return 2;
+    return 3;
+  };
   const matched = value.length >= 1
-    ? products.filter(p => (p.nameKo || '').toLowerCase().includes(lower) || (p.code || '').toLowerCase().includes(lower)).slice(0, 12)
+    ? products.filter(p => (p.nameKo || '').toLowerCase().includes(lower) || (p.code || '').toLowerCase().includes(lower))
+        .sort((a, b) => rank(a) - rank(b)).slice(0, 30)
     : [];
   const getRecentPrice = (name: string) => {
     const prices = allSales.flatMap(s => s.items.filter(i => i.product === name).map(i => ({ price: i.unitPrice, date: s.saleDate }))).filter(p => p.price > 0).sort((a, b) => b.date.localeCompare(a.date));

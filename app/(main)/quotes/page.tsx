@@ -97,9 +97,18 @@ function ProductSearchHelper({
   const anchorRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
+  // purchase-orders 화면과 동일한 문제 — 매칭 개수 상한만 있고 정렬 기준이
+  // 없어서 흔한 검색어(규격 치수 등)일 때 찾는 상품이 상한 밖으로 밀려 안
+  // 보이는 문제. 코드 완전일치/시작 > 이름 시작 > 그 외 포함 순 정렬 + 상한 상향
+  const rank = (p: any) => {
+    if (p.code === value) return 0;
+    if (p.code?.startsWith(value)) return 1;
+    if (p.nameKo?.startsWith(value)) return 2;
+    return 3;
+  };
   const matches = value.length >= 1 ? products.filter(p =>
     p.nameKo?.includes(value) || p.code?.includes(value) || (p.nameEn ?? '').includes(value)
-  ).slice(0, 8) : [];
+  ).sort((a, b) => rank(a) - rank(b)).slice(0, 30) : [];
 
   const hints: PriceHint[] = matches.map(p => {
     const recentQuotes = quotes

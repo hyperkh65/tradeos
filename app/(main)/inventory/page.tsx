@@ -42,12 +42,24 @@ function ProductAutocomplete({ value, onChange, onSelect, products }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // purchase-orders/quotes/crm 화면과 동일한 문제 — 매칭 개수 상한만 있고
+  // 정렬 기준이 없어서 흔한 검색어일 때 찾는 상품이 상한 밖으로 밀려 안
+  // 보이는 문제. 코드 완전일치/시작 > 이름 시작 > 그 외 포함 순 정렬 + 상한 상향
+  const lower = value.toLowerCase();
+  const rank = (p: Product) => {
+    const code = p.code.toLowerCase();
+    const nameKo = p.nameKo.toLowerCase();
+    if (code === lower) return 0;
+    if (code.startsWith(lower)) return 1;
+    if (nameKo.startsWith(lower)) return 2;
+    return 3;
+  };
   const filtered = value.trim()
     ? products.filter(p =>
-        p.nameKo.toLowerCase().includes(value.toLowerCase()) ||
-        (p.nameEn || '').toLowerCase().includes(value.toLowerCase()) ||
-        p.code.toLowerCase().includes(value.toLowerCase())
-      ).slice(0, 12)
+        p.nameKo.toLowerCase().includes(lower) ||
+        (p.nameEn || '').toLowerCase().includes(lower) ||
+        p.code.toLowerCase().includes(lower)
+      ).sort((a, b) => rank(a) - rank(b)).slice(0, 30)
     : [];
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
