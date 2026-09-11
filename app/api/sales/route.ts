@@ -126,8 +126,11 @@ export async function POST(req: NextRequest) {
 
   const items = body.items || [];
   const rate = Number(body.exchangeRate) || 1;
+  // item.amount는 이미 아이템별 환율이 반영된 원화 금액(수량×단가×환율)이라
+  // 여기서 전체 환율을 한 번 더 곱하면 안 됨 — sales/[id]/route.ts(PUT)와 동일한
+  // 버그, 함께 수정
   const netAmount = items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
-  const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
+  const netKRW = netAmount;
   const vat = Math.round(netKRW * 0.1);
   const totalAmount = netKRW + vat;
 

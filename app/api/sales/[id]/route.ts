@@ -57,8 +57,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const db = getDb();
   const items = body.items || [];
   const rate = Number(body.exchangeRate) || 1;
+  // item.amount는 이미 아이템별 환율이 반영된 원화 금액(수량×단가×환율)이라
+  // 여기서 전체 환율을 한 번 더 곱하면 안 됨 — 클라이언트(crm/page.tsx)는 이미
+  // 이렇게 고쳐져 있는데 서버(이 라우트)만 예전 방식(이중 곱)으로 남아있어서
+  // 부가세/합계만 수십~수백 배로 잘못 저장되던 문제 실사용 중 확인
   const netAmount = items.reduce((s: number, i: any) => s + (i.amount || 0), 0);
-  const netKRW = rate === 1 ? netAmount : Math.round(netAmount * rate);
+  const netKRW = netAmount;
   const vat = Math.round(netKRW * 0.1);
   db.prepare(`UPDATE sales SET customer=?,sale_date=?,sale_type=?,salesperson=?,po_no=?,items_json=?,net_amount=?,vat=?,total_amount=?,currency=?,exchange_rate=?,misc=?,supplier_id=?,supplier_name=?,po_id=?,po_business_id=? WHERE id=?`)
     .run(body.customer, body.saleDate, body.saleType || '일반', body.salesperson ?? null, body.poNo ?? null, JSON.stringify(items), netAmount, vat, netKRW + vat, body.currency || 'KRW', rate, body.misc ?? null, body.supplierId ?? null, body.supplierName ?? null, body.poId ?? null, body.poBusinessId ?? null, id);
