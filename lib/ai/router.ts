@@ -18,7 +18,14 @@ export class ProviderRouter {
     options?: ChatOptions,
     ctx?: { conversationId?: string; messageId?: string; userId?: string; userName?: string },
   ): Promise<ChatResult & { providerId: string; providerName: string }> {
-    const rows = this.eligible(listActiveProvidersOrderedByPriority(), 'chat');
+    // 로컬 소형 모델(Ollama)은 도구 호출이 필요한 라운드에서 신뢰도가 낮다는 게
+    // 실사용 중 확인됨 — 일부 모델(gemma2 등)은 tools 파라미터 자체를 거부해 API
+    // 레벨에서 에러가 나고, 일부(llama3.2 등)는 실제로 도구를 호출하는 대신 "~하겠습니다"
+    // 라고 말로만 서술하고 끝내버림. 도구가 필요 없는 일반 대화/최종 답변 합성
+    // 라운드에서만 쓰고, 도구가 딸린 라운드에서는 후보에서 아예 제외해 안정적인
+    // 공급자로 바로 넘어가게 한다.
+    const rows = this.eligible(listActiveProvidersOrderedByPriority(), 'chat')
+      .filter(r => !(options?.tools?.length && r.providerType === 'ollama'));
     if (rows.length === 0) {
       throw new AIProviderError('사용 가능한 AI Provider가 없습니다(모두 비활성/쿨다운/오류 상태).', { retryable: false });
     }
