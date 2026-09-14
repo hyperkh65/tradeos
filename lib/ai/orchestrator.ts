@@ -151,11 +151,19 @@ export async function runChat(opts: {
   if (intent.fastPath) {
     const execResult = await executeTool(intent.fastPath.toolName, intent.fastPath.args, toolCtx);
     const sources = execResult.ok ? toolResultToSources(intent.fastPath.toolName, execResult.result) : [];
+    // 실제로는 모델이 이 도구를 "선택"한 적이 없지만(결정론적으로 바로 실행), OpenAI
+    // 계열 스펙은 role='tool' 메시지 앞에 그 id를 가리키는 assistant tool_calls가
+    // 반드시 있어야 한다(없으면 400 — Groq에서 실사용 중 확인됨) — 합성 id로 그 형태를 맞춰준다.
+    const fastPathCallId = 'fastpath_1';
     const messages: ChatMessage[] = [
       { role: 'system', content: baseSystem },
       ...history.filter(h => h.role === 'user' || h.role === 'assistant').map(h => ({ role: h.role as 'user' | 'assistant', content: h.content || '' })),
       { role: 'user', content: opts.message },
-      { role: 'tool', content: JSON.stringify(execResult.ok ? { tool: intent.fastPath.toolName, result: execResult.result } : { tool: intent.fastPath.toolName, error: execResult.error }) },
+      { role: 'assistant', content: '', toolCalls: [{ id: fastPathCallId, name: intent.fastPath.toolName, arguments: intent.fastPath.args }] },
+      {
+        role: 'tool', toolCallId: fastPathCallId,
+        content: JSON.stringify(execResult.ok ? { tool: intent.fastPath.toolName, result: execResult.result } : { tool: intent.fastPath.toolName, error: execResult.error }),
+      },
     ];
     const result = await providerRouter.chat(messages, { maxTokens: 120, temperature: TEMPERATURE, stream: !!opts.onToken, signal: opts.signal }, chatCtx);
     const finalContent = await deliverResult(result, opts.onToken);
@@ -199,7 +207,9 @@ export async function runChat(opts: {
     let streamedThisRound = false;
     while (final.toolCalls?.length && round < MAX_TOOL_ROUNDS) {
       round++;
-      messages.push({ role: 'assistant', content: final.content || '' });
+      // 이 라운드에서 벤더가 준 tool_calls를 그대로 히스토리에 실어 보낸다 — 없으면
+      // 뒤따르는 tool 메시지가 무엇에 대한 응답인지 모델이 못 알아본다(OpenAI 계열 스펙).
+      messages.push({ role: 'assistant', content: final.content || '', toolCalls: final.toolCalls });
       let calledSearchKnowledge = false;
       for (const call of final.toolCalls) {
         if (call.name === 'searchKnowledge') calledSearchKnowledge = true;
@@ -208,6 +218,7 @@ export async function runChat(opts: {
         if (execResult.ok) allSources.push(...toolResultToSources(call.name, execResult.result));
         messages.push({
           role: 'tool',
+          toolCallId: call.id,
           content: JSON.stringify(execResult.ok ? { tool: call.name, result: execResult.result } : { tool: call.name, error: execResult.error }),
         });
       }

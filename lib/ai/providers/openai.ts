@@ -51,11 +51,33 @@ export class OpenAIProvider implements AIProvider {
     return json;
   }
 
+  /** OpenAI 스펙: assistant가 도구를 호출했으면 그 tool_calls를 그대로 실어 보내야
+   * 하고(id 포함), 뒤따르는 tool 메시지는 반드시 tool_call_id로 어떤 호출에 대한
+   * 응답인지 명시해야 한다. 이게 없으면 모델이 tool 결과를 자기 질문과 연결 못 해서
+   * 빈 응답을 내는 걸 Groq(qwen)에서 실사용 중 확인함(Cloudflare는 관대하게 봐줬음). */
+  private toApiMessage(m: ChatMessage): Record<string, unknown> {
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      return {
+        role: 'assistant',
+        content: m.content || null,
+        tool_calls: m.toolCalls.map((tc, i) => ({
+          id: tc.id || `call_${i}`,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+        })),
+      };
+    }
+    if (m.role === 'tool') {
+      return { role: 'tool', tool_call_id: m.toolCallId, content: m.content };
+    }
+    return { role: m.role, content: m.content };
+  }
+
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResult> {
     const model = options?.model || this.chatModel;
     const body: Record<string, unknown> = {
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.map(m => this.toApiMessage(m)),
       temperature: options?.temperature, max_tokens: options?.maxTokens,
     };
     if (options?.tools?.length) {
@@ -69,7 +91,7 @@ export class OpenAIProvider implements AIProvider {
     }
 
     const result = await this.request<{
-      choices: { message: { content: string | null; tool_calls?: { function: { name: string; arguments: string } }[] } }[];
+      choices: { message: { content: string | null; tool_calls?: { id?: string; function: { name: string; arguments: string } }[] } }[];
       usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     }>('/chat/completions', body);
     const msg = result.choices[0]?.message;
@@ -78,7 +100,7 @@ export class OpenAIProvider implements AIProvider {
       model,
       usage: result.usage ? { promptTokens: result.usage.prompt_tokens, completionTokens: result.usage.completion_tokens, totalTokens: result.usage.total_tokens } : undefined,
       toolCalls: msg?.tool_calls?.length
-        ? msg.tool_calls.map(tc => ({ name: tc.function.name, arguments: safeParseJson(tc.function.arguments) }))
+        ? msg.tool_calls.map(tc => ({ id: tc.id, name: tc.function.name, arguments: safeParseJson(tc.function.arguments) }))
         : undefined,
     };
   }

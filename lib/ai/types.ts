@@ -15,6 +15,14 @@ export type AIProviderType =
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** role='assistant'가 도구를 호출했을 때 그 결정을 히스토리에 그대로 실어 보내기 위함
+   * (OpenAI 계열 스펙은 이후 라운드에서 이 배열이 없으면 뒤따르는 tool 메시지가
+   * 무엇에 대한 응답인지 모델이 알 수 없다). */
+  toolCalls?: ToolCall[];
+  /** role='tool' 메시지를 바로 앞 assistant의 어떤 tool_calls 항목에 대한 응답인지
+   * 연결하는 id — OpenAI 계열 API는 이게 없거나 안 맞으면 다음 응답이 비거나
+   * (실사용 중 Groq에서 확인됨) 동작이 불안정해진다. */
+  toolCallId?: string;
 }
 
 export interface ToolSchema {
@@ -39,6 +47,9 @@ export interface ChatUsage {
 }
 
 export interface ToolCall {
+  /** 벤더가 내려준 원본 id — 다음 라운드에서 role='tool' 메시지의 toolCallId로
+   * 그대로 되돌려 보내야 한다(OpenAI 계열). 벤더가 id를 안 주면 undefined. */
+  id?: string;
   name: string;
   arguments: Record<string, unknown>;
 }
