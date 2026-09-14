@@ -18,14 +18,13 @@ export class ProviderRouter {
     options?: ChatOptions,
     ctx?: { conversationId?: string; messageId?: string; userId?: string; userName?: string },
   ): Promise<ChatResult & { providerId: string; providerName: string }> {
-    // 로컬 소형 모델(Ollama)은 도구 호출이 필요한 라운드에서 신뢰도가 낮다는 게
-    // 실사용 중 확인됨 — 일부 모델(gemma2 등)은 tools 파라미터 자체를 거부해 API
-    // 레벨에서 에러가 나고, 일부(llama3.2 등)는 실제로 도구를 호출하는 대신 "~하겠습니다"
-    // 라고 말로만 서술하고 끝내버림. 도구가 필요 없는 일반 대화/최종 답변 합성
-    // 라운드에서만 쓰고, 도구가 딸린 라운드에서는 후보에서 아예 제외해 안정적인
-    // 공급자로 바로 넘어가게 한다.
-    const rows = this.eligible(listActiveProvidersOrderedByPriority(), 'chat')
-      .filter(r => !(options?.tools?.length && r.providerType === 'ollama'));
+    // gemma2:2b 등 일부 로컬 모델은 tools 파라미터 자체를 거부해 API 레벨에서
+    // 에러가 났었는데, 그건 여기 아래 catch에서 자연히 다음 provider로 failover됨
+    // (진짜 문제였던 건 llama3.2:3b가 도구를 호출하는 대신 "~하겠습니다"라고 말로만
+    // 서술하고 끝내버리는 silent failure였음 — 에러가 안 나서 failover가 안 걸림).
+    // qwen2.5:3b는 재검증 결과 도구를 정상적으로 호출해서 우선순위 그대로 둠 —
+    // 같은 silent 증상이 다시 보이면 이 provider의 우선순위를 낮추는 걸 우선 고려.
+    const rows = this.eligible(listActiveProvidersOrderedByPriority(), 'chat');
     if (rows.length === 0) {
       throw new AIProviderError('사용 가능한 AI Provider가 없습니다(모두 비활성/쿨다운/오류 상태).', { retryable: false });
     }
