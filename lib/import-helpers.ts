@@ -13,6 +13,7 @@ interface ImportExpenseFields {
   detentionFee?: number;
   demurrage?: number;
   inlandFreight?: number;
+  insuranceKrw?: number;
   brokerFeeVatRate?: number;
   warehouseFeeVatRate?: number;
   demurrageVatRate?: number;
@@ -35,6 +36,7 @@ interface ImportExpenseFields {
 function settlementKeyToCat(key: string): string | null {
   if (key === 'invoice') return null; // 물품대금은 expenses 대상 아님(기존 동작 유지)
   if (key === 'freight' || key.startsWith('fh:')) return '해상운임';
+  if (key === 'insurance') return '해상보험료';
   if (key.startsWith('custom:')) return key.slice('custom:'.length);
   const map: Record<string, string> = {
     duty: '관세',
@@ -59,6 +61,7 @@ const COST_TYPE_MAP: Record<string, string> = {
   'Detention/DET(지체료)':   'detention',
   '내륙운송비':              'inland_freight',
   '해상운임':                'ocean_freight',
+  '해상보험료':              'ocean_freight',
   '부대비용(포워더)':        'ocean_freight',
   '포워더 매입VAT':          'vat',
 };
@@ -98,6 +101,7 @@ export function syncImportExpenses(
 
   const entries: { cat: string; amt: number | undefined }[] = [
     { cat: '해상운임',                amt: totalFreightAll > 0 ? totalFreightAll : undefined },
+    { cat: '해상보험료',              amt: fields.insuranceKrw },
     { cat: '관세',                    amt: fields.duty },
     { cat: '수입부가세',              amt: fields.vat },
     { cat: '통관비',                  amt: (fields.brokerFee || 0) + brokerVat || undefined },

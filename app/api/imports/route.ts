@@ -165,6 +165,7 @@ export async function POST(req: NextRequest) {
     syncImportExpenses(db, id, bizId, {
       freightKrw: body.freightKrw,
       freightHandling: body.freightHandling,
+      insuranceKrw: body.insuranceKrw,
       duty: body.duty, vat: body.vat,
       brokerFee: body.brokerFee, inspectionFee: body.inspectionFee,
       warehouseFee: body.warehouseFee, detentionFee: body.detentionFee,

@@ -422,19 +422,41 @@ function ImportModal({
         base.push({ category: h.name || '포워더 부대비용', key: `fh:${idx}`, calculated: supply, vat: vat || undefined, costType: 'inventory' });
       }
     });
-    if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', calculated: -refundFinal, costType: 'refund' });
-    if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', calculated: -inspectionRefundVal, costType: 'refund' });
+    // 해상보험료 — CIF 과세가격 계산에는 이미 들어가는데(customsValueCalc) 정산서
+    // 항목 자체가 아예 없어서 비용원장/수익분석에 반영이 안 되던 문제(요청사항으로 추가)
+    const insuranceVal = parseFloat(form.insuranceKrw || '0');
+    if (insuranceVal > 0) base.push({ category: '해상보험료', key: 'insurance', calculated: insuranceVal, costType: 'inventory' });
+    if (refundFinal > 0) base.push({ category: '환급(FTA/검사비)', key: 'refund', calculated: -refundFinal, costType: 'refund' });
+    if (inspectionRefundVal && inspectionRefundVal > 0) base.push({ category: '검사비 환급', key: 'inspectionRefund', calculated: -inspectionRefundVal, costType: 'refund' });
     return base;
-  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv, form.freightKrw, freightKrwCalc, form.freightHandling, form.brokerFeeVatRate, form.warehouseFeeVatRate, form.demurrageVatRate, form.detentionFeeVatRate, form.inlandFreightVatRate]);
+  }, [dutyFinal, vatFinal, brokerFeeVal, inspectionFeeVal, warehouseFeeVal, demurrageVal, detentionFeeVal, inlandFreightVal, customCosts, refundFinal, inspectionRefundVal, inlandFreightRegion, invoiceKrw, form.invoiceValue, form.invoiceCurrency, exRate, itemsHaveData, totalItemCv, form.freightKrw, freightKrwCalc, form.freightHandling, form.insuranceKrw, form.brokerFeeVatRate, form.warehouseFeeVatRate, form.demurrageVatRate, form.detentionFeeVatRate, form.inlandFreightVatRate]);
 
   const syncSettlementItems = () => {
-    // 조정금액 전부 초기화, 조정사유만 유지
+    // 조정금액 전부 초기화, 조정사유만 유지 ("최신 금액 반영" 버튼의 하드 리셋)
     const built = buildSettlementItems();
     setSettlementItems(prev => built.map(b => {
-      const existing = prev.find(p => p.category === b.category);
+      const existing = prev.find(p => (p.key || p.category) === (b.key || b.category));
       return existing?.reason ? { ...b, reason: existing.reason } : b;
     }));
   };
+
+  // 세금계산 탭에서 금액이 바뀌어도(부가세 입력, 부대비용 항목 추가 등) 정산서 탭을
+  // 이미 한 번 열어본 뒤에는 자동으로 반영되지 않아 비용원장/수익분석까지 실제 금액과
+  // 어긋나던 사고가 있었음 — 조정금액/조정사유는 유지한 채(key로 매칭) 계산금액/부가세만
+  // 항상 최신값으로 자동 갱신한다. "최신 금액 반영" 버튼은 조정값까지 초기화하는 별도 기능.
+  useEffect(() => {
+    const built = buildSettlementItems();
+    setSettlementItems(prev => {
+      if (prev.length === 0) return built;
+      const byKey = new Map(prev.map(p => [p.key || p.category, p]));
+      return built.map(b => {
+        const existing = byKey.get(b.key || b.category);
+        if (!existing) return b;
+        return { ...b, adjusted: existing.adjusted, adjustedVat: existing.adjustedVat, reason: existing.reason };
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildSettlementItems]);
 
   const fetchRate = async () => {
     setRateLoading(true); setRateMsg(null);

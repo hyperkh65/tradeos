@@ -351,9 +351,15 @@ export default function ProfitAnalysisPage() {
     setForm(f => ({
       ...f,
       productItems: [...f.productItems, {
-        id: newPid(), name: '', spec: '', qty: 0, currency: 'CNY', unitPriceFx: 0,
+        id: newPid(), name: '', spec: '', qty: 0, currency: f.productItems[0]?.currency || 'CNY', unitPriceFx: 0,
       }],
     }));
+  }
+
+  // 원가 통화를 바꾸면(USD/JPY 등) 모든 품목 행에 일괄 적용 — 한 건의 수입통관은
+  // 보통 통화가 하나라 행마다 따로 고르게 하지 않고 여기서 한 번에 바꾼다.
+  function setDealCurrency(currency: string) {
+    setForm(f => ({ ...f, productItems: f.productItems.map(p => ({ ...p, currency })) }));
   }
 
   function updateProduct(idx: number, field: keyof ProductItem, val: string | number | undefined) {
@@ -492,6 +498,10 @@ export default function ProfitAnalysisPage() {
   const totals = calcTotals(form);
   const cex = form.customsExRate || 1;
   const wex = form.wireExRate || form.customsExRate || 1;
+  // 제품원가 통화 — 수입통관 연결 시 imp.invoiceCurrency가 각 행에 그대로 들어오지만
+  // 환율 라벨("원/CNY")과 표 헤더("단가(CNY)")가 하드코딩돼 있어서 USD/JPY 건에도
+  // 항상 CNY로 표시되던 문제 — 실제 품목 통화를 따라가게 함(행마다 다르면 첫 행 기준).
+  const dealCurrency = form.productItems[0]?.currency || 'CNY';
 
   const filteredSales = linkSales.filter(s =>
     !linkQ || s.businessId.includes(linkQ) || s.customer.toLowerCase().includes(linkQ.toLowerCase()) || (s.poNo || '').includes(linkQ)
@@ -704,20 +714,28 @@ export default function ProfitAnalysisPage() {
 
                   {/* 환율 */}
                   <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-2">
-                    <div className="text-xs font-semibold text-amber-700">환율</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs font-semibold text-amber-700">환율</div>
+                      <label className="text-[11px] text-muted-foreground ml-2">원가 통화</label>
+                      <select className="h-6 text-xs rounded border border-input bg-background px-1.5"
+                        value={dealCurrency} onChange={e => setDealCurrency(e.target.value)}>
+                        <option value="CNY">CNY</option><option value="USD">USD</option>
+                        <option value="JPY">JPY</option><option value="KRW">KRW</option>
+                      </select>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[11px] text-muted-foreground">① 통관환율 (수입통관 기준, 자동)</label>
                         <div className="flex items-center gap-1.5 mt-1">
                           <Input type="number" className="h-7 text-xs flex-1" value={form.customsExRate || ''} onChange={e => setForm(f => ({ ...f, customsExRate: Number(e.target.value) || 0 }))} placeholder="자동입력" />
-                          <span className="text-xs text-muted-foreground shrink-0">원/CNY</span>
+                          <span className="text-xs text-muted-foreground shrink-0">원/{dealCurrency}</span>
                         </div>
                       </div>
                       <div>
                         <label className="text-[11px] text-muted-foreground">② 실제송금환율 (잔금 기준, 직접입력)</label>
                         <div className="flex items-center gap-1.5 mt-1">
                           <Input type="number" className="h-7 text-xs flex-1" value={form.wireExRate || ''} onChange={e => setForm(f => ({ ...f, wireExRate: Number(e.target.value) || 0 }))} placeholder="직접입력" />
-                          <span className="text-xs text-muted-foreground shrink-0">원/CNY</span>
+                          <span className="text-xs text-muted-foreground shrink-0">원/{dealCurrency}</span>
                         </div>
                       </div>
                     </div>
@@ -791,7 +809,7 @@ export default function ProfitAnalysisPage() {
                     {form.productItems.length > 0 ? (
                       <div className="rounded border border-border overflow-x-auto text-xs">
                         <div className="grid bg-muted/50 font-medium text-muted-foreground min-w-[640px]" style={{ gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1.1fr 1.1fr 28px' }}>
-                          {['품명', '규격', '수량', '단가(CNY)', `①원가(×${cex})`, `②원가(×${wex || '?'})`, ''].map(h => (
+                          {['품명', '규격', '수량', `단가(${dealCurrency})`, `①원가(×${cex})`, `②원가(×${wex || '?'})`, ''].map(h => (
                             <div key={h} className="px-2 py-1.5">{h}</div>
                           ))}
                         </div>
@@ -1089,6 +1107,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   const { productTotal2, logisticTotal, profit, profitRate } = totals;
   const cex = pa.customsExRate || 1;
   const wex = pa.wireExRate || cex;
+  const dealCurrency = pa.productItems[0]?.currency || 'CNY';
 
   const [advance, setAdvance] = useState(pa.advancePayment || 0);
   const [actual, setActual] = useState(pa.actualPayment || 0);
@@ -1155,7 +1174,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
             <td className="border border-gray-400 px-2 py-1" style={{ width: '38%' }}></td>
             <td className="border border-gray-400 px-2 py-1" style={{ width: '12%' }}>수량</td>
             <td className="border border-gray-400 px-2 py-1" style={{ width: '22%' }}>KRW</td>
-            <td className="border border-gray-400 px-2 py-1" style={{ width: '18%' }}>RMB</td>
+            <td className="border border-gray-400 px-2 py-1" style={{ width: '18%' }}>{dealCurrency}</td>
             <td className="border border-gray-400 px-2 py-1" style={{ width: '10%' }}>비고</td>
           </tr>
 
@@ -1192,7 +1211,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
               {(cex > 1 || wex > 1) && (
                 <tr className="text-[10px] text-amber-700 bg-amber-50/40">
                   <td colSpan={5} className="border border-gray-400 px-2 py-0.5 pl-8">
-                    적용환율 — ①통관: {fmt(cex)}원/CNY&nbsp;&nbsp;②송금: {wex !== cex ? fmt(wex) : '(①과 동일)'}원/CNY
+                    적용환율 — ①통관: {fmt(cex)}원/{dealCurrency}&nbsp;&nbsp;②송금: {wex !== cex ? fmt(wex) : '(①과 동일)'}원/{dealCurrency}
                     {pa.importBusinessId && <span className="ml-2 text-orange-500">({pa.importBusinessId})</span>}
                   </td>
                 </tr>
@@ -1208,7 +1227,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-600">{(p.qty || 0).toLocaleString()}</td>
                     <td className="border border-gray-400 px-2 py-1 text-right">{t1 > 0 ? fmt(t1) : '-'}</td>
                     <td className="border border-gray-400 px-2 py-1 text-right text-gray-600">
-                      {rmbAmt != null ? `¥ ${rmbAmt.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                      {rmbAmt != null ? `${dealCurrency} ${rmbAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                     </td>
                     <td className="border border-gray-400 px-2 py-1"></td>
                   </tr>
@@ -1221,7 +1240,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
                 <td className="border border-gray-400 px-2 py-1 text-right">{fmt(productTotal2)}</td>
                 <td className="border border-gray-400 px-2 py-1 text-right text-gray-500">
                   {pa.productItems.reduce((s, p) => s + (p.totalKrwManual ? 0 : (p.qty || 0) * (p.unitPriceFx || 0)), 0) > 0
-                    ? `¥ ${pa.productItems.reduce((s, p) => s + (p.totalKrwManual ? 0 : (p.qty || 0) * (p.unitPriceFx || 0)), 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? `${dealCurrency} ${pa.productItems.reduce((s, p) => s + (p.totalKrwManual ? 0 : (p.qty || 0) * (p.unitPriceFx || 0)), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                     : ''}
                 </td>
                 <td className="border border-gray-400 px-2 py-1"></td>

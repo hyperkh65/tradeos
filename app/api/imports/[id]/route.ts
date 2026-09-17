@@ -97,6 +97,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       syncImportExpenses(db, id, row.business_id as string, {
         freightKrw: (body.freightKrw ?? updated.freight_krw) as number | undefined,
         freightHandling: body.freightHandling ?? (() => { try { return JSON.parse((updated.freight_handling_json as string) || '[]'); } catch { return []; } })(),
+        insuranceKrw: (body.insuranceKrw ?? updated.insurance_krw) as number | undefined,
         duty: (body.duty ?? updated.duty) as number | undefined,
         vat: (body.vat ?? updated.vat) as number | undefined,
         brokerFee: (body.brokerFee ?? updated.broker_fee) as number | undefined,
