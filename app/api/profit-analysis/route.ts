@@ -16,6 +16,7 @@ function rowToPA(row: Record<string, unknown>) {
     exchangeRate: (row.exchange_rate as number) || 1,
     customsExRate: (row.customs_ex_rate as number) || 0,
     wireExRate: (row.wire_ex_rate as number) || 0,
+    productCurrency: (row.product_currency as string) || 'CNY',
     supplierName: (row.supplier_name as string) || '',
     customerName: (row.customer_name as string) || '',
     advancePayment: (row.advance_payment as number) || 0,
@@ -26,6 +27,7 @@ function rowToPA(row: Record<string, unknown>) {
     inlandFreight: (row.inland_freight as number) || 0,
     brokerFee: (row.broker_fee as number) || 0,
     duty: (row.duty as number) || 0,
+    insurance: (row.insurance as number) || 0,
     vatImport: (row.vat_import as number) || 0,
     wireFee: (row.wire_fee as number) || 0,
     extraCosts: (() => { try { return JSON.parse((row.extra_costs_json as string) || '[]'); } catch { return []; } })(),
@@ -63,13 +65,13 @@ export async function POST(req: NextRequest) {
 
   db.prepare(`INSERT INTO profit_analyses
     (id,business_id,title,analysis_date,sale_id,sale_business_id,import_id,import_business_id,
-     sale_amount,sale_currency,exchange_rate,customs_ex_rate,wire_ex_rate,
+     sale_amount,sale_currency,exchange_rate,customs_ex_rate,wire_ex_rate,product_currency,
      supplier_name,customer_name,
      product_items_json,
-     freight_cost,inland_freight,broker_fee,duty,vat_import,wire_fee,extra_costs_json,
+     freight_cost,inland_freight,broker_fee,duty,insurance,vat_import,wire_fee,extra_costs_json,
      advance_payment,payment_amount,actual_payment,
      memo,status,history_json,created_by,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(
       id, bizId,
       body.title || '새 수익분석',
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest) {
       body.exchangeRate || 1,
       body.customsExRate || 0,
       body.wireExRate || 0,
+      body.productCurrency || 'CNY',
       body.supplierName || '',
       body.customerName || '',
       JSON.stringify(body.productItems || []),
@@ -88,6 +91,7 @@ export async function POST(req: NextRequest) {
       body.inlandFreight || 0,
       body.brokerFee || 0,
       body.duty || 0,
+      body.insurance || 0,
       body.vatImport || 0,
       body.wireFee || 0,
       JSON.stringify(body.extraCosts || []),

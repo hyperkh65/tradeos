@@ -51,6 +51,7 @@ interface PA {
   exchangeRate: number;
   customsExRate: number;
   wireExRate: number;
+  productCurrency: string;
   supplierName: string;
   customerName: string;
   productItems: ProductItem[];
@@ -58,6 +59,7 @@ interface PA {
   inlandFreight: number;
   brokerFee: number;
   duty: number;
+  insurance: number;
   vatImport: number;
   wireFee: number;
   extraCosts: ExtraCost[];
@@ -106,6 +108,7 @@ interface ImportRecord {
   demurrage?: number;
   inspectionFee?: number;
   supplierName?: string;
+  insuranceKrw?: number;
 }
 
 // ─── Default form ─────────────────────────────────────────────────────────────
@@ -122,6 +125,7 @@ const emptyForm = (): FormState => ({
   exchangeRate: 1,
   customsExRate: 0,
   wireExRate: 0,
+  productCurrency: 'CNY',
   supplierName: '',
   customerName: '',
   productItems: [],
@@ -129,6 +133,7 @@ const emptyForm = (): FormState => ({
   inlandFreight: 0,
   brokerFee: 0,
   duty: 0,
+  insurance: 0,
   vatImport: 0,
   wireFee: 0,
   extraCosts: [],
@@ -161,6 +166,7 @@ function calcTotals(form: FormState) {
     (form.inlandFreight || 0) +
     (form.brokerFee || 0) +
     (form.duty || 0) +
+    (form.insurance || 0) +
     (form.wireFee || 0) +
     (form.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
 
@@ -187,6 +193,8 @@ function paToForm(pa: PA): FormState {
     exchangeRate: pa.exchangeRate,
     customsExRate: pa.customsExRate || 0,
     wireExRate: pa.wireExRate || 0,
+    // 예전 데이터엔 productCurrency 컬럼이 없어서 품목 첫 행의 currency로 폴백
+    productCurrency: pa.productCurrency || pa.productItems?.[0]?.currency || 'CNY',
     supplierName: pa.supplierName || '',
     customerName: pa.customerName || '',
     productItems: (pa.productItems || []).map(p => ({
@@ -202,6 +210,7 @@ function paToForm(pa: PA): FormState {
     inlandFreight: pa.inlandFreight,
     brokerFee: pa.brokerFee,
     duty: pa.duty,
+    insurance: pa.insurance || 0,
     vatImport: pa.vatImport,
     wireFee: pa.wireFee,
     extraCosts: pa.extraCosts,
@@ -337,8 +346,10 @@ export default function ProfitAnalysisPage() {
       inlandFreight: imp.inlandFreight || 0,
       brokerFee: imp.brokerFee || 0,
       duty: imp.duty || 0,
+      insurance: imp.insuranceKrw || 0,
       vatImport: imp.vat || 0,
       supplierName: imp.supplierName || f.supplierName,
+      productCurrency: imp.invoiceCurrency || f.productCurrency,
       extraCosts: extraCosts.length > 0 ? extraCosts : f.extraCosts,
       productItems: productItems.length > 0 ? productItems : f.productItems,
     }));
@@ -351,15 +362,17 @@ export default function ProfitAnalysisPage() {
     setForm(f => ({
       ...f,
       productItems: [...f.productItems, {
-        id: newPid(), name: '', spec: '', qty: 0, currency: f.productItems[0]?.currency || 'CNY', unitPriceFx: 0,
+        id: newPid(), name: '', spec: '', qty: 0, currency: f.productCurrency || 'CNY', unitPriceFx: 0,
       }],
     }));
   }
 
-  // 원가 통화를 바꾸면(USD/JPY 등) 모든 품목 행에 일괄 적용 — 한 건의 수입통관은
-  // 보통 통화가 하나라 행마다 따로 고르게 하지 않고 여기서 한 번에 바꾼다.
+  // 원가 통화를 바꾸면(USD/JPY 등) productCurrency(대표값)와 모든 품목 행에 함께
+  // 반영 — 품목이 아직 하나도 없을 때도(신규 작성 중) 선택이 사라지지 않도록
+  // productCurrency를 별도 필드로 둔다. 한 건의 수입통관은 보통 통화가 하나라
+  // 행마다 따로 고르게 하지 않고 여기서 한 번에 바꾼다.
   function setDealCurrency(currency: string) {
-    setForm(f => ({ ...f, productItems: f.productItems.map(p => ({ ...p, currency })) }));
+    setForm(f => ({ ...f, productCurrency: currency, productItems: f.productItems.map(p => ({ ...p, currency })) }));
   }
 
   function updateProduct(idx: number, field: keyof ProductItem, val: string | number | undefined) {
@@ -501,7 +514,7 @@ export default function ProfitAnalysisPage() {
   // 제품원가 통화 — 수입통관 연결 시 imp.invoiceCurrency가 각 행에 그대로 들어오지만
   // 환율 라벨("원/CNY")과 표 헤더("단가(CNY)")가 하드코딩돼 있어서 USD/JPY 건에도
   // 항상 CNY로 표시되던 문제 — 실제 품목 통화를 따라가게 함(행마다 다르면 첫 행 기준).
-  const dealCurrency = form.productItems[0]?.currency || 'CNY';
+  const dealCurrency = form.productCurrency || form.productItems[0]?.currency || 'CNY';
 
   const filteredSales = linkSales.filter(s =>
     !linkQ || s.businessId.includes(linkQ) || s.customer.toLowerCase().includes(linkQ.toLowerCase()) || (s.poNo || '').includes(linkQ)
@@ -755,6 +768,7 @@ export default function ProfitAnalysisPage() {
                         { label: '내륙운송료', key: 'inlandFreight' as const },
                         { label: '통관수수료', key: 'brokerFee' as const },
                         { label: '관세', key: 'duty' as const },
+                        { label: '해상보험료', key: 'insurance' as const },
                         { label: '해외송금수수료', key: 'wireFee' as const },
                       ].map(({ label, key }) => (
                         <div key={key} className="flex items-center gap-2">
@@ -1107,7 +1121,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   const { productTotal2, logisticTotal, profit, profitRate } = totals;
   const cex = pa.customsExRate || 1;
   const wex = pa.wireExRate || cex;
-  const dealCurrency = pa.productItems[0]?.currency || 'CNY';
+  const dealCurrency = pa.productCurrency || pa.productItems[0]?.currency || 'CNY';
 
   const [advance, setAdvance] = useState(pa.advancePayment || 0);
   const [actual, setActual] = useState(pa.actualPayment || 0);
@@ -1122,7 +1136,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
   // 5. 지급액 = 제품원가② − 선지급비용 (자동계산)
   const paymentCalc = productTotal2 - advance;
 
-  const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
+  const logisticOnlyCost = (pa.freightCost || 0) + (pa.inlandFreight || 0) + (pa.brokerFee || 0) + (pa.duty || 0) + (pa.insurance || 0) + (pa.wireFee || 0) + (pa.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
 
   const dateStr = pa.analysisDate
     ? `${new Date(pa.analysisDate).getMonth() + 1}/${new Date(pa.analysisDate).getDate()}`
@@ -1266,6 +1280,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
             { label: '내륙운송료', val: pa.inlandFreight },
             { label: '통관수수료', val: pa.brokerFee },
             { label: '관세', val: pa.duty },
+            { label: '해상보험료', val: pa.insurance },
             { label: '해외송금수수료', val: pa.wireFee },
           ].map(({ label, val }) => (
             <tr key={label}>
@@ -1375,7 +1390,7 @@ function SettlementTable({ pa, onUpdated }: { pa: PA; onUpdated: () => void }) {
 function ReportBox({ form, totals }: { form: FormState; totals: ReturnType<typeof calcTotals> }) {
   const { productTotal1, productTotal2, logisticTotal, totalCost, profit, profitRate } = totals;
   const saleKrw = form.saleAmount || 0;
-  const logisticOnlyCost = (form.freightCost || 0) + (form.inlandFreight || 0) + (form.brokerFee || 0) + (form.duty || 0) + (form.wireFee || 0) + (form.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
+  const logisticOnlyCost = (form.freightCost || 0) + (form.inlandFreight || 0) + (form.brokerFee || 0) + (form.duty || 0) + (form.insurance || 0) + (form.wireFee || 0) + (form.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
   const extraTotal = (form.extraCosts || []).reduce((s, c) => s + (c.amount || 0), 0);
 
   const costRows: { label: string; tag: string; val: number; sub?: boolean }[] = [
@@ -1385,7 +1400,8 @@ function ReportBox({ form, totals }: { form: FormState; totals: ReturnType<typeo
     ...(form.brokerFee ? [{ label: '통관수수료', tag: 'B-4', val: form.brokerFee }] : []),
     ...(form.duty ? [{ label: '관세', tag: 'B-5', val: form.duty }] : []),
     ...(extraTotal > 0 ? [{ label: '기타비용', tag: 'B-6', val: extraTotal }] : []),
-    ...(form.wireFee ? [{ label: '해외송금수수료', tag: 'B-7', val: form.wireFee }] : []),
+    ...(form.insurance ? [{ label: '해상보험료', tag: 'B-7', val: form.insurance }] : []),
+    ...(form.wireFee ? [{ label: '해외송금수수료', tag: 'B-8', val: form.wireFee }] : []),
   ].filter(r => r.val > 0);
 
   const tagList = costRows.map(r => r.tag).join('+');

@@ -639,6 +639,13 @@ function runMigrations(db: Database.Database) {
     // 수입통관 마감 시 자동 생성된 비용원장 항목 표시 — 통관 삭제/재동기화 시
     // 이 항목만 지우고 수동으로 추가한 비용은 건드리지 않기 위함
     `ALTER TABLE expenses ADD COLUMN is_auto_allocated INTEGER DEFAULT 0`,
+    // 수익분석: 제품원가 통화 — 품목 배열(JSON)에만 currency가 있어서 품목이
+    // 하나도 없을 땐 사용자가 통화를 선택해도 저장할 곳이 없어 선택이 안 먹히던
+    // 문제 수정. 이 컬럼이 진짜 값이고 각 품목의 currency는 여기서 동기화됨.
+    `ALTER TABLE profit_analyses ADD COLUMN product_currency TEXT DEFAULT 'CNY'`,
+    // 수익분석: 해상보험료 — CIF에는 들어가는데 수익분석 원가 항목엔 아예 없어서
+    // 수익이 보험료만큼 실제보다 부풀려 계산되던 문제 수정.
+    `ALTER TABLE profit_analyses ADD COLUMN insurance REAL DEFAULT 0`,
   ];
   // 메일 동기화 커서 테이블 (계정+폴더별 cursor_uid: 다음에 내려받을 UID 범위의 상한)
   db.exec(`CREATE TABLE IF NOT EXISTS mail_sync_cursors (
