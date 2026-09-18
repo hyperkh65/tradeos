@@ -643,8 +643,8 @@ function POModal({
                   <th className="px-2 py-2 text-left font-medium w-16">발광효율</th>
                   <th className="px-2 py-2 text-left font-medium w-16">광속</th>
                   <th className="px-2 py-2 text-left font-medium w-12">단위</th>
-                  <th className="px-2 py-2 text-right font-medium w-12">수량</th>
-                  <th className="px-2 py-2 text-right font-medium w-20">단가</th>
+                  <th className="px-2 py-2 text-right font-medium w-20">수량</th>
+                  <th className="px-2 py-2 text-right font-medium w-28">단가</th>
                   <th className="px-2 py-2 text-right font-medium w-24">금액</th>
                   <th className="px-2 py-2 text-left font-medium w-[90px]">비고</th>
                   <th className="px-2 py-2 w-7"></th>
@@ -695,8 +695,8 @@ function POModal({
                         <option>PCS</option><option>SET</option><option>BOX</option><option>KIT</option><option>M</option>
                       </select>
                     </td>
-                    <td className="px-1 py-2"><input type="number" className="w-full bg-transparent border-none outline-none text-sm text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
-                    <td className="px-1 py-2"><input type="number" step="0.01" className="w-full bg-transparent border-none outline-none text-sm text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
+                    <td className="px-1 py-2"><input type="number" className="no-spinner w-full bg-transparent border-none outline-none text-sm text-right" value={it.qty} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} /></td>
+                    <td className="px-1 py-2"><input type="number" step="0.01" className="no-spinner w-full bg-transparent border-none outline-none text-sm text-right" value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} /></td>
                     <td className="px-2 py-1 text-right font-medium">{it.amount.toLocaleString()}</td>
                     <td className="px-1 py-2"><input className="w-full bg-transparent border-none outline-none text-sm" value={it.remarks} onChange={e => updateItem(idx, 'remarks', e.target.value)} /></td>
                     <td className="px-1 py-2"><button type="button" onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button></td>

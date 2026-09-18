@@ -508,8 +508,8 @@ function QuoteModal({
                   <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-16">Lumen</th>
                   <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-16">CCT</th>
                   <th className="px-2 py-2 text-center font-semibold text-muted-foreground w-14">Unit</th>
-                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-14">수량</th>
-                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-22">단가</th>
+                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-20">수량</th>
+                  <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-28">단가</th>
                   <th className="px-2 py-2 text-right font-semibold text-muted-foreground w-24">금액</th>
                   <th className="px-2 py-2 text-left font-semibold text-muted-foreground w-24">비고</th>
                   <th className="px-2 py-2 w-6"></th>
@@ -568,12 +568,12 @@ function QuoteModal({
                     </td>
                     <td className="px-2 py-2">
                       <input type="number" min="0"
-                        className="w-full bg-transparent border-none outline-none text-sm text-right"
+                        className="no-spinner w-full bg-transparent border-none outline-none text-sm text-right"
                         value={it.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))} />
                     </td>
                     <td className="px-2 py-2">
                       <input type="number" min="0" step="0.01"
-                        className="w-full bg-transparent border-none outline-none text-sm text-right"
+                        className="no-spinner w-full bg-transparent border-none outline-none text-sm text-right"
                         value={it.unitPrice} onChange={e => updateItem(idx, 'unitPrice', Number(e.target.value))} />
                     </td>
                     <td className="px-2 py-2 text-right font-semibold">
